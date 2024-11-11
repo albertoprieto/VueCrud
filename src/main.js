@@ -9,7 +9,7 @@ import ToastService from 'primevue/toastservice';
 import App from './App.vue'
 import router from './router'
 
-// Importar componentes de PrimeVue
+// Importar componentes de PrimeVue 
 import Button from 'primevue/button';
 import Menubar from 'primevue/menubar';
 import Toast from 'primevue/toast';
