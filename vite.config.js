@@ -8,7 +8,7 @@ const __dirname = dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/codeadmin/', // Reemplaza 'codeadmin' con el nombre de tu repositorio
+  base: '/codeadmin/',
   plugins: [
     vue(),
   ],
