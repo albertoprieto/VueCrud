@@ -5,25 +5,16 @@ CodeAdmin es una aplicación web desarrollada con Vue 3 y Vite. Esta aplicación
 ## Estructura del Proyecto
 
     WelcomeItem.vue
-
-modules/
-    AdminItems.vue
-    adquiridos.vue
-    adquirir.vue
-    dashboard.vue
-    
-    
+    modules/
+        AdminItems.vue
+        adquiridos.vue
+        adquirir.vue
+        dashboard.vue
     home.vue
     informacion.vue
-    
-    
-    
-    
     ServicioDetalle.vue
-    
-router/
-    index.js
-services/
-    ...
-stores/
-views/
+    router/
+        index.js
+    services/
+    stores/
+    views/
