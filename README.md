@@ -1,7 +1,7 @@
 # CodeAdmin
 
-[![GitHub Pages](https://img.shields.io/badge/GitHub-Pages-blue?logo=github)](https://tu-usuario.github.io/codeadmin/)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/tu-usuario/codeadmin/deploy.yml?branch=main)](https://github.com/tu-usuario/codeadmin/actions)
+[![GitHub Pages](https://img.shields.io/badge/GitHub-Pages-blue?logo=github)](https://albertoprieto.github.io/VueCrud/)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/albertoprieto/codeadmin/deploy.yml?branch=main)](https://github.com/albertoprieto/VueCrud/actions)
 
 CodeAdmin es una aplicación web desarrollada con Vue 3 y Vite. Esta aplicación permite gestionar pagos, envíos, compras y otros servicios. Utiliza PrimeVue para los componentes de la interfaz de usuario y Pinia para la gestión del estado.
 
