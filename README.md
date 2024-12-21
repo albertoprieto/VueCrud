@@ -1,29 +1,29 @@
-# admin
+# CodeAdmin
 
-This template should help get you started developing with Vue 3 in Vite.
+CodeAdmin es una aplicación web desarrollada con Vue 3 y Vite. Esta aplicación permite gestionar pagos, envíos, compras y otros servicios. Utiliza PrimeVue para los componentes de la interfaz de usuario y Pinia para la gestión del estado.
 
-## Recommended IDE Setup
+## Estructura del Proyecto
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+    WelcomeItem.vue
 
-## Customize configuration
-
-See [Vite Configuration Reference](https://vitejs.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
-npm run build
-```
+modules/
+    AdminItems.vue
+    adquiridos.vue
+    adquirir.vue
+    dashboard.vue
+    
+    
+    home.vue
+    informacion.vue
+    
+    
+    
+    
+    ServicioDetalle.vue
+    
+router/
+    index.js
+services/
+    ...
+stores/
+views/

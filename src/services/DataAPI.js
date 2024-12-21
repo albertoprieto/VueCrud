@@ -3,11 +3,11 @@ import CryptoJS from 'crypto-js';
 import { DateTime } from 'luxon';
 
 // Constants
-const OPENAPI_URL = "https://us-open.tracksolidpro.com/route/rest";
-const APP_KEY = "8FB345B8693CCD006EB41604DD85DEBD";
-const APP_SECRET = "b362f943f6a54ebfa9b27c489ddb75a4";
-const ACCOUNT = "pgarcia1";
-const PASSWORD_MD5 = "611b4f8ca88cb17e317f97b95c7c327a";
+const OPENAPI_URL = "";
+const APP_KEY = "";
+const APP_SECRET = "";
+const ACCOUNT = "";
+const PASSWORD_MD5 = "";
 
 function getCurrentDate() {
     return DateTime.utc().toFormat('yyyy-MM-dd HH:mm:ss');
