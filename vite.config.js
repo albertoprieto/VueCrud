@@ -8,7 +8,7 @@ const __dirname = dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/adminstore/',
+  base: '/VueCrud/', // Asegúrate de que esta ruta sea correcta para GitHub Pages
   plugins: [
     vue(),
   ],
