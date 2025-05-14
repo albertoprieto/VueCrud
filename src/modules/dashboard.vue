@@ -35,36 +35,6 @@ const items = ref([
     label: 'Inicio',
     icon: 'pi pi-fw pi-home',
     route: '/dashboard'
-  },
-  {
-    label: 'Servicios',
-    icon: 'pi pi-fw pi-plus',
-    route: '/adquirir'
-  },  
-  {
-    label: 'Administrar Servicios',
-    icon: 'pi pi-fw pi-plus',
-    route: '/agregar'
-  },
-  {
-    label: 'Carrito',
-    icon: 'pi pi-fw pi-shopping-cart',
-    route: '/adquiridos'
-  },
-  {
-    label: 'Historial Pagos',
-    icon: 'pi pi-fw pi-credit-card',
-    route: '/pagos'
-  },
-  {
-    label: 'Mis Compras',
-    icon: 'pi pi-fw pi-list',
-    route: '/mis-compras'
-  },
-  {
-    label: 'Administrar Estatus',
-    icon: 'pi pi-fw pi-pencil',
-    route: '/editar-estatus'
-  },
+  }
 ]);
 </script>
