@@ -11,6 +11,9 @@
     "deploy-and-push": "npm run build && npm run deploy && git add . && git commit -m 'Deploy to GitHub Pages' && git push origin main"
   },
   "dependencies": {
+    "@fullcalendar/core": "^6.1.17",
+    "@fullcalendar/daygrid": "^6.1.17",
+    "@fullcalendar/vue3": "^6.1.17",
     "@primevue/themes": "^4.0.5",
     "@stripe/stripe-js": "^4.4.0",
     "axios": "^1.7.7",
