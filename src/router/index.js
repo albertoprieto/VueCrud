@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import Informacion from '@/modules/informacion.vue';
 import Login from '@/modules/login.vue';
-import Reporte from '@/modules/reporte.vue';
-import Registrar from '@/modules/registrar.vue';
-import Consultar from '@/modules/consultar.vue';
-import Cotizacion from '@/modules/cotizacion.vue';
+import Reporte from '@/modules/Reporte.vue';
+import Registrar from '@/modules/Registrar.vue';
+import Consultar from '@/modules/Consultar.vue';
+import Cotizacion from '@/modules/Cotizacion.vue';
 import ConsultarCotizaciones from '@/modules/ConsultarCotizaciones.vue';
 import CalendarioCotizaciones from '@/modules/CalendarioCotizaciones.vue';
 
@@ -53,6 +53,16 @@ const routes = [
     path: '/calendario-cotizaciones',
     name: 'calendario-cotizaciones',
     component: CalendarioCotizaciones
+  },
+  {
+    path: '/consultar-reportes',
+    name: 'consultar-reportes',
+    component: () => import('@/modules/ConsultarReportes.vue')
+  },
+  {
+    path: '/crear-evento',
+    name: 'crear-evento',
+    component: () => import('@/modules/CrearEvento.vue')
   }
 ];
 

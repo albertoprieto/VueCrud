@@ -37,7 +37,7 @@ const registerIMEI = () => {
   const currentUser = loginStore.currentUser?.username || 'Desconocido';
   const now = new Date();
   const currentDate = now.toISOString().split('T')[0];
-  const currentTime = now.toTimeString().split(' ')[0]; // Obtiene la hora y minutos en formato HH:MM:SS
+  const currentTime = now.toTimeString().split(' ')[0];
 
   itemsStore.addItem({
     id: Date.now(),
@@ -45,15 +45,16 @@ const registerIMEI = () => {
     description: `Registrado por ${currentUser}`,
     imei: imei.value,
     registeredBy: currentUser,
-    date: `${currentDate} ${currentTime}` // Combina la fecha y la hora
+    date: `${currentDate} ${currentTime}`,
+    status: 'Disponible' // Estado inicial
   });
 
-  showDialog.value = true; // Mostrar el modal
+  showDialog.value = true;
   imei.value = '';
 };
 
 const closeDialog = () => {
-  showDialog.value = false; // Cerrar el modal
+  showDialog.value = false;
 };
 </script>
 

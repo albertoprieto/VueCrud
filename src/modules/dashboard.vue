@@ -35,6 +35,38 @@ const items = ref([
     label: 'Inicio',
     icon: 'pi pi-fw pi-home',
     route: '/dashboard'
+  },
+  {
+    label: 'IMEIs',
+    icon: 'pi pi-fw pi-mobile',
+    items: [
+      { label: 'Registrar IMEI', route: '/registrar' },
+      { label: 'Consultar IMEIs', route: '/consultar' }
+    ]
+  },
+  {
+    label: 'Cotizaciones',
+    icon: 'pi pi-fw pi-dollar',
+    items: [
+      { label: 'Crear Cotización', route: '/cotizacion' },
+      { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones' }
+    ]
+  },
+  {
+    label: 'Reportes',
+    icon: 'pi pi-fw pi-file',
+    items: [
+      { label: 'Crear Reporte', route: '/reporte' },
+      { label: 'Consultar Reportes', route: '/consultar-reportes' }
+    ]
+  },
+  {
+    label: 'Calendario',
+    icon: 'pi pi-fw pi-calendar',
+    items: [
+      { label: 'Crear Evento', route: '/crear-evento' },
+      { label: 'Consultar Eventos', route: '/calendario-cotizaciones' }
+    ]
   }
 ]);
 </script>

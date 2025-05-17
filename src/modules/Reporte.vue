@@ -28,6 +28,7 @@
 
 <script setup>
 import { ref } from 'vue';
+import { useReportesStore } from '@/stores/reportesStore';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
@@ -37,11 +38,20 @@ const placa = ref('');
 const nombre = ref('');
 const showDialog = ref(false);
 
+const reportesStore = useReportesStore();
+
 const generateReport = () => {
   if (!modelo.value || !placa.value || !nombre.value) {
     alert('Por favor, complete todos los campos.');
     return;
   }
+
+  // Guardar el reporte en el store
+  reportesStore.addReporte({
+    modelo: modelo.value,
+    placa: placa.value,
+    cliente: nombre.value
+  });
 
   showDialog.value = true; // Mostrar el modal
 };

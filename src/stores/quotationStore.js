@@ -7,7 +7,7 @@ export const useQuotationStore = defineStore('quotation', {
   actions: {
     addQuotation(quotation) {
       const newId = this.quotations.length ? Math.max(...this.quotations.map(q => q.id)) + 1 : 1;
-      const newQuotation = { ...quotation, id: newId };
+      const newQuotation = { ...quotation, id: newId, calendarDate: new Date(quotation.date).toISOString().split('T')[0] };
       this.quotations.push(newQuotation);
       localStorage.setItem('quotations', JSON.stringify(this.quotations));
     },

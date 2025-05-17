@@ -47,17 +47,18 @@ const saveQuotation = () => {
     cliente: cliente.value,
     descripcion: descripcion.value,
     monto: parseFloat(monto.value),
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    status: 'Pendiente' // Estado inicial
   });
 
-  showDialog.value = true; // Mostrar el modal
+  showDialog.value = true;
   cliente.value = '';
   descripcion.value = '';
   monto.value = '';
 };
 
 const closeDialog = () => {
-  showDialog.value = false; // Cerrar el modal
+  showDialog.value = false;
 };
 </script>
 
