@@ -1,18 +1,40 @@
 import { defineStore } from 'pinia';
 
-export const useEventosStore = defineStore('eventos', {
+export const useEventosStore = defineStore('eventosStore', {
   state: () => ({
-    eventos: JSON.parse(localStorage.getItem('eventos')) || []
+    eventos: []
   }),
   actions: {
     addEvento(evento) {
-      const newId = this.eventos.length ? Math.max(...this.eventos.map(e => e.id)) + 1 : 1;
-      const newEvento = { ...evento, id: newId };
-      this.eventos.push(newEvento);
-      localStorage.setItem('eventos', JSON.stringify(this.eventos));
+      const formattedEvento = {
+        id: Date.now(),
+        title: evento.titulo,
+        start: evento.fecha,
+        descripcion: evento.descripcion,
+        imei: evento.imei,
+        technician: evento.technician,
+        status: evento.status || 'Pendiente'
+      };
+      console.log('Evento formateado:', formattedEvento);
+      this.eventos.push(formattedEvento);
     },
-    getEventos() {
-      return this.eventos;
+    updateEvento(updatedEvento) {
+      const index = this.eventos.findIndex(e => e.id === updatedEvento.id);
+      if (index !== -1) {
+        this.eventos[index] = updatedEvento;
+      }
+    },
+    updateStatus(eventoId, status) {
+      const index = this.eventos.findIndex(e => e.id === eventoId);
+      if (index !== -1) {
+        this.eventos[index].status = status;
+      }
+    },
+    deleteEvento(eventoId) {
+      this.eventos = this.eventos.filter(e => e.id !== eventoId);
     }
+  },
+  getters: {
+    getEventos: (state) => state.eventos
   }
 });

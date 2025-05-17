@@ -1,32 +1,43 @@
 import { defineStore } from 'pinia';
 
-export const useQuotationStore = defineStore('quotation', {
+export const useQuotationStore = defineStore('quotationStore', {
   state: () => ({
-    quotations: JSON.parse(localStorage.getItem('quotations')) || []
+    quotations: []
   }),
   actions: {
     addQuotation(quotation) {
-      const newId = this.quotations.length ? Math.max(...this.quotations.map(q => q.id)) + 1 : 1;
-      const newQuotation = { ...quotation, id: newId, calendarDate: new Date(quotation.date).toISOString().split('T')[0] };
-      this.quotations.push(newQuotation);
-      localStorage.setItem('quotations', JSON.stringify(this.quotations));
-    },
-    getQuotations() {
-      return this.quotations;
-    },
-    getQuotationById(id) {
-      return this.quotations.find(quotation => quotation.id === id);
-    },
-    deleteQuotation(id) {
-      this.quotations = this.quotations.filter(quotation => quotation.id !== id);
-      localStorage.setItem('quotations', JSON.stringify(this.quotations));
+      this.quotations.push({ ...quotation, status: 'Pendiente' }); // Estado inicial
     },
     updateQuotation(updatedQuotation) {
-      const index = this.quotations.findIndex((q) => q.id === updatedQuotation.id);
+      const index = this.quotations.findIndex(q => q.id === updatedQuotation.id);
       if (index !== -1) {
         this.quotations[index] = updatedQuotation;
-        localStorage.setItem('quotations', JSON.stringify(this.quotations));
+      }
+    },
+    cancelQuotation(quotationId) {
+      const index = this.quotations.findIndex(q => q.id === quotationId);
+      if (index !== -1) {
+        this.quotations[index].status = 'Cancelado';
+      }
+    },
+    markInProgress(quotationId) {
+      const index = this.quotations.findIndex(q => q.id === quotationId);
+      if (index !== -1) {
+        this.quotations[index].status = 'En Proceso';
+      }
+    },
+    markCompleted(quotationId) {
+      const index = this.quotations.findIndex(q => q.id === quotationId);
+      if (index !== -1) {
+        this.quotations[index].status = 'Concluido';
       }
     }
+  },
+  getters: {
+    getQuotations: (state) => state.quotations,
+    getPendingQuotations: (state) => state.quotations.filter(q => q.status === 'Pendiente'),
+    getScheduledQuotations: (state) => state.quotations.filter(q => q.status === 'Agendado'),
+    getInProgressQuotations: (state) => state.quotations.filter(q => q.status === 'En Proceso'),
+    getCompletedQuotations: (state) => state.quotations.filter(q => q.status === 'Concluido')
   }
 });

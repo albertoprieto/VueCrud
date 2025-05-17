@@ -12,35 +12,6 @@
         <p><strong>Eventos Agendados:</strong> {{ scheduledEvents }}</p>
         <p><strong>Reportes Generados:</strong> {{ reportsCount }}</p>
       </Card>
-
-      <!-- Accesos Rápidos -->
-      <Card class="card card-access" @click="navigateTo('/registrar')">
-        <template #title>
-          <h2>Registrar IMEI</h2>
-        </template>
-        <p>Acceso rápido para registrar nuevos IMEIs en el inventario.</p>
-      </Card>
-
-      <Card class="card card-access" @click="navigateTo('/consultar-cotizaciones')">
-        <template #title>
-          <h2>Consultar Cotizaciones</h2>
-        </template>
-        <p>Consulta y gestiona las cotizaciones existentes.</p>
-      </Card>
-
-      <Card class="card card-access" @click="navigateTo('/calendario-cotizaciones')">
-        <template #title>
-          <h2>Calendario</h2>
-        </template>
-        <p>Visualiza y gestiona los eventos agendados.</p>
-      </Card>
-
-      <Card class="card card-access" @click="navigateTo('/consultar-reportes')">
-        <template #title>
-          <h2>Consultar Reportes</h2>
-        </template>
-        <p>Consulta los reportes generados de servicios realizados.</p>
-      </Card>
     </div>
   </div>
 </template>

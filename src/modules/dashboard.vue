@@ -64,8 +64,15 @@ const items = ref([
     label: 'Calendario',
     icon: 'pi pi-fw pi-calendar',
     items: [
-      { label: 'Crear Evento', route: '/crear-evento' },
       { label: 'Consultar Eventos', route: '/calendario-cotizaciones' }
+    ]
+  },
+  {
+    label: 'Seguimiento',
+    icon: 'pi pi-fw pi-file',
+    items: [
+      {
+        label: 'Seguimiento', route:'/seguimiento'      }
     ]
   }
 ]);

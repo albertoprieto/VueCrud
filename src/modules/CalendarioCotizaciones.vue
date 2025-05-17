@@ -1,6 +1,17 @@
 <template>
   <div class="calendario-cotizaciones">
     <h2>Calendario de Cotizaciones</h2>
+
+    <!-- Filtro por Técnico -->
+    <div class="filters">
+      <Dropdown 
+        v-model="selectedTechnician" 
+        :options="technicians" 
+        placeholder="Filtrar por Técnico" 
+        class="filter-dropdown"
+      />
+    </div>
+
     <FullCalendar :options="calendarOptions" />
     <div v-if="events.length === 0" class="no-events">
       <p>No hay eventos agendados.</p>
@@ -8,8 +19,6 @@
 
     <!-- Modal para mostrar detalles del evento -->
     <Dialog v-model:visible="showDialog" header="Detalles del Evento" :closable="true" :modal="true">
-      <p><strong>Título:</strong> {{ selectedEvent?.title }}</p>
-      <p><strong>Fecha:</strong> {{ selectedEvent?.start }}</p>
       <p><strong>Descripción:</strong> {{ selectedEvent?.descripcion }}</p>
       <p><strong>IMEI:</strong> {{ selectedEvent?.imei }}</p>
       <p><strong>Técnico:</strong> {{ selectedEvent?.technician }}</p>
@@ -29,61 +38,31 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { useEventosStore } from '@/stores/eventosStore';
-import { useQuotationStore } from '@/stores/quotationStore';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
+import interactionPlugin from '@fullcalendar/interaction';
 import Dialog from 'primevue/dialog';
 import Button from 'primevue/button';
+import Dropdown from 'primevue/dropdown';
 
 const eventosStore = useEventosStore();
-const quotationStore = useQuotationStore();
+
+// Lista de técnicos para el filtro
+const technicians = ref(['Técnico 1', 'Técnico 2', 'Técnico 3']);
+const selectedTechnician = ref(null);
 
 // Computed property para obtener los eventos desde el store
-const events = computed(() => {
-  const eventos = eventosStore.getEventos();
-  return eventos.map((evento) => ({
-    title: evento.titulo,
-    start: evento.fecha,
-    descripcion: evento.descripcion,
-    imei: evento.imei,
-    technician: evento.technician,
-    status: evento.status,
-    backgroundColor: evento.status === 'Concluido' ? '#007bff' : evento.status === 'Agendado' ? '#28a745' : '#ffcc00',
-    borderColor: evento.status === 'Concluido' ? '#007bff' : evento.status === 'Agendado' ? '#28a745' : '#ffcc00'
-  }));
-});
-
-// Estado para el modal
-const showDialog = ref(false);
-const selectedEvent = ref(null);
+const events = computed(() => eventosStore.getEventos);
 
 // Opciones del calendario
 const calendarOptions = ref({
-  plugins: [dayGridPlugin],
+  plugins: [dayGridPlugin, interactionPlugin],
   initialView: 'dayGridMonth',
   locale: 'es',
   events: events.value,
-  editable: true, // Permitir arrastrar y soltar
+  editable: true,
   eventClick: (info) => {
-    selectedEvent.value = {
-      title: info.event.title,
-      start: info.event.start.toISOString().split('T')[0],
-      descripcion: info.event.extendedProps.descripcion,
-      imei: info.event.extendedProps.imei,
-      technician: info.event.extendedProps.technician,
-      status: info.event.extendedProps.status
-    };
-    showDialog.value = true;
-  },
-  eventMouseEnter: (info) => {
-    const tooltip = document.createElement('div');
-    tooltip.className = 'tooltip';
-    tooltip.innerHTML = `
-      <strong>${info.event.title}</strong><br>
-      Fecha: ${info.event.start.toISOString().split('T')[0]}<br>
-      Técnico: ${info.event.extendedProps.technician}
-    `;
-    document.body.appendChild(tooltip);
+    console.log('Evento clicado:', info.event);
   }
 });
 
@@ -91,39 +70,29 @@ const calendarOptions = ref({
 watch(events, (newEvents) => {
   calendarOptions.value = {
     ...calendarOptions.value,
-    events: newEvents
+    events: newEvents.map(event => ({
+      id: event.id,
+      title: event.title,
+      start: event.start,
+      extendedProps: {
+        descripcion: event.descripcion,
+        imei: event.imei,
+        technician: event.technician,
+        status: event.status
+      },
+      backgroundColor: event.status === 'Concluido' ? '#6c757d' :
+                       event.status === 'En Proceso' ? '#007bff' :
+                       event.status === 'Agendado' ? '#28a745' : '#ffcc00',
+      borderColor: event.status === 'Concluido' ? '#6c757d' :
+                   event.status === 'En Proceso' ? '#007bff' :
+                   event.status === 'Agendado' ? '#28a745' : '#ffcc00'
+    }))
   };
 });
 
-// Función para marcar el evento como "Realizado"
-const markAsCompleted = () => {
-  if (selectedEvent.value) {
-    // Actualizar el estado del evento en el store de eventos
-    eventosStore.updateEvento({
-      ...selectedEvent.value,
-      status: 'Concluido'
-    });
-
-    // Actualizar el estado de la cotización en el store de cotizaciones
-    const quotation = quotationStore.getQuotations().find(q => q.descripcion === selectedEvent.value.descripcion);
-    if (quotation) {
-      quotation.status = 'Concluido';
-      quotationStore.updateQuotation(quotation);
-    }
-
-    // Cerrar el modal
-    showDialog.value = false;
-    selectedEvent.value = null;
-  }
-};
-
-const closeDialog = () => {
-  showDialog.value = false;
-};
-
-// Cargar datos al montar el componente
+// Depuración: Verifica los eventos cargados
 onMounted(() => {
-  console.log('Eventos cargados:', events.value); // Depuración: Verifica los eventos procesados
+  console.log('Eventos en el calendario:', events.value);
 });
 </script>
 
@@ -138,5 +107,19 @@ onMounted(() => {
   margin-top: 20px;
   font-size: 1.2rem;
   color: #666;
+}
+
+.filters {
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.filter-dropdown {
+  width: 300px;
+}
+
+.dialog {
+  text-align: left;
 }
 </style>
