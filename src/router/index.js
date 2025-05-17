@@ -63,6 +63,11 @@ const routes = [
     path: '/crear-evento',
     name: 'crear-evento',
     component: () => import('@/modules/CrearEvento.vue')
+  },{
+
+    path:  '/seguimiento',
+    name: 'Seguimiento',
+    componet: () => import('@/modules/SeguimientoEventos.vue')
   }
 ];
 

@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useQuotationStore } from '@/stores/quotationStore';
 import { useItemsStore } from '@/stores/itemStore';
 import { useEventosStore } from '@/stores/eventosStore';
@@ -68,7 +68,7 @@ const quotationStore = useQuotationStore();
 const itemsStore = useItemsStore();
 const eventosStore = useEventosStore();
 
-const quotations = quotationStore.getQuotations();
+const quotations = computed(() => quotationStore.getQuotations);
 const showAssignDialog = ref(false);
 const selectedQuotation = ref(null);
 const calendarDate = ref(null);
