@@ -3,14 +3,14 @@
     <h2>Calendario de Cotizaciones</h2>
 
     <!-- Filtro por Técnico -->
-    <div class="filters">
+    <!-- <div class="filters">
       <Dropdown 
         v-model="selectedTechnician" 
         :options="technicians" 
         placeholder="Filtrar por Técnico" 
         class="filter-dropdown"
       />
-    </div>
+    </div> -->
 
     <FullCalendar :options="calendarOptions" />
     <div v-if="events.length === 0" class="no-events">
@@ -30,45 +30,66 @@
         label="Marcar como Realizado" 
         icon="pi pi-check" 
         class="p-button-success" 
-        @click="markAsCompleted" 
+        @click="openReportDialog"
       />
       <Button label="Cerrar" icon="pi pi-times" @click="closeDialog" />
+    </Dialog>
+
+    <Dialog v-model:visible="messageDialog" header="Éxito" :closable="false" :modal="true">
+      <p>{{ messageText }}</p>
+      <Button label="Aceptar" icon="pi pi-check" @click="messageDialog = false" />
+    </Dialog>
+
+    <Dialog v-model:visible="showReportDialog" header="Generar Reporte de Servicio" :closable="false" :modal="true">
+      <div>
+        <div class="form-group">
+          <label>Modelo del Vehículo:</label>
+          <InputText v-model="reportData.modelo" type="text" />
+        </div>
+        <div class="form-group">
+          <label>Placa del Vehículo:</label>
+          <InputText v-model="reportData.placa" type="text" />
+        </div>
+        <div class="form-group">
+          <label>Observaciones:</label>
+          <Textarea v-model="reportData.observaciones" rows="3" autoResize />
+        </div>
+        <Button label="Guardar y Concluir" icon="pi pi-check" @click="saveReportAndComplete" />
+        <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showReportDialog = false" />
+      </div>
     </Dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
-import { useEventosStore } from '@/stores/eventosStore';
+import { ref, watch, onMounted } from 'vue';
+import { getEventos, updateEventoStatus } from '@/services/eventosService';
+import { addReporte } from '@/services/reportesService'; // Debes crear este servicio
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import Dialog from 'primevue/dialog';
 import Button from 'primevue/button';
 import Dropdown from 'primevue/dropdown';
+import InputText from 'primevue/inputtext';
+import Textarea from 'primevue/textarea';
 
-const eventosStore = useEventosStore();
-
-// Lista de técnicos para el filtro
 const technicians = ref(['Técnico 1', 'Técnico 2', 'Técnico 3']);
 const selectedTechnician = ref(null);
 
-// Computed property para obtener los eventos desde el store
-const events = computed(() => eventosStore.getEventos);
-
+const events = ref([]);
 const showDialog = ref(false);
 const selectedEvent = ref(null);
 
-// Opciones del calendario
 const calendarOptions = ref({
   plugins: [dayGridPlugin, interactionPlugin],
   initialView: 'dayGridMonth',
   locale: 'es',
-  events: events.value,
+  events: [],
   editable: true,
   eventClick: (info) => {
-    // Obtener los datos extendidos del evento
     selectedEvent.value = {
+      id: info.event.id,
       descripcion: info.event.extendedProps.descripcion,
       imei: info.event.extendedProps.imei,
       technician: info.event.extendedProps.technician,
@@ -80,11 +101,12 @@ const calendarOptions = ref({
   }
 });
 
-// Watch para actualizar los eventos dinámicamente
-watch(events, (newEvents) => {
+const loadEventos = async () => {
+  const data = await getEventos();
+  events.value = data;
   calendarOptions.value = {
     ...calendarOptions.value,
-    events: newEvents.map(event => ({
+    events: data.map(event => ({
       id: event.id,
       title: event.title,
       start: event.start,
@@ -102,6 +124,37 @@ watch(events, (newEvents) => {
                    event.status === 'Agendado' ? '#28a745' : '#ffcc00'
     }))
   };
+};
+
+onMounted(loadEventos);
+
+watch(selectedTechnician, async (newTech) => {
+  if (!newTech) {
+    await loadEventos();
+  } else {
+    const data = await getEventos();
+    events.value = data.filter(e => e.technician === newTech);
+    calendarOptions.value = {
+      ...calendarOptions.value,
+      events: events.value.map(event => ({
+        id: event.id,
+        title: event.title,
+        start: event.start,
+        extendedProps: {
+          descripcion: event.descripcion,
+          imei: event.imei,
+          technician: event.technician,
+          status: event.status
+        },
+        backgroundColor: event.status === 'Concluido' ? '#6c757d' :
+                         event.status === 'En Proceso' ? '#007bff' :
+                         event.status === 'Agendado' ? '#28a745' : '#ffcc00',
+        borderColor: event.status === 'Concluido' ? '#6c757d' :
+                     event.status === 'En Proceso' ? '#007bff' :
+                     event.status === 'Agendado' ? '#28a745' : '#ffcc00'
+      }))
+    };
+  }
 });
 
 const closeDialog = () => {
@@ -109,16 +162,58 @@ const closeDialog = () => {
   selectedEvent.value = null;
 };
 
-const markAsCompleted = () => {
-  if (selectedEvent.value && selectedEvent.value.id) {
-    eventosStore.updateStatus(selectedEvent.value.id, 'Concluido');
+const messageDialog = ref(false);
+const messageText = ref('');
+
+const showReportDialog = ref(false);
+const reportData = ref({
+  modelo: '',
+  placa: '',
+  cliente: '',
+  observaciones: ''
+});
+const pendingEventId = ref(null);
+
+const openReportDialog = () => {
+  reportData.value = {
+    modelo: '',
+    placa: '',
+    cliente: selectedEvent.value?.cliente || '',
+    observaciones: ''
+  };
+  pendingEventId.value = selectedEvent.value.id;
+  showReportDialog.value = true;
+};
+
+const saveReportAndComplete = async () => {
+  if (!reportData.value.placa || !reportData.value.observaciones) {
+    messageText.value = 'Por favor, complete todos los campos.';
+    messageDialog.value = true;
+    return;
   }
+  await addReporte({
+    imei: selectedEvent.value.imei,
+    cotizacion: selectedEvent.value.title,
+    technician: selectedEvent.value.technician,
+    start: selectedEvent.value.start,
+    status: selectedEvent.value.status,
+    modelo: reportData.value.modelo,
+    placa: reportData.value.placa,
+    cliente: reportData.value.cliente,
+    observaciones: reportData.value.observaciones,
+    eventoId: pendingEventId.value
+  });
+  await updateEventoStatus(pendingEventId.value, 'Concluido');
+  await loadEventos();
+  showReportDialog.value = false;
+  messageText.value = 'Evento marcado como realizado y reporte generado correctamente.';
+  messageDialog.value = true;
   closeDialog();
 };
-// Depuración: Verifica los eventos cargados
-onMounted(() => {
-  console.log('Eventos en el calendario:', events.value);
-});
+
+const markAsCompleted = () => {
+  openReportDialog();
+};
 </script>
 
 <style scoped>

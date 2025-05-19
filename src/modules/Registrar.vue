@@ -18,17 +18,16 @@
 <script setup>
 import { ref } from 'vue';
 import { useLoginStore } from '@/stores/loginStore';
-import { useItemsStore } from '@/stores/itemStore';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import { addIMEI } from '@/services/imeiService';
 
 const imei = ref('');
 const showDialog = ref(false);
 const loginStore = useLoginStore();
-const itemsStore = useItemsStore();
 
-const registerIMEI = () => {
+const registerIMEI = async () => {
   if (!imei.value) {
     alert('Por favor, ingrese un número de IMEI.');
     return;
@@ -39,18 +38,20 @@ const registerIMEI = () => {
   const currentDate = now.toISOString().split('T')[0];
   const currentTime = now.toTimeString().split(' ')[0];
 
-  itemsStore.addItem({
-    id: Date.now(),
-    name: 'IMEI',
-    description: `Registrado por ${currentUser}`,
-    imei: imei.value,
-    registeredBy: currentUser,
-    date: `${currentDate} ${currentTime}`,
-    status: 'Disponible' // Estado inicial
-  });
-
-  showDialog.value = true;
-  imei.value = '';
+  try {
+    await addIMEI({
+      name: 'IMEI',
+      description: `Registrado por ${currentUser}`,
+      imei: imei.value,
+      registeredBy: currentUser,
+      date: `${currentDate} ${currentTime}`,
+      status: 'Disponible'
+    });
+    showDialog.value = true;
+    imei.value = '';
+  } catch (error) {
+    alert('Error al registrar el IMEI');
+  }
 };
 
 const closeDialog = () => {

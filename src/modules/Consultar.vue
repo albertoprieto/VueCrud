@@ -11,12 +11,18 @@
 </template>
 
 <script setup>
-import { useItemsStore } from '@/stores/itemStore';
+import { ref, onMounted } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
+import { getIMEIs } from '@/services/imeiService';
 
-const itemsStore = useItemsStore();
-const items = itemsStore.items;
+const items = ref([]);
+
+onMounted(async () => {
+  items.value = await getIMEIs();
+  console.log(items.value);
+  
+});
 </script>
 
 <style scoped>

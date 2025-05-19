@@ -3,14 +3,14 @@
     <h2>Seguimiento de Eventos</h2>
 
     <!-- Filtros -->
-    <div class="filters">
+    <!-- <div class="filters">
       <Dropdown 
         v-model="selectedTechnician" 
         :options="technicians" 
         placeholder="Filtrar por Técnico" 
         class="filter-dropdown"
       />
-    </div>
+    </div> -->
 
     <!-- Tabla de Eventos -->
     <DataTable :value="filteredEvents" responsiveLayout="scroll">
@@ -31,18 +31,40 @@
           </span>
         </template>
       </Column>
+      <Column header="Acciones">
+        <template #body="slotProps">
+          <Button
+            v-if="slotProps.data.status === 'Concluido' && slotProps.data.reporte"
+            label="Ver Detalle"
+            icon="pi pi-eye"
+            class="p-button-text"
+            @click="verDetalleReporte(slotProps.data.reporte)"
+          />
+        </template>
+      </Column>
     </DataTable>
+
+    <Dialog v-model:visible="showReporteDialog" header="Detalle del Reporte" :closable="true" :modal="true">
+      <div v-if="detalleReporte">
+        <p><strong>Modelo:</strong> {{ detalleReporte.modelo }}</p>
+        <p><strong>Placa:</strong> {{ detalleReporte.placa }}</p>
+        <p><strong>Cliente:</strong> {{ detalleReporte.cliente }}</p>
+        <p><strong>Observaciones:</strong> {{ detalleReporte.observaciones }}</p>
+        <p><strong>Fecha:</strong> {{ detalleReporte.fecha }}</p>
+      </div>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { useEventosStore } from '@/stores/eventosStore';
+import { getEventos } from '@/services/eventosService';
+import { getReportesByEvento } from '@/services/reportesService';
 import Dropdown from 'primevue/dropdown';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
-
-const eventosStore = useEventosStore();
+import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
 
 const technicians = ref(['Técnico 1', 'Técnico 2', 'Técnico 3']);
 const selectedTechnician = ref(null);
@@ -54,17 +76,32 @@ const statusColors = {
   Concluido: '#6c757d'
 };
 
-const events = computed(() => eventosStore.getEventos);
+const events = ref([]);
+const showReporteDialog = ref(false);
+const detalleReporte = ref(null);
 
-onMounted(() => {
-  console.log('Eventos en seguimiento:', events.value);
-});
+const loadEventos = async () => {
+  const eventos = await getEventos();
+  for (const evento of eventos) {
+    if (evento.status === 'Concluido') {
+      const reportes = await getReportesByEvento(evento.id);
+      evento.reporte = reportes && reportes.length ? reportes[0] : null;
+    } else {
+      evento.reporte = null;
+    }
+  }
+  events.value = eventos;
+};
 
-watch(events, (newEvents) => {
-  console.log('Eventos actualizados en seguimiento:', newEvents);
-});
+const verDetalleReporte = (reporte) => {
+  detalleReporte.value = reporte;
+  showReporteDialog.value = true;
+};
 
-// Filtrar eventos por técnico seleccionado
+onMounted(loadEventos);
+
+watch(selectedTechnician, loadEventos);
+
 const filteredEvents = computed(() => {
   if (!selectedTechnician.value) {
     return events.value;
