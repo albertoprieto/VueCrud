@@ -52,14 +52,7 @@ const items = ref([
       { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones' }
     ]
   },
-  {
-    label: 'Reportes',
-    icon: 'pi pi-fw pi-file',
-    items: [
-      { label: 'Crear Reporte', route: '/reporte' },
-      { label: 'Consultar Reportes', route: '/consultar-reportes' }
-    ]
-  },
+
   {
     label: 'Calendario',
     icon: 'pi pi-fw pi-calendar',

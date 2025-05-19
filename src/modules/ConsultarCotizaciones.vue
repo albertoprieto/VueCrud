@@ -6,13 +6,32 @@
       <Column field="descripcion" header="Descripción" />
       <Column field="monto" header="Monto" />
       <Column field="date" header="Fecha" />
+      <Column field="status" header="Estado" />
+      <Column header="Técnico Asignado">
+        <template #body="slotProps">
+          {{ slotProps.data.technician ? slotProps.data.technician : 'NA' }}
+        </template>
+      </Column>
+      <Column header="IMEI Asignado">
+        <template #body="slotProps">
+          {{ slotProps.data.imei ? slotProps.data.imei : 'NA' }}
+        </template>
+      </Column>
       <Column header="Acciones" body-class="text-center">
         <template #body="slotProps">
-          <Button 
-            label="Asignar Técnico" 
-            icon="pi pi-calendar" 
-            class="p-button-text" 
-            @click="openAssignDialog(slotProps.data)" 
+          <Button
+            v-if="slotProps.data.status === 'Agendado'"
+            label="Editar"
+            icon="pi pi-pencil"
+            class="p-button-text"
+            @click="openAssignDialog(slotProps.data)"
+          />
+          <Button
+            v-else
+            label="Asignar Técnico"
+            icon="pi pi-calendar"
+            class="p-button-text"
+            @click="openAssignDialog(slotProps.data)"
           />
         </template>
       </Column>
@@ -49,6 +68,12 @@
         </div>
       </div>
     </Dialog>
+
+    <!-- Dialog para mensajes -->
+    <Dialog v-model:visible="showMessageDialog" header="Mensaje" :closable="false" :modal="true">
+      <p>{{ messageDialogText }}</p>
+      <Button label="Aceptar" icon="pi pi-check" @click="closeMessageDialog" />
+    </Dialog>
   </div>
 </template>
 
@@ -75,9 +100,12 @@ const calendarDate = ref(null);
 const selectedTechnician = ref(null);
 const selectedIMEI = ref(null);
 
-const technicians = ref(['Técnico 1', 'Técnico 2', 'Técnico 3']);
-
+const technicians = ref(['Juan', 'Pedro', 'Paco']);
 const imeis = ref(itemsStore.items.filter(item => item.status === 'Disponible')); // Solo IMEIs disponibles
+
+// Dialog para mensajes
+const showMessageDialog = ref(false);
+const messageDialogText = ref('');
 
 const openAssignDialog = (quotation) => {
   selectedQuotation.value = quotation;
@@ -89,7 +117,8 @@ const openAssignDialog = (quotation) => {
 
 const assignDetails = () => {
   if (!calendarDate.value || !selectedTechnician.value || !selectedIMEI.value) {
-    alert('Por favor, complete todos los campos.');
+    messageDialogText.value = 'Por favor, complete todos los campos.';
+    showMessageDialog.value = true;
     return;
   }
 
@@ -108,7 +137,8 @@ const assignDetails = () => {
     descripcion: selectedQuotation.value.descripcion,
     imei: selectedIMEI.value.imei,
     technician: selectedTechnician.value,
-    status: 'Agendado'
+    status: 'Agendado',
+    cliente: selectedQuotation.value.cliente // <-- agrega esto
   });
 
   // Actualizar el estado del IMEI
@@ -118,13 +148,18 @@ const assignDetails = () => {
     itemsStore.updateItem(imeiToUpdate);
   }
 
-  alert('Detalles asignados exitosamente.');
+  messageDialogText.value = 'Detalles asignados exitosamente.';
+  showMessageDialog.value = true;
   closeDialog();
 };
 
 const closeDialog = () => {
   showAssignDialog.value = false;
   resetModalFields();
+};
+
+const closeMessageDialog = () => {
+  showMessageDialog.value = false;
 };
 
 const resetModalFields = () => {

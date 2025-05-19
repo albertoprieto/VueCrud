@@ -5,6 +5,7 @@
       <Column field="imei" header="IMEI" />
       <Column field="registeredBy" header="Registrado Por" />
       <Column field="date" header="Fecha de Registro" />
+      <Column field="status" header="Estado" /> <!-- Agrega esta línea -->
     </DataTable>
   </div>
 </template>
