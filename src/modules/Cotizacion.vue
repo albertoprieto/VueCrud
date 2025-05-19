@@ -25,36 +25,37 @@
 
 <script setup>
 import { ref } from 'vue';
-import { useQuotationStore } from '@/stores/quotationStore';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import { addQuotation } from '@/services/quotationService';
 
 const cliente = ref('');
 const descripcion = ref('');
 const monto = ref('');
 const showDialog = ref(false);
 
-const quotationStore = useQuotationStore();
-
-const saveQuotation = () => {
+const saveQuotation = async () => {
   if (!cliente.value || !descripcion.value || !monto.value) {
     alert('Por favor, complete todos los campos.');
     return;
   }
 
-  quotationStore.addQuotation({
-    cliente: cliente.value,
-    descripcion: descripcion.value,
-    monto: parseFloat(monto.value),
-    date: new Date().toISOString().split('T')[0],
-    status: 'Pendiente' // Estado inicial
-  });
-
-  showDialog.value = true;
-  cliente.value = '';
-  descripcion.value = '';
-  monto.value = '';
+  try {
+    await addQuotation({
+      cliente: cliente.value,
+      descripcion: descripcion.value,
+      monto: parseFloat(monto.value),
+      date: new Date().toISOString().split('T')[0],
+      status: 'Pendiente'
+    });
+    showDialog.value = true;
+    cliente.value = '';
+    descripcion.value = '';
+    monto.value = '';
+  } catch (error) {
+    alert('Error al registrar la cotización');
+  }
 };
 
 const closeDialog = () => {

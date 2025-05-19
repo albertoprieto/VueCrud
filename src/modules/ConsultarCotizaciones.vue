@@ -78,10 +78,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { useQuotationStore } from '@/stores/quotationStore';
-import { useItemsStore } from '@/stores/itemStore';
-import { useEventosStore } from '@/stores/eventosStore';
+import { ref, onMounted } from 'vue';
+import { getQuotations, updateQuotation } from '@/services/quotationService';
+import { getIMEIs, updateIMEI } from '@/services/imeiService';
+import { addEvento } from '@/services/eventosService';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -89,23 +89,24 @@ import Dialog from 'primevue/dialog';
 import Calendar from 'primevue/calendar';
 import Dropdown from 'primevue/dropdown';
 
-const quotationStore = useQuotationStore();
-const itemsStore = useItemsStore();
-const eventosStore = useEventosStore();
+const quotations = ref([]);
+const imeis = ref([]);
+const technicians = ref(['Juan', 'Pedro', 'Paco']);
 
-const quotations = computed(() => quotationStore.getQuotations);
 const showAssignDialog = ref(false);
 const selectedQuotation = ref(null);
 const calendarDate = ref(null);
 const selectedTechnician = ref(null);
 const selectedIMEI = ref(null);
 
-const technicians = ref(['Juan', 'Pedro', 'Paco']);
-const imeis = ref(itemsStore.items.filter(item => item.status === 'Disponible')); // Solo IMEIs disponibles
-
-// Dialog para mensajes
 const showMessageDialog = ref(false);
 const messageDialogText = ref('');
+
+onMounted(async () => {
+  quotations.value = await getQuotations();
+  const imeiList = await getIMEIs();
+  imeis.value = imeiList.filter(item => item.status === 'Disponible');
+});
 
 const openAssignDialog = (quotation) => {
   selectedQuotation.value = quotation;
@@ -115,40 +116,40 @@ const openAssignDialog = (quotation) => {
   showAssignDialog.value = true;
 };
 
-const assignDetails = () => {
+const assignDetails = async () => {
   if (!calendarDate.value || !selectedTechnician.value || !selectedIMEI.value) {
     messageDialogText.value = 'Por favor, complete todos los campos.';
     showMessageDialog.value = true;
     return;
   }
 
-  // Actualizar la cotización
-  selectedQuotation.value.status = 'Agendado';
-  selectedQuotation.value.calendarDate = calendarDate.value;
-  selectedQuotation.value.technician = selectedTechnician.value;
-  selectedQuotation.value.imei = selectedIMEI.value.imei;
-
-  quotationStore.updateQuotation(selectedQuotation.value);
-
-  // Registrar el evento en el calendario
-  eventosStore.addEvento({
-    titulo: `Servicio para ${selectedQuotation.value.cliente}`,
-    fecha: calendarDate.value,
-    descripcion: selectedQuotation.value.descripcion,
-    imei: selectedIMEI.value.imei,
-    technician: selectedTechnician.value,
-    status: 'Agendado',
-    cliente: selectedQuotation.value.cliente // <-- agrega esto
-  });
-
-  // Actualizar el estado del IMEI
-  const imeiToUpdate = itemsStore.items.find(item => item.imei === selectedIMEI.value.imei);
-  if (imeiToUpdate) {
-    imeiToUpdate.status = 'Asignado';
-    itemsStore.updateItem(imeiToUpdate);
+  try {
+    await updateQuotation(selectedQuotation.value.id, {
+      ...selectedQuotation.value,
+      technician: selectedTechnician.value,
+      imei: selectedIMEI.value.imei,
+      calendarDate: calendarDate.value,
+      status: 'Agendado'
+    });
+    await addEvento({
+      title: `Servicio para ${selectedQuotation.value.cliente}`,
+      descripcion: selectedQuotation.value.descripcion,
+      cliente: selectedQuotation.value.cliente,
+      imei: selectedIMEI.value.imei,
+      technician: selectedTechnician.value,
+      start: calendarDate.value,
+      status: 'Agendado'
+    });
+    await updateIMEI(selectedIMEI.value.imei, {
+      ...selectedIMEI.value,
+      status: 'Asignado'
+    });
+    messageDialogText.value = 'Detalles asignados exitosamente.';
+    // Refresca la lista de cotizaciones
+    quotations.value = await getQuotations();
+  } catch (error) {
+    messageDialogText.value = 'Error al actualizar la cotización.';
   }
-
-  messageDialogText.value = 'Detalles asignados exitosamente.';
   showMessageDialog.value = true;
   closeDialog();
 };
