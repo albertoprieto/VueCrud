@@ -15,7 +15,6 @@ export const useEventosStore = defineStore('eventosStore', {
         technician: evento.technician,
         status: evento.status || 'Pendiente'
       };
-      console.log('Evento formateado:', formattedEvento);
       this.eventos.push(formattedEvento);
     },
     updateEvento(updatedEvento) {
@@ -28,6 +27,7 @@ export const useEventosStore = defineStore('eventosStore', {
       const index = this.eventos.findIndex(e => e.id === eventoId);
       if (index !== -1) {
         this.eventos[index].status = status;
+        localStorage.setItem('eventos', JSON.stringify(this.eventos));
       }
     },
     deleteEvento(eventoId) {

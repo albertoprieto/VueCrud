@@ -19,6 +19,8 @@
 
     <!-- Modal para mostrar detalles del evento -->
     <Dialog v-model:visible="showDialog" header="Detalles del Evento" :closable="true" :modal="true">
+      <p><strong>Título:</strong> {{ selectedEvent?.title }}</p>
+      <p><strong>Fecha:</strong> {{ selectedEvent?.start }}</p>
       <p><strong>Descripción:</strong> {{ selectedEvent?.descripcion }}</p>
       <p><strong>IMEI:</strong> {{ selectedEvent?.imei }}</p>
       <p><strong>Técnico:</strong> {{ selectedEvent?.technician }}</p>
@@ -54,6 +56,9 @@ const selectedTechnician = ref(null);
 // Computed property para obtener los eventos desde el store
 const events = computed(() => eventosStore.getEventos);
 
+const showDialog = ref(false);
+const selectedEvent = ref(null);
+
 // Opciones del calendario
 const calendarOptions = ref({
   plugins: [dayGridPlugin, interactionPlugin],
@@ -62,7 +67,16 @@ const calendarOptions = ref({
   events: events.value,
   editable: true,
   eventClick: (info) => {
-    console.log('Evento clicado:', info.event);
+    // Obtener los datos extendidos del evento
+    selectedEvent.value = {
+      descripcion: info.event.extendedProps.descripcion,
+      imei: info.event.extendedProps.imei,
+      technician: info.event.extendedProps.technician,
+      status: info.event.extendedProps.status,
+      title: info.event.title,
+      start: info.event.startStr
+    };
+    showDialog.value = true;
   }
 });
 
@@ -90,6 +104,17 @@ watch(events, (newEvents) => {
   };
 });
 
+const closeDialog = () => {
+  showDialog.value = false;
+  selectedEvent.value = null;
+};
+
+const markAsCompleted = () => {
+  if (selectedEvent.value && selectedEvent.value.id) {
+    eventosStore.updateStatus(selectedEvent.value.id, 'Concluido');
+  }
+  closeDialog();
+};
 // Depuración: Verifica los eventos cargados
 onMounted(() => {
   console.log('Eventos en el calendario:', events.value);

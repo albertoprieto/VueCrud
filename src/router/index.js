@@ -7,6 +7,7 @@ import Consultar from '@/modules/Consultar.vue';
 import Cotizacion from '@/modules/Cotizacion.vue';
 import ConsultarCotizaciones from '@/modules/ConsultarCotizaciones.vue';
 import CalendarioCotizaciones from '@/modules/CalendarioCotizaciones.vue';
+import SeguimientoEventos from '@/modules/SeguimientoEventos.vue';
 
 const routes = [
   {
@@ -67,7 +68,7 @@ const routes = [
 
     path:  '/seguimiento',
     name: 'Seguimiento',
-    componet: () => import('@/modules/SeguimientoEventos.vue')
+    component: SeguimientoEventos
   }
 ];
 
