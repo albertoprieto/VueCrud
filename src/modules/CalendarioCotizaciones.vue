@@ -22,7 +22,6 @@
       <p><strong>Título:</strong> {{ selectedEvent?.title }}</p>
       <p><strong>Fecha:</strong> {{ selectedEvent?.start }}</p>
       <p><strong>Descripción:</strong> {{ selectedEvent?.descripcion }}</p>
-      <p><strong>IMEI:</strong> {{ selectedEvent?.imei }}</p>
       <p><strong>Técnico:</strong> {{ selectedEvent?.technician }}</p>
       <p><strong>Estado:</strong> {{ selectedEvent?.status }}</p>
       <Button 

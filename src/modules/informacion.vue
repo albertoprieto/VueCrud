@@ -2,48 +2,70 @@
   <div class="informacion">
     <h1>Panel de Inicio</h1>
     <div class="grid-container">
-      <!-- Resumen de Datos -->
-      <Card class="card card-summary">
-        <template #title>
-          <h2>Resumen</h2>
-        </template>
-        <p><strong>IMEIs Registrados:</strong> {{ imeisCount }}</p>
-        <p><strong>Cotizaciones Pendientes:</strong> {{ pendingQuotations }}</p>
-        <p><strong>Eventos Agendados:</strong> {{ scheduledEvents }}</p>
-        <p><strong>Reportes Generados:</strong> {{ reportsCount }}</p>
-      </Card>
+      <p><strong>IMEIs Registrados:</strong> {{ imeisCount ?? 0 }}</p>
+      <p><strong>Cotizaciones Pendientes:</strong> {{ pendingQuotations ?? 0 }}</p>
+      <p><strong>Eventos Agendados:</strong> {{ scheduledEvents ?? 0 }}</p>
+      <p><strong>Reportes Generados:</strong> {{ reportsCount ?? 0 }}</p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import Card from 'primevue/card';
 import { useRouter } from 'vue-router';
-import { useItemsStore } from '@/stores/itemStore';
-import { useQuotationStore } from '@/stores/quotationStore';
-import { useEventosStore } from '@/stores/eventosStore';
-import { useReportesStore } from '@/stores/reportesStore';
+import { getIMEIs } from '@/services/imeiService';
+import { getQuotations } from '@/services/quotationService';
+import { getEventos } from '@/services/eventosService';
+import { getReportesByEvento } from '@/services/reportesService';
 
 const router = useRouter();
-const itemsStore = useItemsStore();
-const quotationStore = useQuotationStore();
-const eventosStore = useEventosStore();
-const reportesStore = useReportesStore();
 
-// Resumen de datos
-const imeisCount = computed(() => itemsStore.items.length);
-const pendingQuotations = computed(() => quotationStore.getQuotations().filter(q => q.status === 'Pendiente').length);
-const scheduledEvents = computed(() => eventosStore.getEventos().filter(e => e.status === 'Agendado').length);
-const reportsCount = computed(() => reportesStore.getReportes().length);
+const imeisCount = ref(0);
+const pendingQuotations = ref(0);
+const scheduledEvents = ref(0);
+const reportsCount = ref(0);
 
-const navigateTo = (route) => {
-  router.push(route);
+const loadData = async () => {
+  try {
+    // IMEIs
+    const imeis = await getIMEIs();
+    imeisCount.value = Array.isArray(imeis) ? imeis.length : 0;
+
+    // Cotizaciones
+    const quotations = await getQuotations();
+    pendingQuotations.value = Array.isArray(quotations)
+      ? quotations.filter(q => q.status === 'Pendiente').length
+      : 0;
+
+    // Eventos
+    const eventos = await getEventos();
+    scheduledEvents.value = Array.isArray(eventos)
+      ? eventos.filter(e => e.status === 'Agendado').length
+      : 0;
+
+    // Reportes (sumar todos los reportes de todos los eventos)
+    let totalReportes = 0;
+    if (Array.isArray(eventos)) {
+      for (const evento of eventos) {
+        const reportes = await getReportesByEvento(evento.id);
+        if (Array.isArray(reportes)) {
+          totalReportes += reportes.length;
+        }
+      }
+    }
+    reportsCount.value = totalReportes;
+  } catch (error) {
+    imeisCount.value = 0;
+    pendingQuotations.value = 0;
+    scheduledEvents.value = 0;
+    reportsCount.value = 0;
+    // Puedes mostrar un mensaje de error si lo deseas
+    // console.error('Error cargando datos:', error);
+  }
 };
 
-onMounted(() => {
-  console.log('Componente Información montado');
-});
+onMounted(loadData);
 </script>
 
 <style scoped>
@@ -60,12 +82,15 @@ onMounted(() => {
 }
 
 .card {
-  background-color: #3f3f3f; /* Gris muy oscuro */
-  color: #e4c8c8; /* Texto blanco para contraste */
+  background-color: #3f3f3f;
+  /* Gris muy oscuro */
+  color: #e4c8c8;
+  /* Texto blanco para contraste */
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   cursor: pointer;
   padding: 20px;
-  border-radius: 8px; /* Bordes redondeados */
+  border-radius: 8px;
+  /* Bordes redondeados */
 }
 
 .card:hover {
@@ -74,10 +99,12 @@ onMounted(() => {
 }
 
 .card h2 {
-  color: #e4c8c8; /* Asegura que los títulos sean visibles */
+  color: #e4c8c8;
+  /* Asegura que los títulos sean visibles */
 }
 
 .card p {
-  color: #e4c8c8; /* Texto secundario en gris claro */
+  color: #e4c8c8;
+  /* Texto secundario en gris claro */
 }
 </style>

@@ -32,7 +32,6 @@ const isHomeRoute = computed(() => route.path === '/dashboard');
 
 const items = ref([
   {
-    label: 'Inicio',
     icon: 'pi pi-fw pi-home',
     route: '/dashboard'
   },
@@ -52,21 +51,15 @@ const items = ref([
       { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones' }
     ]
   },
-
   {
     label: 'Calendario',
     icon: 'pi pi-fw pi-calendar',
-    items: [
-      { label: 'Consultar Eventos', route: '/calendario-cotizaciones' }
-    ]
+    route: '/calendario-cotizaciones'
   },
   {
     label: 'Seguimiento',
     icon: 'pi pi-fw pi-file',
-    items: [
-      {
-        label: 'Seguimiento', route:'/seguimiento'      }
-    ]
+    route:'/seguimiento'
   }
 ]);
 </script>
