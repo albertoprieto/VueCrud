@@ -1,17 +1,32 @@
 <template>
   <div class="consultar">
-    <h2>Consultar IMEIs Registrados</h2>
-    <DataTable :value="items" responsiveLayout="scroll">
+    <h2 style="color:#debdc9;">Histórico IMEI</h2>
+    <DataTable :value="filteredItems" responsiveLayout="scroll">
+      <template #header>
+        <div class="datatable-header">
+          <span>Filtrar por técnico:</span>
+          <Dropdown
+            v-model="selectedTechnician"
+            :options="['Todos', ...technicians]"
+            placeholder="Selecciona técnico"
+            class="datatable-dropdown"
+          />
+        </div>
+      </template>
       <Column field="imei" header="IMEI" />
-      <Column field="registeredBy" header="Registrado Por" />
-      <Column field="date" header="Fecha de Registro" />
+      <Column field="registeredBy" header="Registró" />
+      <Column field="date" header="Fecha">
+        <template #body="slotProps">
+          {{ slotProps.data.date?.split(' ')[0] || '' }}
+        </template>
+      </Column>
       <Column field="status" header="Estado" />
       <Column field="technician" header="Técnico">
         <template #body="slotProps">
           {{ slotProps.data.technician || 'NA' }}
         </template>
       </Column>
-      <Column field="gpsModel" header="Modelo GPS">
+      <Column field="gpsModel" header="Modelo">
         <template #body="slotProps">
           {{ slotProps.data.gpsModel || 'NA' }}
         </template>
@@ -43,7 +58,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dropdown from 'primevue/dropdown';
@@ -54,6 +69,14 @@ import { getIMEIs, updateIMEI } from '@/services/imeiService';
 
 const items = ref([]);
 const technicians = ref(['Juan', 'Pedro', 'Paco']);
+const selectedTechnician = ref('Todos');
+
+const filteredItems = computed(() => {
+  if (!selectedTechnician.value || selectedTechnician.value === 'Todos') {
+    return items.value;
+  }
+  return items.value.filter(i => i.technician === selectedTechnician.value);
+});
 
 const showEditDialog = ref(false);
 const editItem = ref(null);
@@ -88,12 +111,46 @@ const saveEdit = async () => {
 .consultar {
   max-width: 800px;
   margin: 0 auto;
-  text-align: center;
-}
-.form-group {
-  margin-bottom: 1rem;
   text-align: left;
+  padding: 1rem;
 }
+
+.datatable-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+}
+
+.datatable-dropdown {
+  min-width: 180px;
+}
+
+@media (max-width: 600px) {
+  .consultar {
+    max-width: 100%;
+    padding: 0.5rem;
+  }
+  .datatable-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .datatable-dropdown {
+    width: 100%;
+  }
+  .p-datatable .p-datatable-thead > tr > th,
+  .p-datatable .p-datatable-tbody > tr > td {
+    font-size: 0.85rem;
+    padding: 0.5rem;
+    white-space: nowrap;
+  }
+  .modal-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

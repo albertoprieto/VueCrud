@@ -39,16 +39,16 @@ const items = ref([
     label: 'IMEIs',
     icon: 'pi pi-fw pi-mobile',
     items: [
-      { label: 'Registrar IMEI', route: '/registrar' },
-      { label: 'Consultar IMEIs', route: '/consultar' }
+      { label: 'Registrar', route: '/registrar' },
+      { label: 'Consultar y asignar', route: '/consultar' }
     ]
   },
   {
     label: 'Cotizaciones',
     icon: 'pi pi-fw pi-dollar',
     items: [
-      { label: 'Crear Cotización', route: '/cotizacion' },
-      { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones' }
+      { label: 'Crear', route: '/cotizacion' },
+      { label: 'Consultar', route: '/consultar-cotizaciones' }
     ]
   },
   {

@@ -21,18 +21,21 @@ import Button from 'primevue/button';
 import { defineEmits } from 'vue';
 import { useRouter } from 'vue-router';
 import { loginUsuario } from '@/services/userService';
+import { useLoginStore } from '@/stores/loginStore';
 
 const router = useRouter();
 const emit = defineEmits(['session']);
 const username = ref('');
 const password = ref('');
 const errorMsg = ref('');
+const loginStore = useLoginStore();
 
 const handleSubmit = async () => {
   errorMsg.value = '';
   try {
     const result = await loginUsuario(username.value, password.value);
     if (result.success) {
+      loginStore.setUser(result.user.username);
       emit('session', true);
       router.push('/dashboard');
     } else {

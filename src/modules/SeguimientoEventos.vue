@@ -1,6 +1,6 @@
 <template>
   <div class="seguimiento-eventos">
-    <h2>Seguimiento de Eventos</h2>
+    <h2 style="color:#debdc9;">Seguimiento de Eventos</h2>
 
     <!-- Filtros -->
     <!-- <div class="filters">
@@ -14,13 +14,8 @@
 
     <!-- Tabla de Eventos -->
     <DataTable :value="filteredEvents" responsiveLayout="scroll">
-      <Column field="title" header="Título" />
+      <Column field="title" header="Cliente" />
       <Column field="descripcion" header="Descripción Cotización" />
-      <Column field="cliente" header="Cliente">
-        <template #body="slotProps">
-          {{ slotProps.data.cliente || 'NA' }}
-        </template>
-      </Column>
       <Column field="imei" header="IMEI" />
       <Column field="start" header="Fecha" />
       <Column field="technician" header="Técnico" />
@@ -48,9 +43,10 @@
       <div v-if="detalleReporte">
         <p><strong>Modelo:</strong> {{ detalleReporte.modelo }}</p>
         <p><strong>Placa:</strong> {{ detalleReporte.placa }}</p>
-        <p><strong>Cliente:</strong> {{ detalleReporte.cliente }}</p>
         <p><strong>Observaciones:</strong> {{ detalleReporte.observaciones }}</p>
-        <p><strong>Fecha:</strong> {{ detalleReporte.fecha }}</p>
+        <p><strong>Fecha:</strong> {{ detalleReporte.start.split('T')[0] }}</p>
+        <p><strong>Medio de Pago:</strong> {{ detalleReporte.medio_pago || 'NA' }}</p>
+        <p><strong>¿Pagado?:</strong> {{ detalleReporte.pagado ? 'Sí' : 'No' }}</p>
       </div>
     </Dialog>
   </div>

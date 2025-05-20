@@ -1,11 +1,16 @@
 <template>
   <div class="consultar-cotizaciones">
-    <h2>Consultar Cotizaciones</h2>
+    <h2 style="color:#debdc9;">Consultar Cotizaciones</h2>
     <DataTable :value="quotations" responsiveLayout="scroll">
       <Column field="cliente" header="Cliente" />
+      <Column field="telefono" header="Teléfono" />
+      <!-- <Column field="correo" header="Correo" /> -->
+      <Column field="tipo" header="Tipo" />
+      <Column field="modelo" header="Modelo GPS" />
       <Column field="descripcion" header="Descripción" />
+      <!-- <Column field="observaciones" header="Observaciones" /> -->
       <Column field="monto" header="Monto" />
-      <Column field="date" header="Fecha" />
+      <Column field="fecha" header="Fecha" />
       <Column field="status" header="Estado" />
       <Column header="Técnico Asignado">
         <template #body="slotProps">
@@ -69,7 +74,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { getQuotations, updateQuotation } from '@/services/quotationService';
-import { getIMEIs, updateIMEI } from '@/services/imeiService';
 import { addEvento } from '@/services/eventosService';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -79,29 +83,24 @@ import Calendar from 'primevue/calendar';
 import Dropdown from 'primevue/dropdown';
 
 const quotations = ref([]);
-const imeis = ref([]);
 const technicians = ref(['Juan', 'Pedro', 'Paco']);
 
 const showAssignDialog = ref(false);
 const selectedQuotation = ref(null);
 const calendarDate = ref(null);
 const selectedTechnician = ref(null);
-const selectedIMEI = ref(null);
 
 const showMessageDialog = ref(false);
 const messageDialogText = ref('');
 
 onMounted(async () => {
   quotations.value = await getQuotations();
-  const imeiList = await getIMEIs();
-  imeis.value = imeiList.filter(item => item.status === 'Disponible');
 });
 
 const openAssignDialog = (quotation) => {
   selectedQuotation.value = quotation;
   calendarDate.value = quotation.calendarDate || null;
   selectedTechnician.value = quotation.technician || null;
-  selectedIMEI.value = imeis.value.find(item => item.imei === quotation.imei) || null;
   showAssignDialog.value = true;
 };
 
@@ -120,22 +119,18 @@ const assignDetails = async () => {
       status: 'Agendado'
     });
     await addEvento({
-      title: `Servicio para ${selectedQuotation.value.cliente}`,
+      title: `${selectedQuotation.value.cliente}`,
       descripcion: selectedQuotation.value.descripcion,
       cliente: selectedQuotation.value.cliente,
       technician: selectedTechnician.value,
       start: calendarDate.value,
       status: 'Agendado'
     });
-    await updateIMEI(selectedIMEI.value.imei, {
-      ...selectedIMEI.value,
-      status: 'Asignado'
-    });
     messageDialogText.value = 'Detalles asignados exitosamente.';
-    // Refresca la lista de cotizaciones
     quotations.value = await getQuotations();
   } catch (error) {
-    messageDialogText.value = 'Error al actualizar la cotización.';
+    console.error('Error en assignDetails:', error);
+    messageDialogText.value = `Error al actualizar la cotización: ${error?.message || error}`;
   }
   showMessageDialog.value = true;
   closeDialog();
@@ -154,13 +149,13 @@ const resetModalFields = () => {
   selectedQuotation.value = null;
   calendarDate.value = null;
   selectedTechnician.value = null;
-  selectedIMEI.value = null;
 };
 </script>
 
 <style scoped>
 .consultar-cotizaciones {
-  max-width: 800px;
+  padding: auto;
+  margin: auto;
   margin: 0 auto;
   text-align: center;
 }

@@ -1,16 +1,6 @@
 <template>
   <div class="calendario-cotizaciones">
-    <h2>Calendario de Cotizaciones</h2>
-
-    <!-- Filtro por Técnico -->
-    <!-- <div class="filters">
-      <Dropdown 
-        v-model="selectedTechnician" 
-        :options="technicians" 
-        placeholder="Filtrar por Técnico" 
-        class="filter-dropdown"
-      />
-    </div> -->
+    <h2 style="color:#debdc9;">Calendario de Cotizaciones</h2>
 
     <FullCalendar :options="calendarOptions" />
     <div v-if="events.length === 0" class="no-events">
@@ -18,20 +8,20 @@
     </div>
 
     <!-- Modal para mostrar detalles del evento -->
-    <Dialog v-model:visible="showDialog" header="Detalles del Evento" :closable="true" :modal="true">
-      <p><strong>Título:</strong> {{ selectedEvent?.title }}</p>
-      <p><strong>Fecha:</strong> {{ selectedEvent?.start }}</p>
+    <Dialog v-model:visible="showDialog" header="Detalles del Servicio" :closable="true" :modal="true">
+      <p><strong>Título:</strong> {{ selectedEvent?.descripcion }}</p>
+      <p><strong>Fecha:</strong> {{ selectedEvent?.start ? selectedEvent.start.split('T')[0] : '' }}</p>
       <p><strong>Descripción:</strong> {{ selectedEvent?.descripcion }}</p>
-      <p><strong>Técnico:</strong> {{ selectedEvent?.technician }}</p>
+      <p><strong>Cliente:</strong> {{ selectedEvent?.cliente }}</p>
       <p><strong>Estado:</strong> {{ selectedEvent?.status }}</p>
       <Button 
         v-if="selectedEvent?.status === 'Agendado'" 
-        label="Marcar como Realizado" 
+        label="Realizar Reporte" 
         icon="pi pi-check" 
         class="p-button-success" 
         @click="openReportDialog"
       />
-      <Button label="Cerrar" icon="pi pi-times" @click="closeDialog" />
+      <Button class="ml-2" severity="danger" label="Cerrar" icon="pi pi-times" @click="closeDialog" />
     </Dialog>
 
     <Dialog v-model:visible="messageDialog" header="Éxito" :closable="false" :modal="true">
@@ -53,8 +43,22 @@
           <label>Observaciones:</label>
           <Textarea v-model="reportData.observaciones" rows="3" autoResize />
         </div>
-        <Button label="Guardar y Concluir" icon="pi pi-check" @click="saveReportAndComplete" />
-        <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showReportDialog = false" />
+        <div class="form-group">
+          <label>Medio de Pago:</label>
+          <Dropdown
+            v-model="reportData.medio_pago"
+            :options="['Efectivo', 'Transferencia', 'Depósito']"
+            placeholder="Seleccione el medio de pago"
+          />
+        </div>
+        <div class="form-group" style="flex-direction: row; align-items: center;">
+          <Checkbox v-model="reportData.pagado" :binary="true" inputId="pagado" />
+          <label for="pagado" style="margin-left: 0.5rem;">¿Pagado?</label>
+        </div>
+        <div class="dialog-actions">
+          <Button label="Guardar y Concluir" icon="pi pi-check" @click="saveReportAndComplete" />
+          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showReportDialog = false" />
+        </div>
       </div>
     </Dialog>
   </div>
@@ -63,7 +67,7 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue';
 import { getEventos, updateEventoStatus } from '@/services/eventosService';
-import { addReporte } from '@/services/reportesService'; // Debes crear este servicio
+import { addReporte } from '@/services/reportesService';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
@@ -72,6 +76,7 @@ import Button from 'primevue/button';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
+import Checkbox from 'primevue/checkbox';
 
 const technicians = ref(['Técnico 1', 'Técnico 2', 'Técnico 3']);
 const selectedTechnician = ref(null);
@@ -89,6 +94,7 @@ const calendarOptions = ref({
   eventClick: (info) => {
     selectedEvent.value = {
       id: info.event.id,
+      cliente: info.event.extendedProps.cliente,
       descripcion: info.event.extendedProps.descripcion,
       imei: info.event.extendedProps.imei,
       technician: info.event.extendedProps.technician,
@@ -107,11 +113,12 @@ const loadEventos = async () => {
     ...calendarOptions.value,
     events: data.map(event => ({
       id: event.id,
-      title: event.title,
+      title: event.technician,
       start: event.start,
       extendedProps: {
         descripcion: event.descripcion,
         imei: event.imei,
+        cliente: event.title,
         technician: event.technician,
         status: event.status
       },
@@ -169,7 +176,9 @@ const reportData = ref({
   modelo: '',
   placa: '',
   cliente: '',
-  observaciones: ''
+  observaciones: '',
+  medio_pago: null,
+  pagado: false
 });
 const pendingEventId = ref(null);
 
@@ -178,14 +187,16 @@ const openReportDialog = () => {
     modelo: '',
     placa: '',
     cliente: selectedEvent.value?.cliente || '',
-    observaciones: ''
+    observaciones: '',
+    medio_pago: null,
+    pagado: false
   };
   pendingEventId.value = selectedEvent.value.id;
   showReportDialog.value = true;
 };
 
 const saveReportAndComplete = async () => {
-  if (!reportData.value.placa || !reportData.value.observaciones) {
+  if (!reportData.value.placa || !reportData.value.observaciones || !reportData.value.medio_pago) {
     messageText.value = 'Por favor, complete todos los campos.';
     messageDialog.value = true;
     return;
@@ -195,12 +206,14 @@ const saveReportAndComplete = async () => {
     cotizacion: selectedEvent.value.title,
     technician: selectedEvent.value.technician,
     start: selectedEvent.value.start,
-    status: selectedEvent.value.status,
+    status: "Concluido",
     modelo: reportData.value.modelo,
     placa: reportData.value.placa,
     cliente: reportData.value.cliente,
     observaciones: reportData.value.observaciones,
-    eventoId: pendingEventId.value
+    eventoId: pendingEventId.value,
+    medio_pago: reportData.value.medio_pago,
+    pagado: reportData.value.pagado
   });
   await updateEventoStatus(pendingEventId.value, 'Concluido');
   await loadEventos();
@@ -240,5 +253,38 @@ const markAsCompleted = () => {
 
 .dialog {
   text-align: left;
+}
+
+.form-group {
+  margin-bottom: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.form-group label {
+  font-weight: bold;
+  margin-bottom: 0.4rem;
+  color: #e91e63;
+}
+
+.p-inputtext,
+.p-inputtextarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  justify-content: flex-end;
+}
+
+@media (max-width: 500px) {
+  .dialog-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 }
 </style>
