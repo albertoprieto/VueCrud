@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://64.227.15.111:8000/eventos';
+const API_URL = 'http://64.227.15.111/eventos';
 
 export const getEventos = async () => {
   const response = await axios.get(API_URL);
@@ -14,6 +14,6 @@ export const updateEventoStatus = async (id, status) => {
 };
 
 export const addEvento = async (eventoData) => {
-  const response = await axios.post('http://64.227.15.111:8000/eventos', eventoData);
+  const response = await axios.post('http://64.227.15.111/eventos', eventoData);
   return response.data;
 };
