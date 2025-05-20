@@ -12,11 +12,6 @@
           {{ slotProps.data.technician ? slotProps.data.technician : 'NA' }}
         </template>
       </Column>
-      <Column header="IMEI Asignado">
-        <template #body="slotProps">
-          {{ slotProps.data.imei ? slotProps.data.imei : 'NA' }}
-        </template>
-      </Column>
       <Column header="Acciones" body-class="text-center">
         <template #body="slotProps">
           <Button
@@ -38,9 +33,9 @@
     </DataTable>
 
     <!-- Modal para asignar técnico -->
-    <Dialog v-model:visible="showAssignDialog" header="Asignar Técnico e IMEI" :closable="true" :modal="true" aria-labelledby="assign-modal-title">
+    <Dialog v-model:visible="showAssignDialog" header="Asignar Técnico" :closable="true" :modal="true" aria-labelledby="assign-modal-title">
       <div class="modal-content">
-        <h3 id="assign-modal-title">Asignar Técnico e IMEI</h3>
+        <h3 id="assign-modal-title">Asignar Técnico</h3>
         <p><strong>Cliente:</strong> {{ selectedQuotation?.cliente }}</p>
         <p><strong>Descripción:</strong> {{ selectedQuotation?.descripcion }}</p>
         
@@ -54,12 +49,6 @@
           <label for="tecnico">Asignar Técnico:</label>
           <Dropdown id="tecnico" v-model="selectedTechnician" :options="technicians" placeholder="Seleccione un técnico" />
           <small v-if="!selectedTechnician" class="error-text">Este campo es obligatorio.</small>
-        </div>
-        
-        <div class="form-group">
-          <label for="imei">Asignar IMEI:</label>
-          <Dropdown id="imei" v-model="selectedIMEI" :options="imeis" option-label="imei" placeholder="Seleccione un IMEI" />
-          <small v-if="!selectedIMEI" class="error-text">Este campo es obligatorio.</small>
         </div>
         
         <div class="modal-actions">
@@ -117,7 +106,7 @@ const openAssignDialog = (quotation) => {
 };
 
 const assignDetails = async () => {
-  if (!calendarDate.value || !selectedTechnician.value || !selectedIMEI.value) {
+  if (!calendarDate.value || !selectedTechnician.value) {
     messageDialogText.value = 'Por favor, complete todos los campos.';
     showMessageDialog.value = true;
     return;
@@ -127,7 +116,6 @@ const assignDetails = async () => {
     await updateQuotation(selectedQuotation.value.id, {
       ...selectedQuotation.value,
       technician: selectedTechnician.value,
-      imei: selectedIMEI.value.imei,
       calendarDate: calendarDate.value,
       status: 'Agendado'
     });
@@ -135,7 +123,6 @@ const assignDetails = async () => {
       title: `Servicio para ${selectedQuotation.value.cliente}`,
       descripcion: selectedQuotation.value.descripcion,
       cliente: selectedQuotation.value.cliente,
-      imei: selectedIMEI.value.imei,
       technician: selectedTechnician.value,
       start: calendarDate.value,
       status: 'Agendado'

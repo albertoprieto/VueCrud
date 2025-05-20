@@ -9,6 +9,7 @@
         <InputText v-model="password" type="password" placeholder="Contraseña" @keydown.enter="handleSubmit"/>
       </div>
       <Button label="Login" @click="handleSubmit" />
+      <div v-if="errorMsg" style="color: red; margin-top: 1rem;">{{ errorMsg }}</div>
     </div>
   </div>
 </template>
@@ -17,23 +18,29 @@
 import { ref } from 'vue';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
-import { useLoginStore } from '@/stores/loginStore';
 import { defineEmits } from 'vue';
 import { useRouter } from 'vue-router';
+import { loginUsuario } from '@/services/userService';
 
 const router = useRouter();
-
 const emit = defineEmits(['session']);
 const username = ref('');
 const password = ref('');
+const errorMsg = ref('');
 
-const handleSubmit = () => {
-  const loginStore = useLoginStore();
-  if (loginStore.authenticate(username.value, password.value)) {
-    emit('session', true);
-    loginStore.setUser(username.value)
-    router.push('/dashboard');
-  } else {
+const handleSubmit = async () => {
+  errorMsg.value = '';
+  try {
+    const result = await loginUsuario(username.value, password.value);
+    if (result.success) {
+      emit('session', true);
+      router.push('/dashboard');
+    } else {
+      errorMsg.value = 'Usuario o contraseña incorrectos';
+      emit('session', false);
+    }
+  } catch (e) {
+    errorMsg.value = 'Error de conexión o servidor';
     emit('session', false);
   }
 };
