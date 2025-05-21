@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://64.227.15.111:8000/reportes';
+const API_URL = 'https://64.227.15.111/reportes';
 
 export const addReporte = async (reporteData) => {
   const response = await axios.post(API_URL, reporteData);
