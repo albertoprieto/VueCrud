@@ -31,6 +31,8 @@ import { useRouter, useRoute } from 'vue-router';
 import informacion from './informacion.vue';
 import { useLoginStore } from '@/stores/loginStore';
 
+const emit = defineEmits(['logout']);
+
 const router = useRouter();
 const route = useRoute();
 const loginStore = useLoginStore();
@@ -40,6 +42,7 @@ const isHomeRoute = computed(() => route.path === '/dashboard');
 const handleLogout = () => {
   loginStore.logout();
   router.push('/login');
+  emit('logout');
 };
 
 const items = ref([
