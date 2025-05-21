@@ -8,6 +8,10 @@
             <span class="ml-2">{{ item.label }}</span>
           </a>
         </router-link>
+        <a v-else-if="item.command" v-ripple href="#" v-bind="props.action" @click.prevent="item.command">
+          <span :class="item.icon" />
+          <span class="ml-2">{{ item.label }}</span>
+        </a>
         <a v-else v-ripple :href="item.url" :target="item.target" v-bind="props.action">
           <span :class="item.icon" />
           <span class="ml-2">{{ item.label }}</span>
@@ -25,10 +29,18 @@ import { ref, computed } from 'vue';
 import Menubar from 'primevue/menubar';
 import { useRouter, useRoute } from 'vue-router';
 import informacion from './informacion.vue';
+import { useLoginStore } from '@/stores/loginStore';
 
+const router = useRouter();
 const route = useRoute();
+const loginStore = useLoginStore();
 
 const isHomeRoute = computed(() => route.path === '/dashboard');
+
+const handleLogout = () => {
+  loginStore.logout();
+  router.push('/login');
+};
 
 const items = ref([
   {
@@ -60,6 +72,11 @@ const items = ref([
     label: 'Seguimiento',
     icon: 'pi pi-fw pi-file',
     route:'/seguimiento'
+  },
+  {
+    label: 'Cerrar',
+    icon: 'pi pi-fw pi-sign-out',
+    command: handleLogout
   }
 ]);
 </script>
