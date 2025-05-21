@@ -1,6 +1,6 @@
 <template>
-<login v-if="!logged" @session="session"></login>
-<dashboard v-else></dashboard>
+  <login v-if="!logged" @session="session"></login>
+  <dashboard v-else @logout="handleLogout"></dashboard>
 </template>
 
 <script setup>
@@ -10,7 +10,9 @@ import dashboard from './modules/dashboard.vue';
 
 const logged = ref(false)
 const session = (event) =>{
-  console.log(event);
-  logged.value= event
+  logged.value = event
+}
+const handleLogout = () => {
+  logged.value = false;
 }
 </script>
