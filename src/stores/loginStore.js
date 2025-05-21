@@ -4,8 +4,6 @@ import { defineStore } from 'pinia';
 export const useLoginStore = defineStore('user', {
   state: () => ({
 	users: [
-	  { username: 'admin', password: 'admin' },
-	  { username: '', password: '' }
 	],
 	currentUser: null,
   }),
