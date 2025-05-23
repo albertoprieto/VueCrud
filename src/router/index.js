@@ -69,6 +69,11 @@ const routes = [
     path:  '/seguimiento',
     name: 'Seguimiento',
     component: SeguimientoEventos
+  },
+  {
+    path: '/alta-articulo',
+    name: 'alta-articulo',
+    component: () => import('@/modules/Articulos.vue')
   }
 ];
 

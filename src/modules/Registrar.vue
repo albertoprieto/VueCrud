@@ -13,7 +13,6 @@
       <Button label="Aceptar" icon="pi pi-check" @click="closeDialog" />
     </Dialog>
 
-    
     <!-- Últimos 5 IMEIs agregados -->
     <h3 style="margin-top:4rem; color:#debdc9;">Últimos 5 IMEIs agregados</h3>
     <DataTable :value="lastIMEIs" responsiveLayout="scroll">
@@ -22,7 +21,8 @@
       <Column field="date" header="Fecha" />
       <Column field="status" header="Estado" />
     </DataTable>
-  </div>
+
+</div>
 </template>
 
 <script setup>

@@ -51,10 +51,11 @@ const items = ref([
     route: '/dashboard'
   },
   {
-    label: 'IMEIs',
-    icon: 'pi pi-fw pi-mobile',
+    label: 'Inventario',
+    icon: 'pi pi-fw pi-shopping-cart',
     items: [
-      { label: 'Registrar', route: '/registrar' },
+      { label: 'IMEIS', route: '/registrar' },
+      { label: 'Alta artículos', route: '/alta-articulo' },
       { label: 'Consultar y asignar', route: '/consultar' }
     ]
   },
