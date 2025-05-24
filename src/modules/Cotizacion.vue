@@ -1,78 +1,72 @@
 <template>
-  <div class="header">
-    <h2 style="color:#debdc9;">Crear Cotización</h2>
-  </div>
-  <div class="cotizacion">
-    <form @submit.prevent="saveQuotation">
-      <div class="form-section">
-        <h4>Generales</h4>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="tipo">Tipo de cotización:</label>
-            <Dropdown v-model="tipo" :options="tiposCotizacion" placeholder="Selecciona tipo" />
-          </div>
-          <div class="form-group">
-            <label for="modelo">Modelo de GPS:</label>
-            <Dropdown v-model="modelo" :options="modelosGPS" placeholder="Selecciona modelo" />
-          </div>
-        </div>
-      </div>
-
-      <div class="form-section">
-        <h4>Datos del Cliente</h4>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="cliente">Nombre del Cliente:</label>
-            <InputText v-model="cliente" placeholder="Ingrese el nombre del cliente" />
-          </div>
-          <div class="form-group">
-            <label for="telefono">Teléfono:</label>
-            <InputText v-model="telefono" placeholder="10 dígitos" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="correo">Correo electrónico:</label>
-            <InputText v-model="correo" placeholder="Opcional" />
-          </div>
-        </div>
-      </div>
-
-      <div class="form-section">
-        <h4>Detalles adicionales</h4>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="descripcion">Descripción:</label>
-            <InputText v-model="descripcion" placeholder="Detalle del servicio o producto" />
-          </div>
-
-          <div class="form-group">
-            <label for="observaciones">Observaciones:</label>
-            <InputText v-model="observaciones" placeholder="Opcional" />
-          </div>
-        </div>
-      </div>
-
-
-      <div class="form-section">
-        <h4>Datos de la cotización</h4>
- 
-        <div class=" actions-right">
+  <div class="cotizacion-container">
+    <h2 class="cotizacion-title">Crear Cotización</h2>
+    <div class="cotizacion-card">
+      <form @submit.prevent="saveQuotation">
+        <div class="form-section">
+          <h4>Generales</h4>
           <div class="form-row">
             <div class="form-group">
-              <label for="monto">Monto total:</label>
-              <InputNumber v-model="monto" placeholder="Ingrese el monto total" />
+              <label for="tipo">Tipo de cotización:</label>
+              <Dropdown v-model="tipo" :options="tiposCotizacion" placeholder="Selecciona tipo" class="w-full" />
+            </div>
+            <div class="form-group">
+              <label for="modelo">Modelo de GPS:</label>
+              <Dropdown v-model="modelo" :options="modelosGPS" placeholder="Selecciona modelo" class="w-full" />
             </div>
           </div>
         </div>
 
-      </div>
-      <div class="actions-right">
-        <Button label="Guardar Cotización" icon="pi pi-save" type="submit" />
-      </div>
-    </form>
+        <div class="form-section">
+          <h4>Datos del Cliente</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="cliente">Nombre del Cliente:</label>
+              <InputText v-model="cliente" placeholder="Ingrese el nombre del cliente" class="w-full" />
+            </div>
+            <div class="form-group">
+              <label for="telefono">Teléfono:</label>
+              <InputText v-model="telefono" placeholder="10 dígitos" class="w-full" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="correo">Correo electrónico:</label>
+              <InputText v-model="correo" placeholder="Opcional" class="w-full" />
+            </div>
+          </div>
+        </div>
 
-    <!-- Modal de confirmación -->
+        <div class="form-section">
+          <h4>Detalles adicionales</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="descripcion">Descripción:</label>
+              <InputText v-model="descripcion" placeholder="Detalle del servicio o producto" class="w-full" />
+            </div>
+            <div class="form-group">
+              <label for="observaciones">Observaciones:</label>
+              <InputText v-model="observaciones" placeholder="Opcional" class="w-full" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4>Datos de la cotización</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="monto">Monto total:</label>
+              <InputNumber v-model="monto" placeholder="Ingrese el monto total" class="w-full" />
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-right">
+          <Button label="Guardar Cotización" icon="pi pi-save" type="submit" />
+        </div>
+      </form>
+    </div>
+
     <Dialog v-model:visible="showDialog" header="Cotización Guardada" :closable="false" :modal="true">
       <p>La cotización ha sido guardada exitosamente.</p>
       <Button label="Aceptar" icon="pi pi-check" @click="closeDialog" />
@@ -113,7 +107,6 @@ const observaciones = ref('');
 const showDialog = ref(false);
 
 const saveQuotation = async () => {
-  // Validaciones
   if (
     !cliente.value ||
     !telefono.value ||
@@ -167,73 +160,74 @@ const closeDialog = () => {
 </script>
 
 <style scoped>
-.header {
+.cotizacion-container {
   max-width: 700px;
-  margin: 0 auto;
-  text-align: left;
-  padding: .5rem .1rem;
+  margin: 2rem auto;
+  padding: 2rem 1.5rem;
+  background: #23272f;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  color: #e4c8c8;
 }
-
-.cotizacion {
-  max-width: 700px;
-  margin: 0 auto;
-  text-align: left;
-  padding: .5rem .1rem;
+.cotizacion-title {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: #e4c8c8;
 }
-
+.cotizacion-card {
+  background: #2d313a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
 form {
   width: 100%;
 }
-
 .form-section {
   margin-bottom: 2rem;
   border-bottom: 1px solid #444;
   padding-bottom: 1rem;
 }
-
 .form-section:last-child {
   border-bottom: none;
 }
-
 .form-section h4 {
   color: #e91e63;
   margin-bottom: 1rem;
   margin-top: 0;
 }
-
 .form-row {
   display: flex;
   gap: 1.5rem;
   flex-wrap: wrap;
   margin-bottom: 1rem;
 }
-
 .form-group {
   flex: 1 1 220px;
   min-width: 220px;
   margin-bottom: 0.5rem;
 }
-
 label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: bold;
+  color: #e4c8c8;
 }
-
-@media (max-width: 700px) {
-  .form-row {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .cotizacion {
-    padding: 1rem 0.2rem;
-  }
+.w-full {
+  width: 100%;
 }
-
 .actions-right {
   display: flex;
   justify-content: flex-end;
   margin-top: 1rem;
+}
+@media (max-width: 700px) {
+  .cotizacion-container {
+    padding: 1rem 0.2rem;
+  }
+  .form-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 }
 </style>

@@ -1,36 +1,42 @@
 <template>
   <div class="calendario-cotizaciones">
-    <h2 style="color:#debdc9;">Calendario de Cotizaciones</h2>
+    <h2 class="calendario-title">Calendario de Cotizaciones</h2>
 
-    <FullCalendar :options="calendarOptions" />
-    <div v-if="events.length === 0" class="no-events">
-      <p>No hay eventos agendados.</p>
+    <div class="calendario-card">
+      <FullCalendar :options="calendarOptions" />
+      <div v-if="events.length === 0" class="no-events">
+        <p>No hay eventos agendados.</p>
+      </div>
     </div>
 
     <!-- Modal para mostrar detalles del evento -->
     <Dialog v-model:visible="showDialog" header="Detalles del Servicio" :closable="true" :modal="true">
-      <p><strong>Título:</strong> {{ selectedEvent?.descripcion }}</p>
-      <p><strong>Fecha:</strong> {{ selectedEvent?.start ? selectedEvent.start.split('T')[0] : '' }}</p>
-      <p><strong>Descripción:</strong> {{ selectedEvent?.descripcion }}</p>
-      <p><strong>Cliente:</strong> {{ selectedEvent?.cliente }}</p>
-      <p><strong>Estado:</strong> {{ selectedEvent?.status }}</p>
-      <Button 
-        v-if="selectedEvent?.status === 'Agendado'" 
-        label="Realizar Reporte" 
-        icon="pi pi-check" 
-        class="p-button-success" 
-        @click="openReportDialog"
-      />
-      <Button class="ml-2" severity="danger" label="Cerrar" icon="pi pi-times" @click="closeDialog" />
+      <div class="dialog-content">
+        <p><strong>Título:</strong> {{ selectedEvent?.descripcion }}</p>
+        <p><strong>Fecha:</strong> {{ selectedEvent?.start ? selectedEvent.start.split('T')[0] : '' }}</p>
+        <p><strong>Descripción:</strong> {{ selectedEvent?.descripcion }}</p>
+        <p><strong>Cliente:</strong> {{ selectedEvent?.cliente }}</p>
+        <p><strong>Estado:</strong> {{ selectedEvent?.status }}</p>
+        <Button
+          v-if="selectedEvent?.status === 'Agendado'"
+          label="Realizar Reporte"
+          icon="pi pi-check"
+          class="p-button-success"
+          @click="openReportDialog"
+        />
+        <Button class="ml-2" severity="danger" label="Cerrar" icon="pi pi-times" @click="closeDialog" />
+      </div>
     </Dialog>
 
     <Dialog v-model:visible="messageDialog" header="Éxito" :closable="false" :modal="true">
-      <p>{{ messageText }}</p>
-      <Button label="Aceptar" icon="pi pi-check" @click="messageDialog = false" />
+      <div class="dialog-content">
+        <p>{{ messageText }}</p>
+        <Button label="Aceptar" icon="pi pi-check" @click="messageDialog = false" />
+      </div>
     </Dialog>
 
     <Dialog v-model:visible="showReportDialog" header="Generar Reporte de Servicio" :closable="false" :modal="true">
-      <div>
+      <div class="dialog-content">
         <div class="form-group">
           <label>Modelo del Vehículo:</label>
           <InputText v-model="reportData.modelo" type="text" />
@@ -51,7 +57,7 @@
             placeholder="Seleccione el medio de pago"
           />
         </div>
-        <div class="form-group" style="flex-direction: row; align-items: center;">
+        <div class="form-group form-group-row">
           <Checkbox v-model="reportData.pagado" :binary="true" inputId="pagado" />
           <label for="pagado" style="margin-left: 0.5rem;">¿Pagado?</label>
         </div>
@@ -231,57 +237,63 @@ const markAsCompleted = () => {
 <style scoped>
 .calendario-cotizaciones {
   max-width: 900px;
-  margin: 0 auto;
+  margin: 2rem auto;
+  text-align: center;
 }
-
+.calendario-title {
+  margin-bottom: 2rem;
+  color: #e4c8c8;
+}
+.calendario-card {
+  background: #2d313a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin-bottom: 2rem;
+}
 .no-events {
   text-align: center;
   margin-top: 20px;
   font-size: 1.2rem;
   color: #666;
 }
-
-.filters {
-  margin-bottom: 1rem;
-  display: flex;
-  justify-content: center;
-}
-
-.filter-dropdown {
-  width: 300px;
-}
-
-.dialog {
+.dialog-content {
+  padding: 1rem 0.5rem;
   text-align: left;
 }
-
 .form-group {
   margin-bottom: 1.2rem;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
-
+.form-group-row {
+  flex-direction: row !important;
+  align-items: center !important;
+}
 .form-group label {
   font-weight: bold;
   margin-bottom: 0.4rem;
   color: #e91e63;
 }
-
 .p-inputtext,
 .p-inputtextarea {
   width: 100%;
   box-sizing: border-box;
 }
-
 .dialog-actions {
   display: flex;
   gap: 1rem;
   margin-top: 1rem;
   justify-content: flex-end;
 }
-
-@media (max-width: 500px) {
+@media (max-width: 700px) {
+  .calendario-cotizaciones {
+    padding: 1rem 0.2rem;
+  }
+  .calendario-card {
+    padding: 0.5rem;
+  }
   .dialog-actions {
     flex-direction: column;
     gap: 0.5rem;

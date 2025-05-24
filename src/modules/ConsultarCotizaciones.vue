@@ -1,41 +1,43 @@
 <template>
   <div class="consultar-cotizaciones">
-    <h2 style="color:#debdc9;">Consultar Cotizaciones</h2>
-    <DataTable :value="quotations" responsiveLayout="scroll">
-      <Column field="cliente" header="Cliente" />
-      <Column field="telefono" header="Teléfono" />
-      <!-- <Column field="correo" header="Correo" /> -->
-      <Column field="tipo" header="Tipo" />
-      <Column field="modelo" header="Modelo GPS" />
-      <Column field="descripcion" header="Descripción" />
-      <!-- <Column field="observaciones" header="Observaciones" /> -->
-      <Column field="monto" header="Monto" />
-      <Column field="fecha" header="Fecha" />
-      <Column field="status" header="Estado" />
-      <Column header="Técnico Asignado">
-        <template #body="slotProps">
-          {{ slotProps.data.technician ? slotProps.data.technician : 'NA' }}
-        </template>
-      </Column>
-      <Column header="Acciones" body-class="text-center">
-        <template #body="slotProps">
-          <Button
-            v-if="slotProps.data.status === 'Agendado'"
-            label="Editar"
-            icon="pi pi-pencil"
-            class="p-button-text"
-            @click="openAssignDialog(slotProps.data)"
-          />
-          <Button
-            v-else
-            label="Asignar Técnico"
-            icon="pi pi-calendar"
-            class="p-button-text"
-            @click="openAssignDialog(slotProps.data)"
-          />
-        </template>
-      </Column>
-    </DataTable>
+    <h2 class="consultar-cotizaciones-title">Consultar Cotizaciones</h2>
+    <div class="consultar-cotizaciones-card">
+      <DataTable :value="quotations" responsiveLayout="scroll">
+        <Column field="cliente" header="Cliente" />
+        <Column field="telefono" header="Teléfono" />
+        <!-- <Column field="correo" header="Correo" /> -->
+        <Column field="tipo" header="Tipo" />
+        <Column field="modelo" header="Modelo GPS" />
+        <Column field="descripcion" header="Descripción" />
+        <!-- <Column field="observaciones" header="Observaciones" /> -->
+        <Column field="monto" header="Monto" />
+        <Column field="fecha" header="Fecha" />
+        <Column field="status" header="Estado" />
+        <Column header="Técnico Asignado">
+          <template #body="slotProps">
+            {{ slotProps.data.technician ? slotProps.data.technician : 'NA' }}
+          </template>
+        </Column>
+        <Column header="Acciones" body-class="text-center">
+          <template #body="slotProps">
+            <Button
+              v-if="slotProps.data.status === 'Agendado'"
+              label="Editar"
+              icon="pi pi-pencil"
+              class="p-button-text"
+              @click="openAssignDialog(slotProps.data)"
+            />
+            <Button
+              v-else
+              label="Asignar Técnico"
+              icon="pi pi-calendar"
+              class="p-button-text"
+              @click="openAssignDialog(slotProps.data)"
+            />
+          </template>
+        </Column>
+      </DataTable>
+    </div>
 
     <!-- Modal para asignar técnico -->
     <Dialog v-model:visible="showAssignDialog" header="Asignar Técnico" :closable="true" :modal="true" aria-labelledby="assign-modal-title">
@@ -154,35 +156,52 @@ const resetModalFields = () => {
 
 <style scoped>
 .consultar-cotizaciones {
-  padding: auto;
-  margin: auto;
-  margin: 0 auto;
+  max-width: 900px;
+  margin: 2rem auto;
   text-align: center;
 }
-
+.consultar-cotizaciones-title {
+  margin-bottom: 2rem;
+  color: #e4c8c8;
+}
+.consultar-cotizaciones-card {
+  background: #2d313a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin-bottom: 2rem;
+}
 .text-center {
   text-align: center;
 }
-
 .form-group {
   margin-bottom: 1rem;
+  text-align: left;
 }
-
 label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: bold;
+  color: #e4c8c8;
 }
-
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
+  margin-top: 1rem;
 }
-
 .error-text {
   color: red;
   font-size: 0.85rem;
   margin-top: 0.25rem;
+}
+@media (max-width: 700px) {
+  .consultar-cotizaciones-card {
+    padding: 0.5rem;
+  }
+  .modal-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 }
 </style>
