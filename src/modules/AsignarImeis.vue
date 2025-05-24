@@ -3,7 +3,10 @@
     <h2>Asignar IMEIs a Artículo</h2>
     <div class="form-card">
       <div class="form-group">
-        <label for="articulo">Artículo:</label>
+        <label for="articulo">
+          Artículo
+          <span class="required-tooltip" title="Obligatorio">*</span>
+        </label>
         <Dropdown
           id="articulo"
           v-model="selectedArticulo"
@@ -14,17 +17,28 @@
         />
       </div>
       <div class="form-group">
-        <label for="imeis">IMEIs:</label>
-        <Textarea
-          id="imeis"
-          v-model="imeisInput"
-          placeholder="Escanea o pega los IMEIs, uno por línea"
-          rows="8"
+        <label for="nuevoImei">IMEI:</label>
+        <InputText
+          id="nuevoImei"
+          v-model="nuevoImei"
+          placeholder="Escanea o escribe un IMEI y presiona Enter"
           class="w-full"
+          :disabled="!selectedArticulo"
+          @keydown.enter.prevent="agregarImei"
         />
+        <ul v-if="imeis.length" class="imeis-list">
+          <li
+            v-for="(imei, idx) in imeis"
+            :key="idx"
+            :class="{ 'imei-existente': imeisExistentes.includes(imei) }"
+          >
+            {{ imei }}
+            <Button icon="pi pi-times" class="p-button-text p-button-danger" @click="eliminarImei(idx)" />
+          </li>
+        </ul>
       </div>
       <div class="form-actions">
-        <Button label="Registrar y asignar IMEIs" icon="pi pi-save" @click="registrarYAsignar" class="p-button-success" />
+        <Button label="Registrar y asignar IMEIs" icon="pi pi-save" @click="registrarYAsignar" class="p-button-success" :disabled="imeis.length === 0" />
       </div>
     </div>
     <Dialog v-model:visible="showDialog" header="Resultado" :modal="true" :closable="false">
@@ -33,43 +47,100 @@
         <Button label="Aceptar" icon="pi pi-check" @click="showDialog = false" autofocus />
       </div>
     </Dialog>
+    <Dialog v-model:visible="showWarningDialog" header="Advertencia" :modal="true" :closable="false">
+      <p style="white-space: pre-line;">{{ warningMessage }}</p>
+      <div class="dialog-actions">
+        <Button label="Aceptar" icon="pi pi-check" @click="showWarningDialog = false" autofocus />
+      </div>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import Dropdown from 'primevue/dropdown';
-import Textarea from 'primevue/textarea';
+import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import { getArticulos } from '@/services/articulosService';
-import { registrarYAsignarIMEIsPorNombre } from '@/services/imeiService';
+import { registrarYAsignarIMEIsPorNombre, getIMEIs } from '@/services/imeiService';
 
 const articulos = ref([]);
 const selectedArticulo = ref(null);
-const imeisInput = ref('');
+const nuevoImei = ref('');
+const imeis = ref([]);
 const mensaje = ref('');
 const showDialog = ref(false);
+const showWarningDialog = ref(false);
+const warningMessage = ref('');
+const imeisExistentes = ref([]); // <-- Nuevo array reactivo
 
 onMounted(async () => {
   articulos.value = await getArticulos();
 });
 
+const agregarImei = () => {
+  const imei = nuevoImei.value.trim();
+  if (!imei) return;
+  if (imeis.value.includes(imei)) {
+    warningMessage.value = `El IMEI "${imei}" ya está en la lista.`;
+    showWarningDialog.value = true;
+    nuevoImei.value = ''; 
+    return;
+  }
+  imeis.value.push(imei);
+  nuevoImei.value = '';
+};
+
+const eliminarImei = (idx) => {
+  imeis.value.splice(idx, 1);
+};
+
 const registrarYAsignar = async () => {
-  if (!selectedArticulo.value || !imeisInput.value) return;
-  const imeis = imeisInput.value.split('\n').map(i => i.trim()).filter(Boolean);
+  if (!selectedArticulo.value || imeis.value.length === 0) return;
+
+  // Validar IMEIs existentes en la base de datos
   try {
-    await registrarYAsignarIMEIsPorNombre(selectedArticulo.value.nombre, imeis);
-    mensaje.value = `${imeis.length} IMEIs asignados al artículo "${selectedArticulo.value.nombre}" correctamente.`;
+    const todosIMEIs = await getIMEIs();
+    const imeisEnBD = new Set(todosIMEIs.map(i => i.imei));
+    imeisExistentes.value = imeis.value.filter(i => imeisEnBD.has(i));
+  } catch (e) {
+    mensaje.value = 'Error al validar IMEIs existentes en la base de datos.';
+    showDialog.value = true;
+    return;
+  }
+
+  if (imeisExistentes.value.length > 0) {
+    mensaje.value = `Los siguientes IMEIs ya están registrados en el sistema:\n${imeisExistentes.value.join('\n')}\nElimínalos de la lista para continuar.`;
+    showDialog.value = true;
+    return;
+  }
+
+  // Si todo está bien, guardar
+  try {
+    await registrarYAsignarIMEIsPorNombre(selectedArticulo.value.nombre, imeis.value);
+    mensaje.value = `${imeis.value.length} IMEIs asignados al artículo "${selectedArticulo.value.nombre}" correctamente.`;
+    imeis.value = [];
+    imeisExistentes.value = [];
   } catch (e) {
     mensaje.value = 'Ocurrió un error al asignar los IMEIs.';
   }
   showDialog.value = true;
-  imeisInput.value = '';
 };
 </script>
 
 <style scoped>
+.imeis-list {
+  margin: 0.5rem 0 0 0;
+  padding: 0;
+  list-style: none;
+}
+.imeis-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
 .asignar-imeis-container {
   max-width: 500px;
   margin: 2rem auto;
@@ -111,5 +182,11 @@ label {
   display: flex;
   justify-content: flex-end;
   margin-top: 1.5rem;
+}
+.imei-existente {
+  color: #fff;
+  background: #d32f2f;
+  border-radius: 4px;
+  padding: 2px 8px;
 }
 </style>

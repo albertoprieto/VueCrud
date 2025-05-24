@@ -147,10 +147,15 @@ const saveArticulo = async () => {
     return;
   }
   try {
+    const articuloPayload = {
+      ...form.value,
+      codigo: form.value.codigo ?? '',
+      pagina: form.value.pagina ?? ''
+    };
     if (form.value.id) {
-      await updateArticulo({ ...form.value });
+      await updateArticulo(articuloPayload);
     } else {
-      await addArticulo({ ...form.value });
+      await addArticulo(articuloPayload);
     }
     showModal.value = false;
     await loadArticulos();
