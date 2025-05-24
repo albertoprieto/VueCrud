@@ -113,10 +113,15 @@ const filteredEvents = computed(() => {
   max-width: 900px;
   margin: 2rem auto;
   text-align: center;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  padding: 2rem 1.5rem;
 }
 .seguimiento-title {
   margin-bottom: 2rem;
-  color: #e4c8c8;
+  color: var(--color-title); /* rosa opaco llamativo */
 }
 .filters {
   margin-bottom: 1rem;
@@ -127,7 +132,7 @@ const filteredEvents = computed(() => {
   min-width: 220px;
 }
 .seguimiento-card {
-  background: #2d313a;
+  background: var(--color-card);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);

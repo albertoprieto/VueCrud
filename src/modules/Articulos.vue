@@ -181,6 +181,8 @@ const filteredArticulos = computed(() => {
   max-width: 900px;
   margin: 0 auto;
   text-align: center;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 .actions {
   display: flex;
@@ -190,25 +192,27 @@ const filteredArticulos = computed(() => {
   gap: 1rem;
 }
 .articulos-card {
-  background: #2d313a;
+  background: var(--color-card);
+  color: var(--color-text);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   margin-bottom: 2rem;
+  border: 1px solid var(--color-border);
 }
 :deep(.p-dialog.custom-modal .p-dialog-header) {
-  background: #2d313a;
-  border-bottom: 2px solid #e91e63;
+  background: var(--color-bg);
+  border-bottom: 2px solid #1976d2;
 }
 :deep(.p-dialog.custom-modal .p-dialog-content) {
-  background: #23272f;
+  background: var(--color-card);
 }
 .modal-content {
   padding: 1rem 0.5rem;
   text-align: left;
 }
 .modal-title {
-  color: #e91e63;
+  color: var(--color-title);
   text-align: center;
   margin-bottom: 1.5rem;
   font-weight: bold;
@@ -233,7 +237,7 @@ label {
   font-weight: bold;
 }
 .error-text {
-  color: #e91e63;
+  color: #d32f2f;
   font-size: 0.85rem;
   margin-top: 0.25rem;
 }

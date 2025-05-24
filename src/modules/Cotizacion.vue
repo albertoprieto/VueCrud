@@ -164,18 +164,18 @@ const closeDialog = () => {
   max-width: 700px;
   margin: 2rem auto;
   padding: 2rem 1.5rem;
-  background: #23272f;
+  background: var(--color-bg);
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.10);
-  color: #e4c8c8;
+  color: var(--color-text);
 }
 .cotizacion-title {
   text-align: center;
-  margin-bottom: 2rem;
-  color: #e4c8c8;
+  margin-bottom: .5rem;
+  color: var(--color-title); /* rosa opaco llamativo */
 }
 .cotizacion-card {
-  background: #2d313a;
+  background: var(--color-card);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -184,15 +184,15 @@ form {
   width: 100%;
 }
 .form-section {
-  margin-bottom: 2rem;
-  border-bottom: 1px solid #444;
+  margin-bottom: .5rem;
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 1rem;
 }
 .form-section:last-child {
   border-bottom: none;
 }
 .form-section h4 {
-  color: #e91e63;
+  color: var(--color-title); /* rosa opaco llamativo */
   margin-bottom: 1rem;
   margin-top: 0;
 }
@@ -211,7 +211,7 @@ label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: bold;
-  color: #e4c8c8;
+  color: var(--color-title); /* rosa opaco llamativo */
 }
 .w-full {
   width: 100%;

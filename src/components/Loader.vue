@@ -10,7 +10,7 @@
 .loader-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(20, 22, 30, 0.85);
+  background: --color-bg;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -27,10 +27,10 @@
 .line {
   width: 8px;
   height: 100%;
-  background: linear-gradient(180deg, #3a3f4b 0%, #6e7a8a 100%);
+  background: linear-gradient(180deg, --color-border 0%, --color-border 100%);
   border-radius: 8px;
   animation: loader-move 1.2s cubic-bezier(0.4,0,0.2,1) infinite;
-  box-shadow: 0 0 16px #2e3440, 0 0 4px #6e7a8a;
+  box-shadow: 0 0 16px --color-border, 0 0 4px --color-text;
   transition: background 0.4s;
 }
 

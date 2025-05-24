@@ -159,13 +159,18 @@ const resetModalFields = () => {
   max-width: 900px;
   margin: 2rem auto;
   text-align: center;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  padding: 2rem 1.5rem;
 }
 .consultar-cotizaciones-title {
   margin-bottom: 2rem;
-  color: #e4c8c8;
+  color: var(--color-title); /* rosa opaco llamativo */
 }
 .consultar-cotizaciones-card {
-  background: #2d313a;
+  background: var(--color-card);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -182,7 +187,7 @@ label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: bold;
-  color: #e4c8c8;
+  color: var(--color-title); /* rosa opaco llamativo */
 }
 .modal-actions {
   display: flex;
@@ -191,11 +196,14 @@ label {
   margin-top: 1rem;
 }
 .error-text {
-  color: red;
+  color: #d32f2f;
   font-size: 0.85rem;
   margin-top: 0.25rem;
 }
 @media (max-width: 700px) {
+  .consultar-cotizaciones {
+    padding: 1rem 0.2rem;
+  }
   .consultar-cotizaciones-card {
     padding: 0.5rem;
   }
