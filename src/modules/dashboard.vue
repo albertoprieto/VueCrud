@@ -54,9 +54,11 @@ const items = ref([
     label: 'Inventario',
     icon: 'pi pi-fw pi-shopping-cart',
     items: [
-      { label: 'IMEIS', route: '/registrar' },
+      // { label: 'IMEIS', route: '/registrar' },
       { label: 'Alta artículos', route: '/alta-articulo' },
-      { label: 'Consultar y asignar', route: '/consultar' }
+      // { label: 'Consultar y asignar', route: '/consultar' },
+      { label: 'Asignar IMEIs', route: '/asignar-imeis' },
+      { label: 'Stock', route: '/articulos-con-imeis' } // <-- Nuevo
     ]
   },
   {

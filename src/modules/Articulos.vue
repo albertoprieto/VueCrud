@@ -102,7 +102,6 @@ const closeModal = () => {
 };
 
 const saveArticulo = async () => {
-  
   if (form.value.id) {
     await updateArticulo({ ...form.value });
   } else {

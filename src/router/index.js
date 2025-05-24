@@ -74,6 +74,16 @@ const routes = [
     path: '/alta-articulo',
     name: 'alta-articulo',
     component: () => import('@/modules/Articulos.vue')
+  },
+  {
+    path: '/asignar-imeis',
+    name: 'asignar-imeis',
+    component: () => import('@/modules/AsignarImeis.vue')
+  },
+  {
+    path: '/articulos-con-imeis',
+    name: 'articulos-con-imeis',
+    component: () => import('@/modules/ArticulosConImeis.vue')
   }
 ];
 

@@ -36,40 +36,17 @@ import Column from 'primevue/column';
 import { addIMEI, getIMEIs } from '@/services/imeiService';
 
 const imei = ref('');
-const showDialog = ref(false);
-const loginStore = useLoginStore();
 const imeis = ref([]);
 
 const registerIMEI = async () => {
-  if (!imei.value) {
-    alert('Por favor, ingrese un número de IMEI.');
-    return;
-  }
-
-  const currentUser = loginStore.currentUser?.username || 'Desconocido';
-  const now = new Date();
-  const currentDate = now.toISOString().split('T')[0];
-  const currentTime = now.toTimeString().split(' ')[0];
-
-  try {
-    await addIMEI({
-      name: 'IMEI',
-      description: `${currentUser}`,
-      imei: imei.value,
-      registeredBy: currentUser,
-      date: `${currentDate} ${currentTime}`,
-      status: 'Disponible'
-    });
-    showDialog.value = true;
-    imei.value = '';
-    await loadIMEIs();
-  } catch (error) {
-    alert('Error al registrar el IMEI');
-  }
-};
-
-const closeDialog = () => {
-  showDialog.value = false;
+  if (!imei.value) return;
+  await addIMEI({
+    name: 'IMEI',
+    imei: imei.value,
+    // otros campos...
+  });
+  imei.value = '';
+  await loadIMEIs();
 };
 
 const loadIMEIs = async () => {
