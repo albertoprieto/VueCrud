@@ -1,6 +1,9 @@
 <template>
   <div class="consultar">
-    <h2 style="color:#debdc9;">Histórico IMEI</h2>
+    <h2>Histórico IMEI</h2>
+    <div class="table-actions">
+      <!-- Aquí puedes poner filtros, botones, etc -->
+    </div>
     <DataTable :value="filteredItems" responsiveLayout="scroll">
       <template #header>
         <div class="datatable-header">
@@ -109,12 +112,15 @@ const saveEdit = async () => {
 
 <style scoped>
 .consultar {
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
-  text-align: left;
-  padding: 1rem;
+  text-align: center;
 }
-
+.table-actions {
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: flex-end;
+}
 .datatable-header {
   display: flex;
   align-items: center;

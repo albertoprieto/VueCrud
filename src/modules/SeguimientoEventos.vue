@@ -1,46 +1,48 @@
 <template>
   <div class="seguimiento-eventos">
-    <h2 style="color:#debdc9;">Seguimiento de Eventos</h2>
+    <h2 class="seguimiento-title">Seguimiento de Eventos</h2>
 
     <!-- Filtros -->
-    <!-- <div class="filters">
+    <div class="filters">
       <Dropdown 
         v-model="selectedTechnician" 
-        :options="technicians" 
+        :options="['Todos', ...technicians]" 
         placeholder="Filtrar por Técnico" 
         class="filter-dropdown"
       />
-    </div> -->
+    </div>
 
-    <!-- Tabla de Eventos -->
-    <DataTable :value="filteredEvents" responsiveLayout="scroll">
-      <Column field="title" header="Cliente" />
-      <Column field="descripcion" header="Descripción Cotización" />
-      <Column field="imei" header="IMEI" />
-      <Column field="start" header="Fecha" />
-      <Column field="technician" header="Técnico" />
-      <Column field="status" header="Estado">
-        <template #body="slotProps">
-          <span :style="{ color: statusColors[slotProps.data.status], fontWeight: 'bold' }">
-            {{ slotProps.data.status }}
-          </span>
-        </template>
-      </Column>
-      <Column header="Acciones">
-        <template #body="slotProps">
-          <Button
-            v-if="slotProps.data.status === 'Concluido' && slotProps.data.reporte"
-            label="Ver Detalle"
-            icon="pi pi-eye"
-            class="p-button-text"
-            @click="verDetalleReporte(slotProps.data.reporte)"
-          />
-        </template>
-      </Column>
-    </DataTable>
+    <div class="seguimiento-card">
+      <!-- Tabla de Eventos -->
+      <DataTable :value="filteredEvents" responsiveLayout="scroll">
+        <Column field="title" header="Cliente" />
+        <Column field="descripcion" header="Descripción Cotización" />
+        <Column field="imei" header="IMEI" />
+        <Column field="start" header="Fecha" />
+        <Column field="technician" header="Técnico" />
+        <Column field="status" header="Estado">
+          <template #body="slotProps">
+            <span :style="{ color: statusColors[slotProps.data.status], fontWeight: 'bold' }">
+              {{ slotProps.data.status }}
+            </span>
+          </template>
+        </Column>
+        <Column header="Acciones">
+          <template #body="slotProps">
+            <Button
+              v-if="slotProps.data.status === 'Concluido' && slotProps.data.reporte"
+              label="Ver Detalle"
+              icon="pi pi-eye"
+              class="p-button-text"
+              @click="verDetalleReporte(slotProps.data.reporte)"
+            />
+          </template>
+        </Column>
+      </DataTable>
+    </div>
 
     <Dialog v-model:visible="showReporteDialog" header="Detalle del Reporte" :closable="true" :modal="true">
-      <div v-if="detalleReporte">
+      <div class="dialog-content" v-if="detalleReporte">
         <p><strong>Modelo:</strong> {{ detalleReporte.modelo }}</p>
         <p><strong>Placa:</strong> {{ detalleReporte.placa }}</p>
         <p><strong>Observaciones:</strong> {{ detalleReporte.observaciones }}</p>
@@ -63,7 +65,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 
 const technicians = ref(['Técnico 1', 'Técnico 2', 'Técnico 3']);
-const selectedTechnician = ref(null);
+const selectedTechnician = ref('Todos');
 
 const statusColors = {
   Pendiente: '#ffcc00',
@@ -99,7 +101,7 @@ onMounted(loadEventos);
 watch(selectedTechnician, loadEventos);
 
 const filteredEvents = computed(() => {
-  if (!selectedTechnician.value) {
+  if (!selectedTechnician.value || selectedTechnician.value === 'Todos') {
     return events.value;
   }
   return events.value.filter(event => event.technician === selectedTechnician.value);
@@ -109,21 +111,38 @@ const filteredEvents = computed(() => {
 <style scoped>
 .seguimiento-eventos {
   max-width: 900px;
-  margin: 0 auto;
+  margin: 2rem auto;
   text-align: center;
 }
-
+.seguimiento-title {
+  margin-bottom: 2rem;
+  color: #e4c8c8;
+}
 .filters {
   margin-bottom: 1rem;
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
 }
-
 .filter-dropdown {
-  width: 300px;
+  min-width: 220px;
 }
-
-.data-table {
-  margin-top: 1rem;
+.seguimiento-card {
+  background: #2d313a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin-bottom: 2rem;
+}
+.dialog-content {
+  padding: 1rem 0.5rem;
+  text-align: left;
+}
+@media (max-width: 700px) {
+  .seguimiento-eventos {
+    padding: 1rem 0.2rem;
+  }
+  .seguimiento-card {
+    padding: 0.5rem;
+  }
 }
 </style>

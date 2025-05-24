@@ -1,6 +1,6 @@
 <template>
-  <div class="consultar-reportes">
-    <h2>Consultar Reportes</h2>
+  <div class="consultar-reportes-container">
+    <h2 class="consultar-reportes-title">Consultar Reportes</h2>
     <DataTable :value="reportes" responsiveLayout="scroll">
       <Column field="modelo" header="Modelo" />
       <Column field="placa" header="Placa" />
@@ -20,9 +20,18 @@ const reportes = reportesStore.getReportes();
 </script>
 
 <style scoped>
-.consultar-reportes {
+.consultar-reportes-container {
   max-width: 800px;
-  margin: 0 auto;
+  margin: 2rem auto;
   text-align: center;
+  background: #23272f;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  color: #e4c8c8;
+  padding: 2rem 1.5rem;
+}
+.consultar-reportes-title {
+  margin-bottom: 2rem;
+  color: #e4c8c8;
 }
 </style>

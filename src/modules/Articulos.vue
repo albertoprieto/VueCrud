@@ -5,63 +5,83 @@
       <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" />
       <InputText v-model="search" placeholder="Buscar..." class="ml-2" />
     </div>
-    <DataTable :value="filteredArticulos" :sortField="sortField" :sortOrder="sortOrder" responsiveLayout="scroll">
-      <Column field="sku" header="sku" sortable />
-      <Column field="nombre" header="Nombre" sortable />
-      <Column field="descripcion" header="Descripción" sortable />
-      <Column field="tipo" header="tipo" sortable />
-      <Column field="precioVenta" header="Precio de venta" sortable />
-      <Column header="Acciones">
-        <template #body="slotProps">
-          <Button icon="pi pi-pencil" class="p-button-text" @click="editArticulo(slotProps.data)" />
-          <Button icon="pi pi-trash" class="p-button-text p-button-danger" @click="deleteArticulo(slotProps.data.id)" />
-        </template>
-      </Column>
-    </DataTable>
+    <div class="articulos-card">
+      <DataTable :value="filteredArticulos" :sortField="sortField" :sortOrder="sortOrder" responsiveLayout="scroll">
+        <Column field="sku" header="SKU" sortable />
+        <Column field="nombre" header="Nombre" sortable />
+        <Column field="descripcion" header="Descripción" sortable />
+        <Column field="tipo" header="Tipo" sortable />
+        <Column field="precioVenta" header="Precio de venta" sortable />
+        <Column header="Acciones">
+          <template #body="slotProps">
+            <Button icon="pi pi-pencil" class="p-button-text" @click="editArticulo(slotProps.data)" />
+            <Button icon="pi pi-trash" class="p-button-text p-button-danger" @click="confirmDeleteArticulo(slotProps.data.id)" />
+          </template>
+        </Column>
+      </DataTable>
+    </div>
 
-    <Dialog v-model:visible="showModal" header="Agregar/Editar Artículo" :modal="true" :closable="true">
+    <Dialog v-model:visible="showModal" :header="form.id ? 'Editar Artículo' : 'Nuevo Artículo'" :modal="true" :closable="true" class="custom-modal">
       <div class="modal-content">
-        <h3>{{ form.id ? 'Editar Artículo' : 'Nuevo Artículo' }}</h3>
+        <h3 class="modal-title">{{ form.id ? 'Editar Artículo' : 'Nuevo Artículo' }}</h3>
         <div class="form-grid">
           <div class="form-col">
             <div class="form-group">
               <label for="tipo">Tipo:</label>
-              <Dropdown id="tipo" v-model="form.tipo" :options="['Bienes', 'Servicio']" placeholder="Selecciona tipo" />
+              <Dropdown id="tipo" v-model="form.tipo" :options="['Bienes', 'Servicio']" placeholder="Selecciona tipo" class="w-full" />
             </div>
             <div class="form-group">
               <label for="nombre">Nombre:</label>
-              
-              <InputText id="nombre" v-model="form.nombre" placeholder="Nombre del artículo" />
+              <InputText id="nombre" v-model="form.nombre" placeholder="Nombre del artículo" class="w-full" />
               <small v-if="!form.nombre" class="error-text">Obligatorio.</small>
             </div>
             <div class="form-group">
               <label for="sku">SKU:</label>
-              <InputText id="sku" v-model="form.sku" placeholder="SKU o código interno" />
+              <InputText id="sku" v-model="form.sku" placeholder="SKU o código interno" class="w-full" />
               <small v-if="!form.sku" class="error-text">Obligatorio.</small>
             </div>
             <div class="form-group">
               <label for="unidad">Unidad:</label>
-              <Dropdown id="unidad" v-model="form.unidad" :options="['pieza', 'servicio', 'kg', 'litro']" placeholder="Selecciona unidad" />
+              <Dropdown id="unidad" v-model="form.unidad" :options="['pieza', 'servicio', 'kg', 'litro']" placeholder="Selecciona unidad" class="w-full" />
             </div>
           </div>
           <div class="form-col">
             <div class="form-group">
               <label for="precioVenta">Precio de venta (MXN):</label>
-              <InputText id="precioVenta" v-model="form.precioVenta" placeholder="Precio de venta" />
+              <InputText id="precioVenta" v-model="form.precioVenta" placeholder="Precio de venta" class="w-full" />
             </div>
             <div class="form-group">
               <label for="impuesto">Impuesto:</label>
-              <Dropdown id="impuesto" v-model="form.impuesto" :options="['IVA 16%', 'IVA 0%', 'Exento']" placeholder="Selecciona impuesto" />
+              <Dropdown id="impuesto" v-model="form.impuesto" :options="['IVA 16%', 'IVA 0%', 'Exento']" placeholder="Selecciona impuesto" class="w-full" />
             </div>
             <div class="form-group">
               <label for="descripcion">Descripción:</label>
-              <InputText id="descripcion" v-model="form.descripcion" placeholder="Descripción (opcional)" />
+              <InputText id="descripcion" v-model="form.descripcion" placeholder="Descripción (opcional)" class="w-full" />
             </div>
           </div>
         </div>
         <div class="modal-actions">
           <Button label="Guardar" icon="pi pi-save" @click="saveArticulo" />
           <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="closeModal" />
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog v-model:visible="showErrorDialog" header="Error" :modal="true" :closable="false">
+      <div class="dialog-content">
+        <p>{{ errorMessage }}</p>
+        <div class="modal-actions">
+          <Button label="Aceptar" icon="pi pi-check" @click="showErrorDialog = false" />
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog v-model:visible="showConfirmDelete" header="Confirmar Eliminación" :modal="true" :closable="false">
+      <div class="dialog-content">
+        <p>¿Eliminar este artículo?</p>
+        <div class="modal-actions">
+          <Button label="Eliminar" icon="pi pi-trash" class="p-button-danger" @click="deleteArticulo(articuloToDelete)" />
+          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showConfirmDelete = false" />
         </div>
       </div>
     </Dialog>
@@ -77,14 +97,18 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
-import Checkbox from 'primevue/checkbox';
 
 const articulos = ref([]);
 const showModal = ref(false);
-const form = ref({ id: null, codigo: '', nombre: '', pagina: '' });
+const form = ref({ id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' });
 const search = ref('');
 const sortField = ref('nombre');
 const sortOrder = ref(1);
+
+const showErrorDialog = ref(false);
+const errorMessage = ref('');
+const showConfirmDelete = ref(false);
+const articuloToDelete = ref(null);
 
 const loadArticulos = async () => {
   articulos.value = await getArticulos();
@@ -93,7 +117,7 @@ const loadArticulos = async () => {
 onMounted(loadArticulos);
 
 const openModal = () => {
-  form.value = { id: null, codigo: '', nombre: '', pagina: '' };
+  form.value = { id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' };
   showModal.value = true;
 };
 
@@ -102,13 +126,23 @@ const closeModal = () => {
 };
 
 const saveArticulo = async () => {
-  if (form.value.id) {
-    await updateArticulo({ ...form.value });
-  } else {
-    await addArticulo({ ...form.value });
+  if (!form.value.nombre || !form.value.sku) {
+    errorMessage.value = 'Por favor, complete los campos obligatorios.';
+    showErrorDialog.value = true;
+    return;
   }
-  showModal.value = false;
-  await loadArticulos();
+  try {
+    if (form.value.id) {
+      await updateArticulo({ ...form.value });
+    } else {
+      await addArticulo({ ...form.value });
+    }
+    showModal.value = false;
+    await loadArticulos();
+  } catch (e) {
+    errorMessage.value = 'Error al guardar el artículo.';
+    showErrorDialog.value = true;
+  }
 };
 
 const editArticulo = (articulo) => {
@@ -116,19 +150,28 @@ const editArticulo = (articulo) => {
   showModal.value = true;
 };
 
+const confirmDeleteArticulo = (id) => {
+  articuloToDelete.value = id;
+  showConfirmDelete.value = true;
+};
+
 const deleteArticulo = async (id) => {
-  if (confirm('¿Eliminar este artículo?')) {
+  try {
     await deleteArticuloService(id);
     await loadArticulos();
+    showConfirmDelete.value = false;
+  } catch (e) {
+    errorMessage.value = 'Error al eliminar el artículo.';
+    showErrorDialog.value = true;
   }
 };
 
 const filteredArticulos = computed(() => {
   if (!search.value) return articulos.value;
   return articulos.value.filter(a =>
-    a.nombre.toLowerCase().includes(search.value.toLowerCase()) ||
-    a.codigo.toLowerCase().includes(search.value.toLowerCase()) ||
-    a.pagina.toLowerCase().includes(search.value.toLowerCase())
+    a.nombre?.toLowerCase().includes(search.value.toLowerCase()) ||
+    a.sku?.toLowerCase().includes(search.value.toLowerCase()) ||
+    a.descripcion?.toLowerCase().includes(search.value.toLowerCase())
   );
 });
 </script>
@@ -146,13 +189,31 @@ const filteredArticulos = computed(() => {
   margin-bottom: 1rem;
   gap: 1rem;
 }
-:deep(.p-dialog) {
-  width: 80vw !important;
-  max-width: 80vw !important;
+.articulos-card {
+  background: #2d313a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin-bottom: 2rem;
+}
+:deep(.p-dialog.custom-modal .p-dialog-header) {
+  background: #2d313a;
+  border-bottom: 2px solid #e91e63;
+}
+:deep(.p-dialog.custom-modal .p-dialog-content) {
+  background: #23272f;
 }
 .modal-content {
   padding: 1rem 0.5rem;
   text-align: left;
+}
+.modal-title {
+  color: #e91e63;
+  text-align: center;
+  margin-bottom: 1.5rem;
+  font-weight: bold;
+  font-size: 1.3rem;
+  letter-spacing: 1px;
 }
 .form-grid {
   display: flex;
@@ -172,7 +233,7 @@ label {
   font-weight: bold;
 }
 .error-text {
-  color: red;
+  color: #e91e63;
   font-size: 0.85rem;
   margin-top: 0.25rem;
 }
