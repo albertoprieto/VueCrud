@@ -6,9 +6,11 @@
       <InputText v-model="search" placeholder="Buscar..." class="ml-2" />
     </div>
     <DataTable :value="filteredArticulos" :sortField="sortField" :sortOrder="sortOrder" responsiveLayout="scroll">
-      <Column field="codigo" header="Código" sortable />
+      <Column field="sku" header="sku" sortable />
       <Column field="nombre" header="Nombre" sortable />
-      <Column field="pagina" header="Página de Captura" sortable />
+      <Column field="descripcion" header="Descripción" sortable />
+      <Column field="tipo" header="tipo" sortable />
+      <Column field="precioVenta" header="Precio de venta" sortable />
       <Column header="Acciones">
         <template #body="slotProps">
           <Button icon="pi pi-pencil" class="p-button-text" @click="editArticulo(slotProps.data)" />
@@ -28,13 +30,14 @@
             </div>
             <div class="form-group">
               <label for="nombre">Nombre:</label>
+              
               <InputText id="nombre" v-model="form.nombre" placeholder="Nombre del artículo" />
-              <small v-if="!form.nombre" class="error-text">Este campo es obligatorio.</small>
+              <small v-if="!form.nombre" class="error-text">Obligatorio.</small>
             </div>
             <div class="form-group">
               <label for="sku">SKU:</label>
               <InputText id="sku" v-model="form.sku" placeholder="SKU o código interno" />
-              <small v-if="!form.sku" class="error-text">Este campo es obligatorio.</small>
+              <small v-if="!form.sku" class="error-text">Obligatorio.</small>
             </div>
             <div class="form-group">
               <label for="unidad">Unidad:</label>
@@ -99,10 +102,7 @@ const closeModal = () => {
 };
 
 const saveArticulo = async () => {
-  if (!form.value.codigo || !form.value.nombre || !form.value.pagina) {
-    alert('Todos los campos son obligatorios');
-    return;
-  }
+  
   if (form.value.id) {
     await updateArticulo({ ...form.value });
   } else {
