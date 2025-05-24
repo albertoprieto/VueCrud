@@ -1,0 +1,1 @@
+import{x as t}from"./index-9q8L-fBU.js";const e="https://64.227.15.111/articulos",n=async()=>(await t.get(e)).data,r=async s=>(await t.post(e,s)).data,c=async s=>(await t.put(`${e}/${s.id}`,s)).data,p=async s=>(await t.delete(`${e}/${s}`)).data;export{r as a,p as d,n as g,c as u};
