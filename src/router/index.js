@@ -84,6 +84,11 @@ const routes = [
     path: '/articulos-con-imeis',
     name: 'articulos-con-imeis',
     component: () => import('@/modules/ArticulosConImeis.vue')
+  },
+  {
+    path: '/clientes',
+    name: 'clientes',
+    component: () => import('@/modules/Clientes.vue')
   }
 ];
 
