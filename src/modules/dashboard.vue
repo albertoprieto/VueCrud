@@ -54,11 +54,9 @@ const items = ref([
     label: 'Inventario',
     icon: 'pi pi-fw pi-shopping-cart',
     items: [
-      // { label: 'IMEIS', route: '/registrar' },
       { label: 'Alta artículos', route: '/alta-articulo' },
-      // { label: 'Consultar y asignar', route: '/consultar' },
       { label: 'Asignar IMEIs', route: '/asignar-imeis' },
-      { label: 'Stock', route: '/articulos-con-imeis' } // <-- Nuevo
+      { label: 'Stock', route: '/articulos-con-imeis' }
     ]
   },
   {
@@ -78,6 +76,13 @@ const items = ref([
     label: 'Seguimiento',
     icon: 'pi pi-fw pi-file',
     route:'/seguimiento'
+  },
+  {
+    label: 'Ventas',
+    icon: 'pi pi-fw pi-briefcase',
+    items: [
+      { label: 'Clientes', route: '/clientes' }
+    ]
   },
   {
     label: 'Cerrar',
