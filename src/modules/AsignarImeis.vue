@@ -74,18 +74,19 @@ const registrarYAsignar = async () => {
   max-width: 500px;
   margin: 2rem auto;
   padding: 2rem 1.5rem;
-  background: #23272f;
+  background: var(--color-bg);
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.10);
-  color: #e4c8c8;
+  color: var(--color-text);
 }
 h2 {
   text-align: center;
   margin-bottom: 2rem;
-  color: #e4c8c8;
+  color: var(--color-title);
+  /* Rosa opaco llamativo */
 }
 .form-card {
-  background: #2d313a;
+  background: var(--color-card);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -97,7 +98,7 @@ label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 600;
-  color: #e4c8c8;
+  color: var(--color-title);
 }
 .w-full {
   width: 100%;

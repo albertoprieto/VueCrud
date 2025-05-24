@@ -96,10 +96,15 @@ onMounted(loadIMEIs);
   max-width: 900px;
   margin: 2rem auto;
   text-align: center;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  padding: 2rem 1.5rem;
 }
 h2 {
   margin-bottom: 2rem;
-  color: #e4c8c8;
+  color: var(--color-title); /* rosa opaco llamativo */
 }
 .table-actions {
   margin-bottom: 1rem;
@@ -107,7 +112,7 @@ h2 {
   justify-content: flex-end;
 }
 .articulos-imeis-card {
-  background: #2d313a;
+  background: var(--color-card);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -115,5 +120,13 @@ h2 {
 }
 .dialog-content {
   padding: 1rem 0.5rem;
+}
+@media (max-width: 700px) {
+  .articulos-con-imeis {
+    padding: 1rem 0.2rem;
+  }
+  .articulos-imeis-card {
+    padding: 0.5rem;
+  }
 }
 </style>

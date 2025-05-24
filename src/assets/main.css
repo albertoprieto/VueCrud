@@ -1,5 +1,20 @@
 @import './base.css';
 
+:root {
+  --color-bg: #fff;
+  --color-card: #f5f5f5;
+  --color-text: #222;
+  --color-title: #d48ca6; /* rosa seco tenue */
+  --color-border: #e0e0e0;
+}
+[data-theme="dark"] {
+  --color-bg: #23272f;
+  --color-card: #2d313a;
+  --color-text: #e4c8c8;
+  --color-title: #d48ca6;
+  --color-border: #444;
+}
+
 #app {
   max-width: 1280px;
   margin: 0 auto;
