@@ -3,10 +3,17 @@
     <h2>Artículos</h2>
     <div class="actions">
       <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" />
+      <Button label="Exportar Excel" icon="pi pi-file-excel" class="p-button-success" @click="exportarArticulos" />
       <InputText v-model="search" placeholder="Buscar..." class="ml-2" />
     </div>
     <div class="articulos-card">
-      <DataTable :value="filteredArticulos" :sortField="sortField" :sortOrder="sortOrder" responsiveLayout="scroll">
+      <DataTable
+        :value="filteredArticulos"
+        :sortField="sortField"
+        :sortOrder="sortOrder"
+        responsiveLayout="scroll"
+        :loading="loadingArticulos"
+      >
         <Column field="sku" header="SKU" sortable />
         <Column field="nombre" header="Nombre" sortable />
         <Column field="descripcion" header="Descripción" sortable />
@@ -97,8 +104,11 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const articulos = ref([]);
+const loadingArticulos = ref(true);
 const showModal = ref(false);
 const form = ref({ id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' });
 const search = ref('');
@@ -111,7 +121,12 @@ const showConfirmDelete = ref(false);
 const articuloToDelete = ref(null);
 
 const loadArticulos = async () => {
-  articulos.value = await getArticulos();
+  loadingArticulos.value = true;
+  try {
+    articulos.value = await getArticulos();
+  } finally {
+    loadingArticulos.value = false;
+  }
 };
 
 onMounted(loadArticulos);
@@ -164,6 +179,24 @@ const deleteArticulo = async (id) => {
     errorMessage.value = 'Error al eliminar el artículo.';
     showErrorDialog.value = true;
   }
+};
+
+const exportarArticulos = () => {
+  const mxn = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+  const data = filteredArticulos.value.map(art => ({
+    'SKU': art.sku,
+    'Nombre': art.nombre,
+    'Descripción': art.descripcion,
+    'Tipo': art.tipo,
+    'Unidad': art.unidad,
+    'Precio de venta': mxn.format(Number(art.precioVenta) || 0),
+    'Impuesto': art.impuesto,
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Artículos');
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'articulos.xlsx');
 };
 
 const filteredArticulos = computed(() => {

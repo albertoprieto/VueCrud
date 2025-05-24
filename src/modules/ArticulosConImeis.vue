@@ -3,6 +3,13 @@
     <h2>Stock por Artículo</h2>
     <div class="table-actions">
       <InputText v-model="filtroNombre" placeholder="Filtrar por artículo..." class="p-inputtext-sm" style="max-width:250px;" />
+      <Button
+        icon="pi pi-file-excel"
+        class="p-button-success p-button-sm"
+        label="Exportar Excel"
+        style="margin-left: 1rem"
+        @click="exportarInventario"
+      />
     </div>
     <div class="articulos-imeis-card">
       <DataTable
@@ -11,6 +18,7 @@
         :sortOrder="sortOrder"
         responsiveLayout="scroll"
         @sort="onSort"
+        :loading="loadingImeis"
       >
         <Column field="articulo_nombre" header="Artículo" sortable />
         <Column field="cantidad" header="Cantidad IMEIs" sortable />
@@ -38,13 +46,18 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { getIMEIs } from '@/services/imeiService';
+import { getArticulos } from '@/services/articulosService';
 import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const imeis = ref([]);
+const articulos = ref([]);
+const loadingImeis = ref(true);
 const showImeisDialog = ref(false);
 const imeisSeleccionados = ref([]);
 const filtroNombre = ref('');
@@ -85,7 +98,46 @@ const onSort = (event) => {
 };
 
 const loadIMEIs = async () => {
-  imeis.value = await getIMEIs();
+  loadingImeis.value = true;
+  try {
+    imeis.value = await getIMEIs();
+    articulos.value = await getArticulos();
+  } finally {
+    loadingImeis.value = false;
+  }
+};
+
+// --- Exportar a Excel ---
+const exportarInventario = () => {
+  const grupos = {};
+  imeis.value.forEach(i => {
+    if (!grupos[i.articulo_nombre]) grupos[i.articulo_nombre] = [];
+    grupos[i.articulo_nombre].push(i);
+  });
+
+  const mxn = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+
+  const data = articulos.value.map(art => {
+    const stock = grupos[art.nombre]?.length || 0;
+    const precio = Number(art.precioVenta) || 0;
+    return {
+      'Artículo': art.nombre,
+      'SKU': art.sku,
+      'Tipo': art.tipo,
+      'Unidad': art.unidad,
+      'Precio unitario': mxn.format(precio),
+      'Cantidad en stock': stock,
+      'Total inventario': mxn.format(precio * stock),
+      'Descripción': art.descripcion,
+      'Impuesto': art.impuesto,
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'inventario.xlsx');
 };
 
 onMounted(loadIMEIs);
