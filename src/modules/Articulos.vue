@@ -1,3 +1,146 @@
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+import { getArticulos, addArticulo, updateArticulo, deleteArticulo as deleteArticuloService } from '@/services/articulosService';
+import { getIMEIs } from '@/services/imeiService';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
+import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+
+const articulos = ref([]);
+const imeis = ref([]);
+const loadingArticulos = ref(true);
+const showModal = ref(false);
+const form = ref({ id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' });
+const search = ref('');
+const sortField = ref('nombre');
+const sortOrder = ref(1);
+
+const showErrorDialog = ref(false);
+const errorMessage = ref('');
+const showConfirmDelete = ref(false);
+const articuloToDelete = ref(null);
+
+const loadArticulos = async () => {
+  loadingArticulos.value = true;
+  try {
+    articulos.value = await getArticulos();
+    imeis.value = await getIMEIs();
+    console.log('Artículos cargados:', JSON.parse(JSON.stringify(articulos.value)));
+    console.log('IMEIs cargados:', JSON.parse(JSON.stringify(imeis.value)));
+  } finally {
+    loadingArticulos.value = false;
+  }
+};
+
+onMounted(loadArticulos);
+
+// Formato moneda MXN
+const formatoMoneda = (valor) => {
+  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor) || 0);
+};
+
+// Para DataTable: muestra existencias en mano por artículo
+const existenciasEnMano = (rowData) => {
+  // Coincidencia exacta entre articulo.nombre y imei.articulo_nombre
+  const nombre = rowData.nombre;
+  const imeisAsociados = imeis.value.filter(i => i.articulo_nombre === nombre);
+  return imeisAsociados.length;
+};
+
+const filteredArticulos = computed(() => {
+  if (!search.value) return articulos.value;
+  return articulos.value.filter(a =>
+    a.nombre?.toLowerCase().includes(search.value.toLowerCase()) ||
+    a.sku?.toLowerCase().includes(search.value.toLowerCase()) ||
+    a.descripcion?.toLowerCase().includes(search.value.toLowerCase())
+  );
+});
+
+const openModal = () => {
+  form.value = { id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' };
+  showModal.value = true;
+};
+
+const closeModal = () => {
+  showModal.value = false;
+};
+
+const saveArticulo = async () => {
+  if (!form.value.nombre || !form.value.sku) {
+    errorMessage.value = 'Por favor, complete los campos obligatorios.';
+    showErrorDialog.value = true;
+    return;
+  }
+  try {
+    const articuloPayload = {
+      ...form.value,
+      codigo: form.value.codigo ?? '',
+      pagina: form.value.pagina ?? ''
+    };
+    if (form.value.id) {
+      await updateArticulo(articuloPayload);
+    } else {
+      await addArticulo(articuloPayload);
+    }
+    showModal.value = false;
+    await loadArticulos();
+  } catch (e) {
+    errorMessage.value = 'Error al guardar el artículo.';
+    showErrorDialog.value = true;
+  }
+};
+
+const editArticulo = (articulo) => {
+  form.value = { ...articulo };
+  showModal.value = true;
+};
+
+const confirmDeleteArticulo = (id) => {
+  articuloToDelete.value = id;
+  showConfirmDelete.value = true;
+};
+
+const deleteArticulo = async (id) => {
+  try {
+    await deleteArticuloService(id);
+    await loadArticulos();
+    showConfirmDelete.value = false;
+  } catch (e) {
+    errorMessage.value = 'Error al eliminar el artículo.';
+    showErrorDialog.value = true;
+  }
+};
+
+const exportarArticulos = () => {
+  const mxn = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+  const data = articulos.value.map(art => {
+    const stock = imeis.value.filter(i => i.articulo_nombre === art.nombre).length;
+    const precio = Number(art.precioVenta) || 0;
+    return {
+      'Artículo': art.nombre,
+      'SKU': art.sku,
+      'Tipo': art.tipo,
+      'Unidad': art.unidad,
+      'Precio de venta': mxn.format(precio),
+      'Existencias en mano': stock,
+      'Total inventario': mxn.format(precio * stock),
+      'Descripción': art.descripcion,
+      'Impuesto': art.impuesto,
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Artículos');
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'articulos.xlsx');
+};
+</script>
+
 <template>
   <div class="articulos">
     <h2>Artículos</h2>
@@ -18,7 +161,21 @@
         <Column field="nombre" header="Nombre" sortable />
         <Column field="descripcion" header="Descripción" sortable />
         <Column field="tipo" header="Tipo" sortable />
-        <Column field="precioVenta" header="Precio de venta" sortable />
+        <Column field="precioVenta" header="Precio de venta">
+          <template #body="slotProps">
+            {{ formatoMoneda(slotProps.data.precioVenta) }}
+          </template>
+        </Column>
+        <Column header="Existencias en mano">
+          <template #body="slotProps">
+            {{ existenciasEnMano(slotProps.data) }}
+          </template>
+        </Column>
+        <Column header="Total inventario">
+          <template #body="slotProps">
+            {{ formatoMoneda(slotProps.data.precioVenta * existenciasEnMano(slotProps.data)) }}
+          </template>
+        </Column>
         <Column header="Acciones">
           <template #body="slotProps">
             <Button icon="pi pi-pencil" class="p-button-text" @click="editArticulo(slotProps.data)" />
@@ -94,125 +251,6 @@
     </Dialog>
   </div>
 </template>
-
-<script setup>
-import { ref, computed, onMounted } from 'vue';
-import { getArticulos, addArticulo, updateArticulo, deleteArticulo as deleteArticuloService } from '@/services/articulosService';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import Dialog from 'primevue/dialog';
-import InputText from 'primevue/inputtext';
-import Dropdown from 'primevue/dropdown';
-import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
-
-const articulos = ref([]);
-const loadingArticulos = ref(true);
-const showModal = ref(false);
-const form = ref({ id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' });
-const search = ref('');
-const sortField = ref('nombre');
-const sortOrder = ref(1);
-
-const showErrorDialog = ref(false);
-const errorMessage = ref('');
-const showConfirmDelete = ref(false);
-const articuloToDelete = ref(null);
-
-const loadArticulos = async () => {
-  loadingArticulos.value = true;
-  try {
-    articulos.value = await getArticulos();
-  } finally {
-    loadingArticulos.value = false;
-  }
-};
-
-onMounted(loadArticulos);
-
-const openModal = () => {
-  form.value = { id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' };
-  showModal.value = true;
-};
-
-const closeModal = () => {
-  showModal.value = false;
-};
-
-const saveArticulo = async () => {
-  if (!form.value.nombre || !form.value.sku) {
-    errorMessage.value = 'Por favor, complete los campos obligatorios.';
-    showErrorDialog.value = true;
-    return;
-  }
-  try {
-    const articuloPayload = {
-      ...form.value,
-      codigo: form.value.codigo ?? '',
-      pagina: form.value.pagina ?? ''
-    };
-    if (form.value.id) {
-      await updateArticulo(articuloPayload);
-    } else {
-      await addArticulo(articuloPayload);
-    }
-    showModal.value = false;
-    await loadArticulos();
-  } catch (e) {
-    errorMessage.value = 'Error al guardar el artículo.';
-    showErrorDialog.value = true;
-  }
-};
-
-const editArticulo = (articulo) => {
-  form.value = { ...articulo };
-  showModal.value = true;
-};
-
-const confirmDeleteArticulo = (id) => {
-  articuloToDelete.value = id;
-  showConfirmDelete.value = true;
-};
-
-const deleteArticulo = async (id) => {
-  try {
-    await deleteArticuloService(id);
-    await loadArticulos();
-    showConfirmDelete.value = false;
-  } catch (e) {
-    errorMessage.value = 'Error al eliminar el artículo.';
-    showErrorDialog.value = true;
-  }
-};
-
-const exportarArticulos = () => {
-  const mxn = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-  const data = filteredArticulos.value.map(art => ({
-    'SKU': art.sku,
-    'Nombre': art.nombre,
-    'Descripción': art.descripcion,
-    'Tipo': art.tipo,
-    'Unidad': art.unidad,
-    'Precio de venta': mxn.format(Number(art.precioVenta) || 0),
-    'Impuesto': art.impuesto,
-  }));
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Artículos');
-  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'articulos.xlsx');
-};
-
-const filteredArticulos = computed(() => {
-  if (!search.value) return articulos.value;
-  return articulos.value.filter(a =>
-    a.nombre?.toLowerCase().includes(search.value.toLowerCase()) ||
-    a.sku?.toLowerCase().includes(search.value.toLowerCase()) ||
-    a.descripcion?.toLowerCase().includes(search.value.toLowerCase())
-  );
-});
-</script>
 
 <style scoped>
 .articulos {
