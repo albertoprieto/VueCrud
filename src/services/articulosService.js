@@ -1,30 +1,23 @@
-const STORAGE_KEY = 'articulos';
+import axios from 'axios';
+
+const API_URL = 'https://64.227.15.111/articulos';
 
 export const getArticulos = async () => {
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+    const response = await axios.get(API_URL);
+    return response.data;
 };
 
 export const addArticulo = async (articulo) => {
-  const articulos = await getArticulos();
-  const newId = articulos.length ? Math.max(...articulos.map(a => a.id)) + 1 : 1;
-  const nuevo = { ...articulo, id: newId };
-  articulos.push(nuevo);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(articulos));
-  return nuevo;
+    const response = await axios.post(API_URL, articulo);
+    return response.data;
 };
 
 export const updateArticulo = async (articulo) => {
-  const articulos = await getArticulos();
-  const idx = articulos.findIndex(a => a.id === articulo.id);
-  if (idx !== -1) {
-    articulos[idx] = articulo;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(articulos));
-  }
+    const response = await axios.put(`${API_URL}/${articulo.id}`, articulo);
+    return response.data;
 };
 
 export const deleteArticulo = async (id) => {
-  let articulos = await getArticulos();
-  articulos = articulos.filter(a => a.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(articulos));
+    const response = await axios.delete(`${API_URL}/${id}`);
+    return response.data;
 };
