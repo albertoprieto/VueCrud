@@ -2,7 +2,19 @@
   <div>
     <Menubar :model="items">
       <template #item="{ item, props, hasSubmenu }">
-        <router-link v-if="item.route" v-slot="{ href, navigate }" :to="item.route" custom>
+        <template v-if="item.separator">
+          <hr class="menu-separator" />
+        </template>
+        <template v-else-if="item.locked">
+          <span
+            v-bind="props.action"
+            class="menu-locked"
+          >
+            <span :class="item.icon" />
+            <span class="ml-2 menu-locked-label">{{ item.label }}</span>
+          </span>
+        </template>
+        <router-link v-else-if="item.route" v-slot="{ href, navigate }" :to="item.route" custom>
           <a v-ripple :href="href" v-bind="props.action" @click="navigate">
             <span :class="item.icon" />
             <span class="ml-2">{{ item.label }}</span>
@@ -59,31 +71,36 @@ const items = ref([
       { label: 'Stock', route: '/articulos-con-imeis' }
     ]
   },
+    {
+    label: 'Ventas',
+    icon: 'pi pi-fw pi-briefcase',
+    items: [
+      { label: 'Clientes', route: '/clientes' },
+      { label: 'Notas de Venta', route: '/ventas' }
+    ]
+  },
   {
     label: 'Cotizaciones',
     icon: 'pi pi-fw pi-dollar',
     items: [
       { label: 'Crear', route: '/cotizacion' },
       { label: 'Consultar', route: '/consultar-cotizaciones' }
-    ]
+    ],
+    locked: true // campo personalizado para el slot
   },
   {
     label: 'Calendario',
     icon: 'pi pi-fw pi-calendar',
-    route: '/calendario-cotizaciones'
+    route: '/calendario-cotizaciones',
+    locked: true // campo personalizado para el slot
   },
   {
     label: 'Seguimiento',
     icon: 'pi pi-fw pi-file',
-    route:'/seguimiento'
+    route:'/seguimiento',
+    locked: true // campo personalizado para el slot
   },
-  {
-    label: 'Ventas',
-    icon: 'pi pi-fw pi-briefcase',
-    items: [
-      { label: 'Clientes', route: '/clientes' }
-    ]
-  },
+
   {
     label: 'Cerrar',
     icon: 'pi pi-fw pi-sign-out',
@@ -91,3 +108,29 @@ const items = ref([
   }
 ]);
 </script>
+
+<style scoped>
+.menu-separator {
+  border: none;
+  border-top: 1px solid var(--color-border, #ccc);
+  margin: 0.5rem 0;
+}
+.menu-locked {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  cursor: not-allowed;
+}
+.menu-locked-label {
+  text-decoration: line-through;
+  /* Cambia color según tema */
+  color: var(--color-text-locked);
+}
+:root {
+  --color-text-locked: #222;
+}
+body.dark,
+html.dark {
+  --color-text-locked: #eee;
+}
+</style>

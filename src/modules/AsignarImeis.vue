@@ -62,7 +62,7 @@ import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
-import { getArticulos } from '@/services/articulosService';
+import { getTodosArticulos } from '@/services/articulosService';
 import { registrarYAsignarIMEIsPorNombre, getIMEIs } from '@/services/imeiService';
 
 const articulos = ref([]);
@@ -73,10 +73,10 @@ const mensaje = ref('');
 const showDialog = ref(false);
 const showWarningDialog = ref(false);
 const warningMessage = ref('');
-const imeisExistentes = ref([]); // <-- Nuevo array reactivo
+const imeisExistentes = ref([]);
 
 onMounted(async () => {
-  articulos.value = await getArticulos();
+  articulos.value = await getTodosArticulos();
 });
 
 const agregarImei = () => {
@@ -85,7 +85,7 @@ const agregarImei = () => {
   if (imeis.value.includes(imei)) {
     warningMessage.value = `El IMEI "${imei}" ya está en la lista.`;
     showWarningDialog.value = true;
-    nuevoImei.value = ''; 
+    nuevoImei.value = '';
     return;
   }
   imeis.value.push(imei);
@@ -154,7 +154,6 @@ h2 {
   text-align: center;
   margin-bottom: 2rem;
   color: var(--color-title);
-  /* Rosa opaco llamativo */
 }
 .form-card {
   background: var(--color-card);

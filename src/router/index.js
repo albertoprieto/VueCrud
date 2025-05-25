@@ -89,6 +89,11 @@ const routes = [
     path: '/clientes',
     name: 'clientes',
     component: () => import('@/modules/Clientes.vue')
+  },
+  {
+    path: '/ventas',
+    name: 'ventas',
+    component: () => import('@/modules/Ventas.vue')
   }
 ];
 

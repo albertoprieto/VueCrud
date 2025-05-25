@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { getArticulos, addArticulo, updateArticulo, deleteArticulo as deleteArticuloService } from '@/services/articulosService';
+import { getArticulos, getTodosArticulos, addArticulo, updateArticulo, deleteArticulo as deleteArticuloService } from '@/services/articulosService';
 import { getIMEIs } from '@/services/imeiService';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -28,15 +28,12 @@ const articuloToDelete = ref(null);
 const loadArticulos = async () => {
   loadingArticulos.value = true;
   try {
-    articulos.value = await getArticulos();
+    articulos.value = await getTodosArticulos(); // <-- Cambia aquí
     imeis.value = await getIMEIs();
-    console.log('Artículos cargados:', JSON.parse(JSON.stringify(articulos.value)));
-    console.log('IMEIs cargados:', JSON.parse(JSON.stringify(imeis.value)));
   } finally {
     loadingArticulos.value = false;
   }
 };
-
 onMounted(loadArticulos);
 
 // Formato moneda MXN
@@ -48,6 +45,8 @@ const formatoMoneda = (valor) => {
 const existenciasEnMano = (rowData) => {
   // Coincidencia exacta entre articulo.nombre y imei.articulo_nombre
   const nombre = rowData.nombre;
+  console.log(rowData);
+  
   const imeisAsociados = imeis.value.filter(i => i.articulo_nombre === nombre);
   return imeisAsociados.length;
 };
