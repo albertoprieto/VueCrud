@@ -94,6 +94,17 @@ const routes = [
     path: '/ventas',
     name: 'ventas',
     component: () => import('@/modules/Ventas.vue')
+  },
+  {
+    path: '/ubicaciones',
+    name: 'Ubicaciones',
+    component: () => import('@/modules/Ubicaciones.vue')
+  },
+  {
+    path: '/ubicaciones/:id/imeis',
+    name: 'UbicacionImeis',
+    component: () => import('@/modules/UbicacionImeis.vue'),
+    props: true
   }
 ];
 

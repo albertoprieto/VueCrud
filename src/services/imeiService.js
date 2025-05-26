@@ -8,8 +8,8 @@ export const addIMEI = async (imeiData) => {
 };
 
 export const getIMEIs = async () => {
-  const response = await axios.get(API_URL);
-  return response.data;
+  const res = await axios.get(API_URL);
+  return res.data;
 };
 
 export const updateIMEI = async (imei, data) => {

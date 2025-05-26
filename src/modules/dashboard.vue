@@ -68,7 +68,8 @@ const items = ref([
     items: [
       { label: 'Alta artículos', route: '/alta-articulo' },
       { label: 'Asignar IMEIs', route: '/asignar-imeis' },
-      { label: 'Stock', route: '/articulos-con-imeis' }
+      { label: 'Ubicaciones', route: '/ubicaciones' },
+      { label: 'Historico', route: '/articulos-con-imeis' },
     ]
   },
     {
@@ -79,27 +80,27 @@ const items = ref([
       { label: 'Notas de Venta', route: '/ventas' }
     ]
   },
-  {
-    label: 'Cotizaciones',
-    icon: 'pi pi-fw pi-dollar',
-    items: [
-      { label: 'Crear', route: '/cotizacion' },
-      { label: 'Consultar', route: '/consultar-cotizaciones' }
-    ],
-    locked: true // campo personalizado para el slot
-  },
-  {
-    label: 'Calendario',
-    icon: 'pi pi-fw pi-calendar',
-    route: '/calendario-cotizaciones',
-    locked: true // campo personalizado para el slot
-  },
-  {
-    label: 'Seguimiento',
-    icon: 'pi pi-fw pi-file',
-    route:'/seguimiento',
-    locked: true // campo personalizado para el slot
-  },
+  // {
+  //   label: 'Cotizaciones',
+  //   icon: 'pi pi-fw pi-dollar',
+  //   items: [
+  //     { label: 'Crear', route: '/cotizacion' },
+  //     { label: 'Consultar', route: '/consultar-cotizaciones' }
+  //   ],
+  //   locked: true // campo personalizado para el slot
+  // },
+  // {
+  //   label: 'Calendario',
+  //   icon: 'pi pi-fw pi-calendar',
+  //   route: '/calendario-cotizaciones',
+  //   locked: true // campo personalizado para el slot
+  // },
+  // {
+  //   label: 'Seguimiento',
+  //   icon: 'pi pi-fw pi-file',
+  //   route:'/seguimiento',
+  //   locked: true // campo personalizado para el slot
+  // },
 
   {
     label: 'Cerrar',

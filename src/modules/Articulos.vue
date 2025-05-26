@@ -36,24 +36,33 @@ const loadArticulos = async () => {
 };
 onMounted(loadArticulos);
 
+// Agrupa los imeis por artículo y calcula vendidos y total vendido
+const resumenArticulos = computed(() => {
+  const grupos = {};
+  imeis.value.forEach(i => {
+    if (!grupos[i.articulo_nombre]) grupos[i.articulo_nombre] = [];
+    grupos[i.articulo_nombre].push(i);
+  });
+  return articulos.value.map(art => {
+    const imeisArr = grupos[art.nombre] || [];
+    const existencias = imeisArr.filter(i => i.status === 'Disponible').length;
+    const precio = Number(art.precioVenta) || 0;
+    return {
+      ...art,
+      existencias,
+      // Elimina vendidos y totalVendido
+    };
+  });
+});
+
 // Formato moneda MXN
 const formatoMoneda = (valor) => {
   return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor) || 0);
 };
 
-// Para DataTable: muestra existencias en mano por artículo
-const existenciasEnMano = (rowData) => {
-  // Coincidencia exacta entre articulo.nombre y imei.articulo_nombre
-  const nombre = rowData.nombre;
-  console.log(rowData);
-  
-  const imeisAsociados = imeis.value.filter(i => i.articulo_nombre === nombre);
-  return imeisAsociados.length;
-};
-
 const filteredArticulos = computed(() => {
-  if (!search.value) return articulos.value;
-  return articulos.value.filter(a =>
+  if (!search.value) return resumenArticulos.value;
+  return resumenArticulos.value.filter(a =>
     a.nombre?.toLowerCase().includes(search.value.toLowerCase()) ||
     a.sku?.toLowerCase().includes(search.value.toLowerCase()) ||
     a.descripcion?.toLowerCase().includes(search.value.toLowerCase())
@@ -117,21 +126,19 @@ const deleteArticulo = async (id) => {
 
 const exportarArticulos = () => {
   const mxn = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-  const data = articulos.value.map(art => {
-    const stock = imeis.value.filter(i => i.articulo_nombre === art.nombre).length;
-    const precio = Number(art.precioVenta) || 0;
-    return {
-      'Artículo': art.nombre,
-      'SKU': art.sku,
-      'Tipo': art.tipo,
-      'Unidad': art.unidad,
-      'Precio de venta': mxn.format(precio),
-      'Existencias en mano': stock,
-      'Total inventario': mxn.format(precio * stock),
-      'Descripción': art.descripcion,
-      'Impuesto': art.impuesto,
-    };
-  });
+  const data = resumenArticulos.value.map(art => ({
+    'Artículo': art.nombre,
+    'SKU': art.sku,
+    'Tipo': art.tipo,
+    'Unidad': art.unidad,
+    'Precio de venta': mxn.format(art.precioVenta),
+    'Existencias en mano': art.existencias,
+    'Vendidos': art.vendidos,
+    'Total inventario': mxn.format(art.precioVenta * art.existencias),
+    'Total vendidos (MXN)': mxn.format(art.totalVendido),
+    'Descripción': art.descripcion,
+    'Impuesto': art.impuesto,
+  }));
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Artículos');
@@ -158,7 +165,6 @@ const exportarArticulos = () => {
       >
         <Column field="sku" header="SKU" sortable />
         <Column field="nombre" header="Nombre" sortable />
-        <Column field="descripcion" header="Descripción" sortable />
         <Column field="tipo" header="Tipo" sortable />
         <Column field="precioVenta" header="Precio de venta">
           <template #body="slotProps">
@@ -167,12 +173,7 @@ const exportarArticulos = () => {
         </Column>
         <Column header="Existencias en mano">
           <template #body="slotProps">
-            {{ existenciasEnMano(slotProps.data) }}
-          </template>
-        </Column>
-        <Column header="Total inventario">
-          <template #body="slotProps">
-            {{ formatoMoneda(slotProps.data.precioVenta * existenciasEnMano(slotProps.data)) }}
+            {{ slotProps.data.existencias }}
           </template>
         </Column>
         <Column header="Acciones">
