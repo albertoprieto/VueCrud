@@ -94,7 +94,7 @@ const handleDeleteCliente = async (id) => {
 
 <style scoped>
 .clientes-container {
-  /* max-width: 900px; */
+  max-width: 900px;
   margin: 2rem auto;
   padding: 2rem;
   background: var(--color-bg);

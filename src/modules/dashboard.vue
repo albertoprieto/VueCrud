@@ -72,12 +72,13 @@ const items = ref([
       { label: 'Historico', route: '/articulos-con-imeis' },
     ]
   },
-    {
+  {
     label: 'Ventas',
     icon: 'pi pi-fw pi-briefcase',
     items: [
       { label: 'Clientes', route: '/clientes' },
-      { label: 'Notas de Venta', route: '/ventas' }
+      { label: 'Notas de Venta', route: '/ventas' },
+      { label: 'Consultar Ventas', route: '/consultar-ventas' }
     ]
   },
   // {
