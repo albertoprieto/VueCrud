@@ -99,7 +99,7 @@
 
       <div class="mb-2">
         <label>Observaciones</label>
-        <Textarea v-model="venta.observaciones" rows="2" />
+        <InputText v-model="venta.observaciones" class="w-full" />
       </div>
 
       <div class="mb-2">
@@ -114,7 +114,47 @@
         <Column field="cliente_nombre" header="Cliente" />
         <Column field="fecha" header="Fecha" />
         <Column field="total" header="Total" />
+        <Column header="Acciones">
+          <template #body="slotProps">
+            <Button label="Ver Detalle" icon="pi pi-eye" class="p-button-text" @click="cargarDetalleVenta({ data: slotProps.data }); showDetalleDialog = true" />
+          </template>
+        </Column>
       </DataTable>
+      <Dialog v-model:visible="showDetalleDialog" header="Detalle de Venta" :modal="true" class="ventas-dialog">
+        <div v-if="detalleVenta && detalleVenta.length" class="detalle-venta-dialog">
+          <table class="detalle-table">
+            <thead>
+              <tr>
+                <th>Artículo</th>
+                <th>Cantidad</th>
+                <th>Precio</th>
+                <th>Subtotal</th>
+                <th v-if="detalleVenta.some(i => i.imei)">IMEI</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in detalleVenta" :key="item.id">
+                <td>{{ item.articulo_nombre }}</td>
+                <td>{{ item.cantidad }}</td>
+                <td>${{ item.precio_unitario.toFixed(2) }}</td>
+                <td>${{ (item.cantidad * item.precio_unitario).toFixed(2) }}</td>
+                <td v-if="item.imei">{{ item.imei }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="detalle-venta-footer">
+            <div><strong>Observaciones:</strong> {{ ventaSeleccionada?.observaciones || 'Sin observaciones' }}</div>
+            <div class="detalle-total">
+              <strong>Total:</strong>
+              ${{ detalleVenta.reduce((acc, item) => acc + (item.cantidad * item.precio_unitario), 0).toFixed(2) }}
+            </div>
+          </div>
+        </div>
+        <div v-else>
+          <span>No hay detalle disponible.</span>
+        </div>
+        <Button label="Cerrar" @click="showDetalleDialog = false" class="detalle-cerrar-btn" />
+      </Dialog>
 
       <Dialog v-model:visible="showDialog" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
         <p>La nota de venta se registró correctamente.</p>
@@ -133,6 +173,7 @@ import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
+import { ref } from 'vue';
 
 const {
   today,
@@ -156,6 +197,8 @@ const {
   guardarVenta,
   cargarDetalleVenta
 } = useVentas();
+
+const showDetalleDialog = ref(false);
 </script>
 
 <style scoped>
@@ -230,15 +273,60 @@ const {
   background: var(--color-card);
   padding: 1.5rem 1rem;
   border-radius: 12px;
+  color: var(--color-text);
 }
 .ventas-dialog :deep(.p-dialog-header) {
   background: var(--color-bg);
   color: var(--color-title);
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--color-border);
   border-radius: 12px 12px 0 0;
   font-size: 1.2rem;
   font-weight: bold;
   padding: 1rem 1.5rem;
+}
+.detalle-venta-dialog {
+  padding: 0.5rem 0;
+}
+.detalle-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  background: var(--color-card);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  color: var(--color-text);
+}
+.detalle-table th, .detalle-table td {
+  padding: 0.7em 1em;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+.detalle-table th {
+  background: var(--color-bg);
+  color: var(--color-title);
+  font-weight: 600;
+}
+.detalle-table tr:last-child td {
+  border-bottom: none;
+}
+.detalle-venta-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 1rem;
+  font-size: 1.05em;
+  color: var(--color-text);
+}
+.detalle-total {
+  color: var(--color-title);
+  font-size: 1.15em;
+  font-weight: bold;
+}
+.detalle-cerrar-btn {
+  margin-top: 1.5rem;
+  float: right;
 }
 @media (max-width: 700px) {
   .ventas-container {

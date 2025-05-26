@@ -105,6 +105,11 @@ const routes = [
     name: 'UbicacionImeis',
     component: () => import('@/modules/UbicacionImeis.vue'),
     props: true
+  },
+  {
+    path: '/consultar-ventas',
+    name: 'consultar-ventas',
+    component: () => import('@/modules/consultarVentas.vue')
   }
 ];
 
