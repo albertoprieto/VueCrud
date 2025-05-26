@@ -152,7 +152,7 @@ const exportarArticulos = () => {
     <h2>Artículos</h2>
     <div class="actions">
       <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" />
-      <Button label="Exportar Excel" icon="pi pi-file-excel" class="p-button-success" @click="exportarArticulos" />
+      <!-- <Button label="Exportar Excel" icon="pi pi-file-excel" class="p-button-success" @click="exportarArticulos" /> -->
       <InputText v-model="search" placeholder="Buscar..." class="ml-2" />
     </div>
     <div class="articulos-card">
@@ -254,7 +254,8 @@ const exportarArticulos = () => {
 
 <style scoped>
 .articulos {
-  max-width: 900px;
+  /* max-width: 900px; */
+  padding: 2rem;
   margin: 0 auto;
   text-align: center;
   background: var(--color-bg);

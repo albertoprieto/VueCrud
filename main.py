@@ -41,9 +41,9 @@ def get_imeis(articulo_nombre: str = None):
     )
     cursor = db.cursor(dictionary=True)
     if articulo_nombre:
-        cursor.execute("SELECT * FROM imeis WHERE articulo_nombre=%s AND status='Disponible'", (articulo_nombre,))
+        cursor.execute("SELECT * FROM imeis WHERE articulo_nombre=%s", (articulo_nombre,))
     else:
-        cursor.execute("SELECT * FROM imeis WHERE status='Disponible'")
+        cursor.execute("SELECT * FROM imeis")
     items = cursor.fetchall()
     cursor.close()
     db.close()
@@ -59,9 +59,9 @@ def get_imeis_vendidos(articulo_nombre: str = None):
     )
     cursor = db.cursor(dictionary=True)
     if articulo_nombre:
-        cursor.execute("SELECT * FROM imeis WHERE articulo_nombre=%s AND status='Vendido'", (articulo_nombre,))
+        cursor.execute("SELECT * FROM imeis WHERE articulo_nombre=%s", (articulo_nombre,))
     else:
-        cursor.execute("SELECT * FROM imeis WHERE status='Vendido'")
+        cursor.execute("SELECT * FROM imeis")
     items = cursor.fetchall()
     cursor.close()
     db.close()

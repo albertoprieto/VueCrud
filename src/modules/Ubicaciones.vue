@@ -18,7 +18,7 @@
         </template>
       </Column>
     </DataTable>
-    <Dialog v-model:visible="showModal" :header="editando ? 'Editar Ubicación' : 'Nueva Ubicación'" :modal="true">
+    <Dialog v-model:visible="showModal" :header="editando ? 'Editar Ubicación' : 'Nueva Ubicación'" :modal="true" class="ubicaciones-dialog">
       <div>
         <InputText v-model="form.nombre" placeholder="Nombre" class="mb-2 w-full" />
         <Textarea v-model="form.descripcion" placeholder="Descripción" class="w-full" />
@@ -28,7 +28,7 @@
         <Button label="Guardar" @click="guardarUbicacion" />
       </template>
     </Dialog>
-    <Dialog v-model:visible="showConfirmDelete" header="Confirmar" :modal="true">
+    <Dialog v-model:visible="showConfirmDelete" header="Confirmar" :modal="true" class="ubicaciones-dialog">
       <span>¿Eliminar esta ubicación?</span>
       <template #footer>
         <Button label="Cancelar" @click="showConfirmDelete = false" />
@@ -110,3 +110,45 @@ const verImeis = (ubicacion) => {
 
 onMounted(cargarUbicaciones);
 </script>
+
+<style scoped>
+.ubicaciones {
+  /* max-width: 900px; */
+  margin: 2rem auto;
+  padding: 2rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+}
+h2 {
+  margin-bottom: 2rem;
+  color: var(--color-title);
+}
+.p-button {
+  margin-right: 0.5rem;
+}
+.p-button:last-child {
+  margin-right: 0;
+}
+.ubicaciones-dialog :deep(.p-dialog-content) {
+  background: var(--color-card);
+  padding: 1.5rem 1rem;
+  border-radius: 12px;
+}
+.ubicaciones-dialog :deep(.p-dialog-header) {
+  background: var(--color-bg);
+  color: var(--color-title);
+  border-bottom: 1px solid #e0e0e0;
+  border-radius: 12px 12px 0 0;
+  font-size: 1.2rem;
+  font-weight: bold;
+  padding: 1rem 1.5rem;
+}
+.mb-2 {
+  margin-bottom: 1rem;
+}
+.w-full {
+  width: 100%;
+}
+</style>
