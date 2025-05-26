@@ -1,1 +1,0 @@
-import{B as s}from"./index-CLV_fX0D.js";const a="https://64.227.15.111/articulos",o=async()=>(await s.get(`${a}/todos`)).data,c=async t=>(await s.post(a,t)).data,n=async t=>(await s.put(`${a}/${t.id}`,t)).data,d=async t=>(await s.delete(`${a}/${t}`)).data;export{c as a,d,o as g,n as u};
