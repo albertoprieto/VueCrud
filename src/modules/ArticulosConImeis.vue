@@ -28,6 +28,16 @@
         <Column field="total_disponible" header="Total disponibles (MXN)" sortable />
         <Column field="total_vendido" header="Total vendidos (MXN)" sortable />
         <Column field="ubicacion_nombre" header="Ubicación" sortable />
+        <Column header="Ver IMEIs">
+          <template #body="slotProps">
+            <Button
+              label="Ver IMEIs"
+              icon="pi pi-eye"
+              class="p-button-text p-button-sm"
+              @click="verImeis(slotProps.data.articulo_nombre)"
+            />
+          </template>
+        </Column>
       </DataTable>
     </div>
 
@@ -36,6 +46,32 @@
       <div class="total-disponible">Total disponibles: <span>{{ totalDisponiblesMXN }}</span></div>
       <div class="total-vendido">Total vendidos: <span>{{ totalVendidosMXN }}</span></div>
     </div>
+
+    <Dialog v-model:visible="showImeisDialog" header="IMEIs del artículo" :modal="true" :style="{width: '500px'}" class="imeis-dialog">
+      <div v-if="imeisSeleccionados.length">
+        <table class="imeis-table">
+          <thead>
+            <tr>
+              <th>IMEI</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="i in imeisSeleccionados" :key="i.imei">
+              <td>{{ i.imei }}</td>
+              <td>
+                <span :class="i.status === 'Vendido' ? 'vendido-label' : 'disponible-label'">
+                  {{ i.status }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else class="imeis-empty">
+        No hay IMEIs para este artículo.
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -61,8 +97,6 @@ const imeisSeleccionados = ref([]);
 const filtroNombre = ref('');
 const sortField = ref('articulo_nombre');
 const sortOrder = ref(1);
-const mostrarVendidos = ref(false);
-const mostrarDisponibles = ref(false);
 
 const articulosAgrupados = computed(() => {
   const grupos = {};
@@ -78,25 +112,6 @@ const articulosAgrupados = computed(() => {
     imeis: imeisArr
   }));
 });
-
-const articulosFiltrados = computed(() => {
-  if (!filtroNombre.value) return articulosAgrupados.value;
-  return articulosAgrupados.value.filter(a =>
-    a.articulo_nombre?.toLowerCase().includes(filtroNombre.value.toLowerCase())
-  );
-});
-
-const imeisFiltrados = computed(() => {
-  if (mostrarVendidos.value) {
-    return imeisSeleccionados.value.filter(i => i.status === 'Vendido');
-  }
-  if (mostrarDisponibles.value) {
-    return imeisSeleccionados.value.filter(i => i.status === 'Disponible');
-  }
-  return imeisSeleccionados.value;
-});
-
-const mxn = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
 const historicoArticulos = computed(() => {
   const grupos = {};
@@ -132,6 +147,8 @@ const historicoFiltrado = computed(() => {
   );
 });
 
+const mxn = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+
 const totalDisponiblesMXN = computed(() =>
   mxn.format(historicoArticulos.value.reduce((acc, art) => acc + Number(art.total_disponible.replace(/[^0-9.-]+/g,"")), 0))
 );
@@ -154,9 +171,7 @@ const onSort = (event) => {
 const loadIMEIs = async () => {
   loadingImeis.value = true;
   try {
-    const disponibles = await getIMEIs();
-    const vendidos = await fetch('https://64.227.15.111/imeis-vendidos').then(r => r.json());
-    imeis.value = [...disponibles, ...vendidos];
+    imeis.value = await getIMEIs();
     articulos.value = await getTodosArticulos();
     ubicaciones.value = await getUbicaciones();
   } finally {
@@ -197,18 +212,12 @@ const exportarInventario = () => {
   saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'inventario.xlsx');
 };
 
-const rowClass = (data) => {
-  if (data.status === 'Vendido') return 'imei-vendido';
-  if (data.status === 'Disponible') return 'imei-disponible';
-  return '';
-};
-
 onMounted(loadIMEIs);
 </script>
 
 <style scoped>
 .articulos-con-imeis {
-  max-width: 900px;
+  /* max-width: 900px; */
   margin: 2rem auto;
   text-align: center;
   background: var(--color-bg);
@@ -320,5 +329,47 @@ html.dark {
   font-weight: bold;
   padding: 0.7em 1.5em;
   border-radius: 8px;
+}
+.imeis-dialog :deep(.p-dialog-content) {
+  background: var(--color-card);
+  padding: 1.5rem 1rem;
+  border-radius: 12px;
+}
+.imeis-dialog :deep(.p-dialog-header) {
+  background: var(--color-bg);
+  color: var(--color-title);
+  border-bottom: 1px solid #e0e0e0;
+  border-radius: 12px 12px 0 0;
+  font-size: 1.2rem;
+  font-weight: bold;
+  padding: 1rem 1.5rem;
+}
+.imeis-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  background: var(--color-card);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.imeis-table th, .imeis-table td {
+  padding: 0.7em 1em;
+  text-align: left;
+  border-bottom: 1px solid #ececec;
+}
+.imeis-table th {
+  background: var(--color-bg);
+  color: var(--color-title);
+  font-weight: 600;
+}
+.imeis-table tr:last-child td {
+  border-bottom: none;
+}
+.imeis-empty {
+  text-align: center;
+  color: #888;
+  font-size: 1.1em;
+  padding: 2em 0;
 }
 </style>

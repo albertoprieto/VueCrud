@@ -1,13 +1,13 @@
 <template>
-  <div class="ventas-card">
-    <div class="p-4">
-      <h2>Registrar Nota de Venta</h2>
+  <div class="ventas-container">
+    <h2 class="ventas-title">Registrar Nota de Venta</h2>
+    <div class="ventas-card">
       <div class="ventas-form-header">
         <div class="ventas-form-col">
           <label class="mb-2">Cliente</label>
           <Dropdown v-model="venta.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id" placeholder="Selecciona un cliente" class="w-full" />
         </div>
-        <div class="ventas-form-col justify-center">
+        <div class="ventas-form-col">
           <label>Fecha</label>
           <InputText v-model="venta.fecha" :value="today" readonly class="fecha-input" />
         </div>
@@ -92,23 +92,23 @@
       <Button
         label="Agregar Artículo"
         icon="pi pi-plus"
-        class="p-mt-2"
+        class="mb-2"
         @click="addArticulo"
         :disabled="articulosConStock().length === 0"
       />
 
-      <div class="p-mt-4">
+      <div class="mb-2">
         <label>Observaciones</label>
         <Textarea v-model="venta.observaciones" rows="2" />
       </div>
 
-      <div class="p-mt-4">
+      <div class="mb-2">
         <strong>Total: ${{ totalVenta.toFixed(2) }}</strong>
       </div>
 
-      <Button label="Guardar Venta" class="p-mt-4" @click="guardarVenta" :disabled="!venta.cliente_id || venta.articulos.length === 0" />
+      <Button label="Guardar Venta" class="mb-2" @click="guardarVenta" :disabled="!venta.cliente_id || venta.articulos.length === 0" />
 
-      <h2 class="p-mt-6">Ventas Registradas</h2>
+      <h2 class="ventas-title">Ventas Registradas</h2>
       <DataTable :value="ventas" selectionMode="single" v-model:selection="ventaSeleccionada" @rowSelect="cargarDetalleVenta">
         <Column field="id" header="ID" />
         <Column field="cliente_nombre" header="Cliente" />
@@ -116,10 +116,7 @@
         <Column field="total" header="Total" />
       </DataTable>
 
-      <!-- Aquí puedes importar y mostrar el nuevo componente de detalle cuando lo tengas listo -->
-      <!-- <DetalleVenta v-if="ventaSeleccionada" :venta="ventaSeleccionada" /> -->
-
-      <Dialog v-model:visible="showDialog" header="Venta registrada" :closable="false" :modal="true">
+      <Dialog v-model:visible="showDialog" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
         <p>La nota de venta se registró correctamente.</p>
         <Button label="Aceptar" icon="pi pi-check" @click="showDialog = false" autofocus />
       </Dialog>
@@ -136,9 +133,6 @@ import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
-
-// Si luego creas el componente DetalleVenta, lo importas aquí
-// import DetalleVenta from './DetalleVenta.vue';
 
 const {
   today,
@@ -165,48 +159,43 @@ const {
 </script>
 
 <style scoped>
-.ventas-card {
-  max-width: 900px;
+.ventas-container {
+  /* max-width: 900px; */
   margin: 2rem auto;
+  padding: 2rem;
   background: var(--color-bg);
   color: var(--color-text);
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.10);
-  padding: 2rem 1.5rem;
 }
-
-h2, h3 {
+.ventas-title {
+  margin-bottom: 2rem;
   color: var(--color-title);
-  margin-bottom: 1.5rem;
   text-align: center;
 }
-
-.p-formgrid {
+.ventas-card {
+  background: var(--color-card);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin-bottom: 2rem;
+}
+.ventas-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
   margin-bottom: 1.5rem;
+  gap: 1rem;
 }
-
-.p-field label {
-  color: var(--color-title);
-  font-weight: 500;
+.ventas-form-col {
+  flex: 1;
 }
-
-.p-button {
-  border-radius: 6px;
-  font-weight: 500;
+.mb-2 {
+  margin-bottom: 1rem;
 }
-
-.p-mt-2, .p-mt-4, .p-mt-6 {
-  margin-top: 1.5rem !important;
+.w-full {
+  width: 100%;
 }
-
-textarea, .p-inputtext, .p-dropdown {
-  background: var(--color-bg-light);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 0.5rem;
-}
-
 .venta-articulos-table {
   margin-bottom: 2rem;
   background: var(--color-card);
@@ -214,7 +203,6 @@ textarea, .p-inputtext, .p-dropdown {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   padding: 1.5rem;
 }
-
 .imei-seleccionado {
   background: var(--color-bg-light);
   color: var(--color-primary);
@@ -226,48 +214,42 @@ textarea, .p-inputtext, .p-dropdown {
   gap: 0.5rem;
   align-items: center;
 }
-
 .error-text {
   color: var(--color-error);
   font-size: 0.85em;
   margin-top: 0.1rem;
   display: block;
 }
-
 .info-text {
   color: var(--color-primary);
   font-size: 0.85em;
   margin-top: 0.1rem;
   display: block;
 }
-
-.ventas-form-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 1.5rem;
+.ventas-dialog :deep(.p-dialog-content) {
+  background: var(--color-card);
+  padding: 1.5rem 1rem;
+  border-radius: 12px;
 }
-
-.ventas-form-col {
-  flex: 1;
-  margin-right: 1rem;
+.ventas-dialog :deep(.p-dialog-header) {
+  background: var(--color-bg);
+  color: var(--color-title);
+  border-bottom: 1px solid #e0e0e0;
+  border-radius: 12px 12px 0 0;
+  font-size: 1.2rem;
+  font-weight: bold;
+  padding: 1rem 1.5rem;
 }
-
-.ventas-form-col-fecha {
-  /* display: table-column; */
-  /* flex-direction: column; */
-  align-items: flex-end;
-  justify-content: flex-end;
-  margin-right: 0;
-}
-
-.fecha-input {
-  width: 100%;
-}
-
 @media (max-width: 700px) {
+  .ventas-container {
+    padding: 1rem 0.2rem;
+  }
   .ventas-card {
-    padding: 1rem 0.5rem;
+    padding: 0.5rem;
+  }
+  .ventas-form-header {
+    flex-direction: column;
+    gap: 0.5rem;
   }
   .venta-articulos-table {
     font-size: 0.95em;

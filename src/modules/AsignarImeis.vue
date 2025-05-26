@@ -142,7 +142,7 @@ const registrarYAsignar = async () => {
   margin-bottom: 0.25rem;
 }
 .asignar-imeis-container {
-  max-width: 500px;
+  /* max-width: 500px; */
   margin: 2rem auto;
   padding: 2rem 1.5rem;
   background: var(--color-bg);

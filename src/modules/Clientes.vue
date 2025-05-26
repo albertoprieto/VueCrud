@@ -1,21 +1,23 @@
 <template>
-  <div>
-    <h2>Clientes</h2>
-    <Button label="Agregar Cliente" @click="openModal" />
-    <DataTable :value="clientes">
-      <Column field="nombre" header="Nombre" />
-      <Column field="telefono" header="Teléfono" />
-      <Column field="correo" header="Correo" />
-      <Column field="direccion" header="Dirección" />
-      <Column header="Acciones">
-        <template #body="slotProps">
-          <Button icon="pi pi-pencil" @click="editCliente(slotProps.data)" />
-          <Button icon="pi pi-trash" @click="handleDeleteCliente(slotProps.data.id)" />
-        </template>
-      </Column>
-    </DataTable>
+  <div class="clientes-container">
+    <h2 class="clientes-title">Clientes</h2>
+    <div class="clientes-card">
+      <Button label="Agregar Cliente" icon="pi pi-plus" @click="openModal" class="mb-2" />
+      <DataTable :value="clientes">
+        <Column field="nombre" header="Nombre" />
+        <Column field="telefono" header="Teléfono" />
+        <Column field="correo" header="Correo" />
+        <Column field="direccion" header="Dirección" />
+        <Column header="Acciones">
+          <template #body="slotProps">
+            <Button icon="pi pi-pencil" class="p-button-text" @click="editCliente(slotProps.data)" />
+            <Button icon="pi pi-trash" class="p-button-text p-button-danger" @click="handleDeleteCliente(slotProps.data.id)" />
+          </template>
+        </Column>
+      </DataTable>
+    </div>
     <!-- Modal para agregar/editar cliente -->
-    <Dialog v-model:visible="showModal" :header="form.id ? 'Editar Cliente' : 'Nuevo Cliente'" :modal="true" :closable="true">
+    <Dialog v-model:visible="showModal" :header="form.id ? 'Editar Cliente' : 'Nuevo Cliente'" :modal="true" :closable="true" class="clientes-dialog">
       <div class="form-group">
         <label for="nombre">Nombre:</label>
         <InputText id="nombre" v-model="form.nombre" class="w-full" />
@@ -91,6 +93,27 @@ const handleDeleteCliente = async (id) => {
 </script>
 
 <style scoped>
+.clientes-container {
+  /* max-width: 900px; */
+  margin: 2rem auto;
+  padding: 2rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+}
+.clientes-title {
+  margin-bottom: 2rem;
+  color: var(--color-title);
+  text-align: center;
+}
+.clientes-card {
+  background: var(--color-card);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin-bottom: 2rem;
+}
 .form-group {
   margin-bottom: 1rem;
 }
@@ -99,5 +122,25 @@ const handleDeleteCliente = async (id) => {
   justify-content: flex-end;
   gap: 1rem;
   margin-top: 1rem;
+}
+.clientes-dialog :deep(.p-dialog-content) {
+  background: var(--color-card);
+  padding: 1.5rem 1rem;
+  border-radius: 12px;
+}
+.clientes-dialog :deep(.p-dialog-header) {
+  background: var(--color-bg);
+  color: var(--color-title);
+  border-bottom: 1px solid #e0e0e0;
+  border-radius: 12px 12px 0 0;
+  font-size: 1.2rem;
+  font-weight: bold;
+  padding: 1rem 1.5rem;
+}
+.mb-2 {
+  margin-bottom: 1rem;
+}
+.w-full {
+  width: 100%;
 }
 </style>
