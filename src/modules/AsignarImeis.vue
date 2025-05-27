@@ -37,6 +37,36 @@
           </li>
         </ul>
       </div>
+      <div class="form-group">
+        <label for="ubicacionDestino">
+          Ubicación destino
+        </label>
+        <Dropdown
+          id="ubicacionDestino"
+          v-model="ubicacionDestino"
+          :options="ubicaciones"
+          optionLabel="nombre"
+          placeholder="Selecciona ubicación"
+          class="w-full"
+        />
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" v-model="modoTransferencia" />
+          Transferencia entre ubicaciones
+        </label>
+      </div>
+      <div v-if="modoTransferencia" class="form-group">
+        <label for="ubicacionOrigen">Ubicación origen</label>
+        <Dropdown
+          id="ubicacionOrigen"
+          v-model="ubicacionOrigen"
+          :options="ubicaciones"
+          optionLabel="nombre"
+          placeholder="Selecciona ubicación origen"
+          class="w-full"
+        />
+      </div>
       <div class="form-actions">
         <Button label="Registrar y asignar IMEIs" icon="pi pi-save" @click="registrarYAsignar" class="p-button-success" :disabled="imeis.length === 0" />
       </div>
@@ -64,6 +94,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import { getTodosArticulos } from '@/services/articulosService';
 import { registrarYAsignarIMEIsPorNombre, getIMEIs } from '@/services/imeiService';
+import { getUbicaciones, asignarImeisUbicacion } from '@/services/ubicacionesService';
 
 const articulos = ref([]);
 const selectedArticulo = ref(null);
@@ -74,9 +105,16 @@ const showDialog = ref(false);
 const showWarningDialog = ref(false);
 const warningMessage = ref('');
 const imeisExistentes = ref([]);
+const ubicaciones = ref([]);
+const ubicacionDestino = ref(null);
+const modoTransferencia = ref(false);
+const ubicacionOrigen = ref(null);
 
 onMounted(async () => {
   articulos.value = await getTodosArticulos();
+  ubicaciones.value = await getUbicaciones();
+  ubicacionDestino.value = ubicaciones.value[0] || null;
+  ubicacionOrigen.value = ubicaciones.value[0] || null;
 });
 
 const agregarImei = () => {
@@ -97,7 +135,7 @@ const eliminarImei = (idx) => {
 };
 
 const registrarYAsignar = async () => {
-  if (!selectedArticulo.value || imeis.value.length === 0) return;
+  if (!selectedArticulo.value || imeis.value.length === 0 || !ubicacionDestino.value) return;
 
   // Validar IMEIs existentes en la base de datos
   try {
@@ -119,7 +157,8 @@ const registrarYAsignar = async () => {
   // Si todo está bien, guardar
   try {
     await registrarYAsignarIMEIsPorNombre(selectedArticulo.value.nombre, imeis.value);
-    mensaje.value = `${imeis.value.length} IMEIs asignados al artículo "${selectedArticulo.value.nombre}" correctamente.`;
+    await asignarImeisUbicacion(ubicacionDestino.value.id, imeis.value);
+    mensaje.value = `${imeis.value.length} IMEIs asignados al artículo "${selectedArticulo.value.nombre}" y a la ubicación "${ubicacionDestino.value.nombre}" correctamente.`;
     imeis.value = [];
     imeisExistentes.value = [];
   } catch (e) {
