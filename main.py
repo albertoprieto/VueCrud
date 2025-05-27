@@ -873,7 +873,7 @@ def get_imeis_por_ubicacion(ubicacion_id: int):
     )
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
-        SELECT i.*, a.nombre as articulo_nombre
+        SELECT i.*, a.nombre as articulo_nombre, a.sku as sku
         FROM imeis i
         LEFT JOIN articulos a ON i.articulo_nombre = a.nombre
         WHERE i.ubicacion_id = %s
