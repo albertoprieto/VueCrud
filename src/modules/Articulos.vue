@@ -15,7 +15,20 @@ const articulos = ref([]);
 const imeis = ref([]);
 const loadingArticulos = ref(true);
 const showModal = ref(false);
-const form = ref({ id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' });
+const form = ref({
+  id: null,
+  sku: '',
+  nombre: '',
+  descripcion: '',
+  tipo: '',
+  precioVenta: '',
+  unidad: '',
+  impuesto: '',
+  precioCompra: '',
+  codigoSat: '',
+  unidadSat: '',
+  codigoUnidadSat: ''
+});
 const search = ref('');
 const sortField = ref('nombre');
 const sortOrder = ref(1);
@@ -176,6 +189,14 @@ const exportarArticulos = () => {
             {{ slotProps.data.existencias }}
           </template>
         </Column>
+        <Column field="precioCompra" header="Precio de compra">
+          <template #body="slotProps">
+            {{ formatoMoneda(slotProps.data.precioCompra) }}
+          </template>
+        </Column>
+        <Column field="codigoSat" header="Código SAT" sortable />
+        <Column field="unidadSat" header="Unidad SAT" sortable />
+        <Column field="codigoUnidadSat" header="Código unidad SAT" sortable />
         <Column header="Acciones">
           <template #body="slotProps">
             <Button icon="pi pi-pencil" class="p-button-text" @click="editArticulo(slotProps.data)" />
@@ -189,38 +210,56 @@ const exportarArticulos = () => {
       <div class="modal-content">
         <h3 class="modal-title">{{ form.id ? 'Editar Artículo' : 'Nuevo Artículo' }}</h3>
         <div class="form-grid">
-          <div class="form-col">
-            <div class="form-group">
-              <label for="tipo">Tipo:</label>
-              <Dropdown id="tipo" v-model="form.tipo" :options="['Bienes', 'Servicio']" placeholder="Selecciona tipo" class="w-full" />
+          <div class="form-row">
+            <div class="form-col">
+              <div class="form-group">
+                <label for="tipo">Tipo:</label>
+                <Dropdown id="tipo" v-model="form.tipo" :options="['Bienes', 'Servicio']" placeholder="Selecciona tipo" class="w-full" />
+              </div>
+              <div class="form-group">
+                <label for="nombre">Nombre:</label>
+                <InputText id="nombre" v-model="form.nombre" placeholder="Nombre del artículo" class="w-full" />
+                <small v-if="!form.nombre" class="error-text">Obligatorio.</small>
+              </div>
+              <div class="form-group">
+                <label for="sku">SKU:</label>
+                <InputText id="sku" v-model="form.sku" placeholder="SKU o código interno" class="w-full" />
+                <small v-if="!form.sku" class="error-text">Obligatorio.</small>
+              </div>
+              <div class="form-group">
+                <label for="unidad">Unidad:</label>
+                <Dropdown id="unidad" v-model="form.unidad" :options="['pieza', 'servicio', 'kg', 'litro']" placeholder="Selecciona unidad" class="w-full" />
+              </div>
+              <div class="form-group">
+                <label for="precioVenta">Precio de venta (MXN):</label>
+                <InputText id="precioVenta" v-model="form.precioVenta" placeholder="Precio de venta" class="w-full" />
+              </div>
             </div>
-            <div class="form-group">
-              <label for="nombre">Nombre:</label>
-              <InputText id="nombre" v-model="form.nombre" placeholder="Nombre del artículo" class="w-full" />
-              <small v-if="!form.nombre" class="error-text">Obligatorio.</small>
-            </div>
-            <div class="form-group">
-              <label for="sku">SKU:</label>
-              <InputText id="sku" v-model="form.sku" placeholder="SKU o código interno" class="w-full" />
-              <small v-if="!form.sku" class="error-text">Obligatorio.</small>
-            </div>
-            <div class="form-group">
-              <label for="unidad">Unidad:</label>
-              <Dropdown id="unidad" v-model="form.unidad" :options="['pieza', 'servicio', 'kg', 'litro']" placeholder="Selecciona unidad" class="w-full" />
-            </div>
-          </div>
-          <div class="form-col">
-            <div class="form-group">
-              <label for="precioVenta">Precio de venta (MXN):</label>
-              <InputText id="precioVenta" v-model="form.precioVenta" placeholder="Precio de venta" class="w-full" />
-            </div>
-            <div class="form-group">
-              <label for="impuesto">Impuesto:</label>
-              <Dropdown id="impuesto" v-model="form.impuesto" :options="['IVA 16%', 'IVA 0%', 'Exento']" placeholder="Selecciona impuesto" class="w-full" />
-            </div>
-            <div class="form-group">
-              <label for="descripcion">Descripción:</label>
-              <InputText id="descripcion" v-model="form.descripcion" placeholder="Descripción (opcional)" class="w-full" />
+            <div class="form-col">
+              <div class="form-group">
+                <label for="impuesto">Impuesto:</label>
+                <Dropdown id="impuesto" v-model="form.impuesto" :options="['IVA 16%', 'IVA 0%', 'Exento']" placeholder="Selecciona impuesto" class="w-full" />
+              </div>
+              <div class="form-group">
+                <label for="descripcion">Descripción:</label>
+                <InputText id="descripcion" v-model="form.descripcion" placeholder="Descripción (opcional)" class="w-full" />
+              </div>
+              <div class="form-group">
+                <label for="precioCompra">Precio de compra (MXN):</label>
+                <InputText id="precioCompra" v-model="form.precioCompra" placeholder="Precio de compra" class="w-full" />
+              </div>
+              <div class="form-group">
+                <label for="codigoSat">Código artículo SAT:</label>
+                <InputText id="codigoSat" v-model="form.codigoSat" placeholder="Código SAT" class="w-full" />
+              </div>
+              <div class="form-group">
+                <label for="unidadSat">Unidad SAT:</label>
+                <InputText id="unidadSat" v-model="form.unidadSat" placeholder="Unidad SAT" class="w-full" />
+              </div>
+              <div class="form-group">
+                <label for="codigoUnidadSat">Código unidad SAT:</label>
+                <InputText id="codigoUnidadSat" v-model="form.codigoUnidadSat" placeholder="Código unidad SAT" class="w-full" />
+              </div>
             </div>
           </div>
         </div>
@@ -297,6 +336,11 @@ const exportarArticulos = () => {
   letter-spacing: 1px;
 }
 .form-grid {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+.form-row {
   display: flex;
   gap: 2rem;
   flex-wrap: wrap;

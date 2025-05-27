@@ -394,6 +394,10 @@ class Articulo(BaseModel):
     precioVenta: float | None = None
     impuesto: str | None = None
     descripcion: str | None = None
+    precioCompra: float | None = None
+    codigoSat: str | None = None
+    unidadSat: str | None = None
+    codigoUnidadSat: str | None = None
 
 @app.get("/articulos")
 def get_articulos():
@@ -420,7 +424,7 @@ def add_articulo(articulo: Articulo):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO articulos (codigo, nombre, pagina, tipo, sku, unidad, precioVenta, impuesto, descripcion) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        "INSERT INTO articulos (codigo, nombre, pagina, tipo, sku, unidad, precioVenta, impuesto, descripcion, precioCompra, codigoSat, unidadSat, codigoUnidadSat) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (
             articulo.codigo,
             articulo.nombre,
@@ -430,7 +434,11 @@ def add_articulo(articulo: Articulo):
             articulo.unidad,
             articulo.precioVenta,
             articulo.impuesto,
-            articulo.descripcion
+            articulo.descripcion,
+            articulo.precioCompra,
+            articulo.codigoSat,
+            articulo.unidadSat,
+            articulo.codigoUnidadSat
         )
     )
     db.commit()
@@ -448,7 +456,7 @@ def update_articulo(articulo_id: int, articulo: dict):
     )
     cursor = db.cursor()
     cursor.execute(
-        "UPDATE articulos SET codigo=%s, nombre=%s, pagina=%s, tipo=%s, sku=%s, unidad=%s, precioVenta=%s, impuesto=%s, descripcion=%s WHERE id=%s",
+        "UPDATE articulos SET codigo=%s, nombre=%s, pagina=%s, tipo=%s, sku=%s, unidad=%s, precioVenta=%s, impuesto=%s, descripcion=%s, precioCompra=%s, codigoSat=%s, unidadSat=%s, codigoUnidadSat=%s WHERE id=%s",
         (
             articulo.get("codigo"),
             articulo.get("nombre"),
@@ -459,6 +467,10 @@ def update_articulo(articulo_id: int, articulo: dict):
             articulo.get("precioVenta"),
             articulo.get("impuesto"),
             articulo.get("descripcion"),
+            articulo.get("precioCompra"),
+            articulo.get("codigoSat"),
+            articulo.get("unidadSat"),
+            articulo.get("codigoUnidadSat"),
             articulo_id
         )
     )
