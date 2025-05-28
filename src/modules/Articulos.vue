@@ -26,7 +26,6 @@ const form = ref({
   impuesto: '',
   precioCompra: '',
   codigoSat: '',
-  unidadSat: '',
   codigoUnidadSat: ''
 });
 const search = ref('');
@@ -176,7 +175,7 @@ const exportarArticulos = () => {
         :loading="loadingArticulos"
       >
         <Column field="sku" header="SKU" sortable />
-        <Column field="nombre" header="Nombre" sortable />
+        <!-- <Column field="nombre" header="Nombre" sortable /> -->
         <Column field="tipo" header="Tipo" sortable />
         <Column field="precioVenta" header="Precio de venta">
           <template #body="slotProps">
@@ -195,7 +194,6 @@ const exportarArticulos = () => {
           </template>
         </Column>
         <Column field="codigoSat" header="Código SAT" sortable />
-        <Column field="unidadSat" header="Unidad SAT" sortable />
         <Column field="codigoUnidadSat" header="Código unidad SAT" sortable />
         <Column header="Acciones">
           <template #body="slotProps">
@@ -251,10 +249,6 @@ const exportarArticulos = () => {
               <div class="form-group">
                 <label for="codigoSat">Código artículo SAT:</label>
                 <InputText id="codigoSat" v-model="form.codigoSat" placeholder="Código SAT" class="w-full" />
-              </div>
-              <div class="form-group">
-                <label for="unidadSat">Unidad SAT:</label>
-                <InputText id="unidadSat" v-model="form.unidadSat" placeholder="Unidad SAT" class="w-full" />
               </div>
               <div class="form-group">
                 <label for="codigoUnidadSat">Código unidad SAT:</label>
