@@ -5,11 +5,29 @@
       <Button label="Agregar Cliente" icon="pi pi-plus" @click="openModal" class="mb-2" />
       <DataTable :value="clientes">
         <Column field="nombre" header="Nombre" />
-        <Column field="telefono" header="Teléfono" />
+        <Column field="telefono" header="Teléfonos">
+          <template #body="slotProps">
+            <ul>
+              <li v-for="(tel, idx) in slotProps.data.telefonos" :key="idx">{{ tel }}</li>
+            </ul>
+          </template>
+        </Column>
         <Column field="correo" header="Correo" />
         <Column field="direccion" header="Dirección" />
-        <Column field="usuario" header="Usuario" /> <!-- Nuevo -->
-        <Column field="plataforma" header="Plataforma" /> <!-- Nuevo -->
+        <Column header="Usuarios">
+          <template #body="slotProps">
+            <ul>
+              <li v-for="(u, idx) in slotProps.data.usuarios" :key="idx">{{ u }}</li>
+            </ul>
+          </template>
+        </Column>
+        <Column header="Plataformas">
+          <template #body="slotProps">
+            <ul>
+              <li v-for="(p, idx) in slotProps.data.plataformas" :key="idx">{{ p }}</li>
+            </ul>
+          </template>
+        </Column>
         <Column header="Acciones">
           <template #body="slotProps">
             <Button icon="pi pi-pencil" class="p-button-text" @click="editCliente(slotProps.data)" />
@@ -25,8 +43,12 @@
         <InputText id="nombre" v-model="form.nombre" class="w-full" />
       </div>
       <div class="form-group">
-        <label for="telefono">Teléfono:</label>
-        <InputText id="telefono" v-model="form.telefono" class="w-full" />
+        <label>Teléfonos:</label>
+        <div v-for="(tel, idx) in form.telefonos" :key="idx" style="display:flex;gap:0.5rem;align-items:center;">
+          <InputText v-model="form.telefonos[idx]" class="w-full" />
+          <Button icon="pi pi-minus" class="p-button-text p-button-danger" @click="removeTelefono(idx)" v-if="form.telefonos.length > 1" />
+        </div>
+        <Button icon="pi pi-plus" class="p-button-text" @click="addTelefono" />
       </div>
       <div class="form-group">
         <label for="correo">Correo:</label>
@@ -37,12 +59,20 @@
         <InputText id="direccion" v-model="form.direccion" class="w-full" />
       </div>
       <div class="form-group">
-        <label for="usuario">Usuario:</label>
-        <InputText id="usuario" v-model="form.usuario" class="w-full" />
+        <label>Usuarios:</label>
+        <div v-for="(u, idx) in form.usuarios" :key="idx" style="display:flex;gap:0.5rem;align-items:center;">
+          <InputText v-model="form.usuarios[idx]" class="w-full" />
+          <Button icon="pi pi-minus" class="p-button-text p-button-danger" @click="removeUsuario(idx)" v-if="form.usuarios.length > 1" />
+        </div>
+        <Button icon="pi pi-plus" class="p-button-text" @click="addUsuario" />
       </div>
       <div class="form-group">
-        <label for="plataforma">Plataforma:</label>
-        <InputText id="plataforma" v-model="form.plataforma" class="w-full" />
+        <label>Plataformas:</label>
+        <div v-for="(p, idx) in form.plataformas" :key="idx" style="display:flex;gap:0.5rem;align-items:center;">
+          <InputText v-model="form.plataformas[idx]" class="w-full" />
+          <Button icon="pi pi-minus" class="p-button-text p-button-danger" @click="removePlataforma(idx)" v-if="form.plataformas.length > 1" />
+        </div>
+        <Button icon="pi pi-plus" class="p-button-text" @click="addPlataforma" />
       </div>
       <div class="modal-actions">
         <Button label="Guardar" icon="pi pi-save" @click="saveCliente" />
@@ -63,7 +93,15 @@ import { getClientes, addCliente, updateCliente, deleteCliente } from '@/service
 
 const clientes = ref([]);
 const showModal = ref(false);
-const form = ref({ id: null, nombre: '', telefono: '', correo: '', direccion: '', usuario: '', plataforma: '' });
+const form = ref({
+  id: null,
+  nombre: '',
+  telefonos: [''],
+  correo: '',
+  direccion: '',
+  usuarios: [''],
+  plataformas: ['']
+});
 
 const loadClientes = async () => {
   clientes.value = await getClientes();
@@ -72,7 +110,15 @@ const loadClientes = async () => {
 onMounted(loadClientes);
 
 const openModal = () => {
-  form.value = { id: null, nombre: '', telefono: '', correo: '', direccion: '', usuario: '', plataforma: '' };
+  form.value = {
+    id: null,
+    nombre: '',
+    telefonos: [''],
+    correo: '',
+    direccion: '',
+    usuarios: [''],
+    plataformas: ['']
+  };
   showModal.value = true;
 };
 
@@ -82,6 +128,10 @@ const closeModal = () => {
 
 const saveCliente = async () => {
   if (!form.value.nombre) return;
+  // Limpia arrays vacíos
+  form.value.telefonos = form.value.telefonos.filter(t => t);
+  form.value.usuarios = form.value.usuarios.filter(u => u);
+  form.value.plataformas = form.value.plataformas.filter(p => p);
   if (form.value.id) {
     await updateCliente(form.value.id, form.value);
   } else {
@@ -92,7 +142,15 @@ const saveCliente = async () => {
 };
 
 const editCliente = (cliente) => {
-  form.value = { ...cliente };
+  form.value = {
+    id: cliente.id,
+    nombre: cliente.nombre,
+    telefonos: cliente.telefonos?.length ? [...cliente.telefonos] : [''],
+    correo: cliente.correo,
+    direccion: cliente.direccion,
+    usuarios: cliente.usuarios?.length ? [...cliente.usuarios] : [''],
+    plataformas: cliente.plataformas?.length ? [...cliente.plataformas] : ['']
+  };
   showModal.value = true;
 };
 
@@ -100,6 +158,13 @@ const handleDeleteCliente = async (id) => {
   await deleteCliente(id);
   await loadClientes();
 };
+
+const addTelefono = () => form.value.telefonos.push('');
+const removeTelefono = (idx) => form.value.telefonos.splice(idx, 1);
+const addUsuario = () => form.value.usuarios.push('');
+const removeUsuario = (idx) => form.value.usuarios.splice(idx, 1);
+const addPlataforma = () => form.value.plataformas.push('');
+const removePlataforma = (idx) => form.value.plataformas.splice(idx, 1);
 </script>
 
 <style scoped>
