@@ -984,3 +984,18 @@ def buscar_imei(digitos: str):
     cursor.close()
     db.close()
     return resultados
+
+@app.post("/imeis/{imei}/devolver")
+def devolver_imei(imei: str):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE imeis SET status='Devuelto' WHERE imei=%s", (imei,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "IMEI marcado como devuelto"}

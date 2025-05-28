@@ -23,7 +23,19 @@
           {{ slotProps.data.date?.split(' ')[0] || '' }}
         </template>
       </Column>
-      <Column field="status" header="Estado" />
+      <Column field="status" header="Estado">
+        <template #body="slotProps">
+          <span
+            :class="{
+              'imei-disponible': slotProps.data.status === 'Disponible',
+              'imei-vendido': slotProps.data.status === 'Vendido',
+              'imei-devuelto': slotProps.data.status === 'Devuelto'
+            }"
+          >
+            {{ slotProps.data.status }}
+          </span>
+        </template>
+      </Column>
       <Column field="technician" header="Técnico">
         <template #body="slotProps">
           {{ slotProps.data.technician || 'NA' }}
@@ -50,6 +62,16 @@
         <div class="form-group">
           <label>Modelo GPS:</label>
           <InputText v-model="editItem.gpsModel" placeholder="Modelo GPS" />
+        </div>
+        <div class="form-group">
+          <label for="status">Estado:</label>
+          <Dropdown
+            id="status"
+            v-model="editItem.status"
+            :options="['Disponible', 'Vendido', 'Devuelto']"
+            placeholder="Selecciona estado"
+            class="w-full"
+          />
         </div>
         <div class="modal-actions">
           <Button label="Guardar" icon="pi pi-save" @click="saveEdit" />
@@ -161,5 +183,11 @@ const saveEdit = async () => {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
+}
+
+.imei-devuelto {
+  background: #ffe082;
+  color: #795548;
+  font-weight: bold;
 }
 </style>

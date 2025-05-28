@@ -28,6 +28,30 @@
         <Column field="total_disponible" header="Total disponibles (MXN)" sortable />
         <Column field="total_vendido" header="Total vendidos (MXN)" sortable />
         <Column field="ubicacion_nombre" header="Ubicación" sortable />
+        <Column field="status" header="Estado">
+          <template #body="slotProps">
+            <span
+              :class="{
+                'imei-disponible': slotProps.data.status === 'Disponible',
+                'imei-vendido': slotProps.data.status === 'Vendido',
+                'imei-devuelto': slotProps.data.status === 'Devuelto'
+              }"
+            >
+              {{ slotProps.data.status }}
+            </span>
+          </template>
+        </Column>
+        <Column header="Acciones">
+          <template #body="slotProps">
+            <Button
+              v-if="slotProps.data.status === 'Vendido'"
+              label="Devolver"
+              icon="pi pi-undo"
+              class="p-button-text p-button-warning"
+              @click="marcarDevuelto(slotProps.data.imei)"
+            />
+          </template>
+        </Column>
         <Column header="Ver IMEIs">
           <template #body="slotProps">
             <Button
@@ -77,7 +101,7 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { getIMEIs } from '@/services/imeiService';
+import { getIMEIs, devolverIMEI } from '@/services/imeiService';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getUbicaciones } from '@/services/ubicacionesService';
 import Button from 'primevue/button';
@@ -212,6 +236,11 @@ const exportarInventario = () => {
   saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'inventario.xlsx');
 };
 
+const marcarDevuelto = async (imei) => {
+  await devolverIMEI(imei);
+  await loadIMEIs();
+};
+
 onMounted(loadIMEIs);
 </script>
 
@@ -253,6 +282,11 @@ h2 {
 .imei-disponible {
   background: linear-gradient(90deg, #e0f7fa 0%, #b2ebf2 100%);
   color: #00695c;
+  font-weight: bold;
+}
+.imei-devuelto {
+  background: #ffe082;
+  color: #795548;
   font-weight: bold;
 }
 :root {
