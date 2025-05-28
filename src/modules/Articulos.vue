@@ -165,7 +165,6 @@ const exportarArticulos = () => {
     <h2>Artículos</h2>
     <div class="actions">
       <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" />
-      <!-- <Button label="Exportar Excel" icon="pi pi-file-excel" class="p-button-success" @click="exportarArticulos" /> -->
       <InputText v-model="search" placeholder="Buscar..." class="ml-2" />
     </div>
     <div class="articulos-card">
@@ -186,7 +185,8 @@ const exportarArticulos = () => {
         </Column>
         <Column header="Existencias en mano">
           <template #body="slotProps">
-            {{ slotProps.data.existencias }}
+            <span v-if="slotProps.data.tipo && slotProps.data.tipo.toLowerCase() === 'servicio'">NA</span>
+            <span v-else>{{ slotProps.data.existencias }}</span>
           </template>
         </Column>
         <Column field="precioCompra" header="Precio de compra">

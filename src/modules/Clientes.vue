@@ -8,6 +8,8 @@
         <Column field="telefono" header="Teléfono" />
         <Column field="correo" header="Correo" />
         <Column field="direccion" header="Dirección" />
+        <Column field="usuario" header="Usuario" /> <!-- Nuevo -->
+        <Column field="plataforma" header="Plataforma" /> <!-- Nuevo -->
         <Column header="Acciones">
           <template #body="slotProps">
             <Button icon="pi pi-pencil" class="p-button-text" @click="editCliente(slotProps.data)" />
@@ -34,6 +36,14 @@
         <label for="direccion">Dirección:</label>
         <InputText id="direccion" v-model="form.direccion" class="w-full" />
       </div>
+      <div class="form-group">
+        <label for="usuario">Usuario:</label>
+        <InputText id="usuario" v-model="form.usuario" class="w-full" />
+      </div>
+      <div class="form-group">
+        <label for="plataforma">Plataforma:</label>
+        <InputText id="plataforma" v-model="form.plataforma" class="w-full" />
+      </div>
       <div class="modal-actions">
         <Button label="Guardar" icon="pi pi-save" @click="saveCliente" />
         <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="closeModal" />
@@ -53,7 +63,7 @@ import { getClientes, addCliente, updateCliente, deleteCliente } from '@/service
 
 const clientes = ref([]);
 const showModal = ref(false);
-const form = ref({ id: null, nombre: '', telefono: '', correo: '', direccion: '' });
+const form = ref({ id: null, nombre: '', telefono: '', correo: '', direccion: '', usuario: '', plataforma: '' });
 
 const loadClientes = async () => {
   clientes.value = await getClientes();
@@ -62,7 +72,7 @@ const loadClientes = async () => {
 onMounted(loadClientes);
 
 const openModal = () => {
-  form.value = { id: null, nombre: '', telefono: '', correo: '', direccion: '' };
+  form.value = { id: null, nombre: '', telefono: '', correo: '', direccion: '', usuario: '', plataforma: '' };
   showModal.value = true;
 };
 

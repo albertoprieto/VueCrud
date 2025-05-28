@@ -31,7 +31,10 @@
         </Column>
         <Column header="Stock">
           <template #body="slotProps">
-            {{ getStockDisponible(slotProps.data.articulo_id, slotProps.data) }}
+            <span v-if="esServicio(slotProps.data.articulo_id)">NA</span>
+            <span v-else>
+              {{ getStockDisponible(slotProps.data.articulo_id, slotProps.data) }}
+            </span>
           </template>
         </Column>
         <Column field="cantidad" header="Cantidad">
@@ -40,15 +43,15 @@
               type="number"
               v-model.number="slotProps.data.cantidad"
               :min="1"
-              :max="mostrarColumnaIMEI(slotProps.data.articulo_id) ? 1 : getStockDisponible(slotProps.data.articulo_id, slotProps.data)"
+              :max="!esServicio(slotProps.data.articulo_id) && mostrarColumnaIMEI(slotProps.data.articulo_id) ? 1 : (!esServicio(slotProps.data.articulo_id) ? getStockDisponible(slotProps.data.articulo_id, slotProps.data) : null)"
               class="w-full"
-              :disabled="!slotProps.data.articulo_id || mostrarColumnaIMEI(slotProps.data.articulo_id)"
+              :disabled="!slotProps.data.articulo_id || (mostrarColumnaIMEI(slotProps.data.articulo_id) && !esServicio(slotProps.data.articulo_id))"
               @input="validateCantidad(slotProps.data)"
             />
-            <small v-if="slotProps.data.cantidad > getStockDisponible(slotProps.data.articulo_id, slotProps.data)" class="error-text">
+            <small v-if="!esServicio(slotProps.data.articulo_id) && slotProps.data.cantidad > getStockDisponible(slotProps.data.articulo_id, slotProps.data)" class="error-text">
               Máx: {{ getStockDisponible(slotProps.data.articulo_id, slotProps.data) }}
             </small>
-            <small v-if="mostrarColumnaIMEI(slotProps.data.articulo_id)" class="info-text">
+            <small v-if="mostrarColumnaIMEI(slotProps.data.articulo_id) && !esServicio(slotProps.data.articulo_id)" class="info-text">
               Solo puedes vender un equipo por fila si requiere IMEI.
             </small>
           </template>
@@ -71,20 +74,25 @@
         <Column header="IMEI">
           <template #body="slotProps">
             <div class="imei-cell">
-              <Dropdown
-                v-if="mostrarColumnaIMEI(slotProps.data.articulo_id)"
-                v-model="slotProps.data.imei"
-                :options="imeisDisponiblesPorArticulo(slotProps.data.articulo_id, slotProps.data)"
-                optionLabel="imei"
-                optionValue="imei"
-                placeholder="Selecciona IMEI"
-                class="w-full imei-dropdown"
-                :disabled="!slotProps.data.articulo_id"
-              />
-              <div v-if="slotProps.data.imei" class="imei-seleccionado">
-                <span>IMEI seleccionado:</span>
-                <span class="imei-value">{{ slotProps.data.imei }}</span>
-              </div>
+              <template v-if="esServicio(slotProps.data.articulo_id)">
+                <span>NA</span>
+              </template>
+              <template v-else>
+                <Dropdown
+                  v-if="mostrarColumnaIMEI(slotProps.data.articulo_id)"
+                  v-model="slotProps.data.imei"
+                  :options="imeisDisponiblesPorArticulo(slotProps.data.articulo_id, slotProps.data)"
+                  optionLabel="imei"
+                  optionValue="imei"
+                  placeholder="Selecciona IMEI"
+                  class="w-full imei-dropdown"
+                  :disabled="!slotProps.data.articulo_id"
+                />
+                <div v-if="slotProps.data.imei" class="imei-seleccionado">
+                  <span>IMEI seleccionado:</span>
+                  <span class="imei-value">{{ slotProps.data.imei }}</span>
+                </div>
+              </template>
             </div>
           </template>
         </Column>
@@ -199,6 +207,12 @@ const {
 } = useVentas();
 
 const showDetalleDialog = ref(false);
+
+// Devuelve true si el artículo es de tipo Servicio
+const esServicio = (articulo_id) => {
+  const art = articulosDisponibles.value.find(a => a.id === articulo_id);
+  return art && art.tipo && art.tipo.toLowerCase() === 'servicio';
+};
 </script>
 
 <style scoped>

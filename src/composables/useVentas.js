@@ -45,6 +45,7 @@ export function useVentas() {
   function getStockDisponible(articulo_id, row = null) {
     const articulo = articulosDisponibles.value.find(a => a.id === articulo_id);
     if (!articulo) return 0;
+    if (articulo.tipo && articulo.tipo.toLowerCase() === 'servicio') return null;
     const grupo = articulosAgrupados.value.find(g => g.articulo_nombre === articulo.nombre);
     const totalStock = grupo ? grupo.cantidad : 0;
     const enVenta = venta.articulos
@@ -55,6 +56,7 @@ export function useVentas() {
 
   function articulosConStock(row = null) {
     return articulosDisponibles.value.filter(art => {
+      if (art.tipo && art.tipo.toLowerCase() === 'servicio') return true;
       const stock = getStockDisponible(art.id, row);
       if (row && row.articulo_id === art.id) return true;
       return stock > 0;
@@ -75,6 +77,9 @@ export function useVentas() {
   }
 
   function mostrarColumnaIMEI(articulo_id) {
+    const articulo = articulosDisponibles.value.find(a => a.id === articulo_id);
+    if (!articulo) return false;
+    if (articulo.tipo && articulo.tipo.toLowerCase() === 'servicio') return false;
     return imeisDisponiblesPorArticulo(articulo_id).length > 0;
   }
 
@@ -86,6 +91,11 @@ export function useVentas() {
   }
 
   function validateCantidad(row) {
+    const articulo = articulosDisponibles.value.find(a => a.id === row.articulo_id);
+    if (articulo && articulo.tipo && articulo.tipo.toLowerCase() === 'servicio') {
+      if (row.cantidad < 1) row.cantidad = 1;
+      return;
+    }
     if (mostrarColumnaIMEI(row.articulo_id)) {
       row.cantidad = 1;
     } else {
@@ -103,7 +113,7 @@ export function useVentas() {
     const articulo = articulosDisponibles.value.find(a => a.id === articulo_id);
     if (articulo) {
       row.precio_unitario = Number(articulo.precioVenta) || 0;
-      row.cantidad = mostrarColumnaIMEI(articulo_id) ? 1 : 1;
+      row.cantidad = 1;
       row.imei = null;
     }
   }
@@ -112,8 +122,8 @@ export function useVentas() {
     clientes.value = await getClientes();
   }
   async function cargarArticulos() {
-    const res = await fetch('https://64.227.15.111/articulos/todos');
-    articulosDisponibles.value = await res.json();
+    // Debe traer tipo de artículo
+    articulosDisponibles.value = await import('@/services/articulosService').then(m => m.getTodosArticulos()).then(res => res || []);
   }
   async function cargarIMEIs() {
     imeis.value = await getIMEIs();
@@ -134,25 +144,34 @@ export function useVentas() {
         toast.add({ severity: 'error', summary: 'Artículo inválido', detail: 'Selecciona un artículo válido.', life: 4000 });
         return;
       }
-      if (art.cantidad > getStockDisponible(art.articulo_id, art)) {
-        toast.add({ severity: 'error', summary: 'Stock insuficiente', detail: `No hay suficiente stock para el artículo seleccionado.`, life: 4000 });
-        return;
-      }
-      if (mostrarColumnaIMEI(art.articulo_id)) {
-        if (!art.imei) {
-          toast.add({ severity: 'error', summary: 'IMEI requerido', detail: 'Selecciona un IMEI para este artículo.', life: 4000 });
+      if (!(articulo.tipo && articulo.tipo.toLowerCase() === 'servicio')) {
+        if (art.cantidad > getStockDisponible(art.articulo_id, art)) {
+          toast.add({ severity: 'error', summary: 'Stock insuficiente', detail: `No hay suficiente stock para el artículo seleccionado.`, life: 4000 });
           return;
         }
-        const todosImeis = venta.articulos.filter(a => a.imei).map(a => a.imei);
-        if (new Set(todosImeis).size !== todosImeis.length) {
-          toast.add({ severity: 'error', summary: 'IMEI duplicado', detail: 'No puedes vender el mismo IMEI dos veces.', life: 4000 });
-          return;
+        if (mostrarColumnaIMEI(art.articulo_id)) {
+          if (!art.imei) {
+            toast.add({ severity: 'error', summary: 'IMEI requerido', detail: 'Selecciona un IMEI para este artículo.', life: 4000 });
+            return;
+          }
+          const todosImeis = venta.articulos.filter(a => a.imei).map(a => a.imei);
+          if (new Set(todosImeis).size !== todosImeis.length) {
+            toast.add({ severity: 'error', summary: 'IMEI duplicado', detail: 'No puedes vender el mismo IMEI dos veces.', life: 4000 });
+            return;
+          }
         }
       }
     }
     try {
       const articulosParaEnviar = venta.articulos.map(art => {
-        // Si el artículo tiene un IMEI seleccionado, inclúyelo siempre
+        const articulo = articulosDisponibles.value.find(a => a.id === art.articulo_id);
+        if (articulo && articulo.tipo && articulo.tipo.toLowerCase() === 'servicio') {
+          return {
+            articulo_id: art.articulo_id,
+            cantidad: art.cantidad,
+            precio_unitario: art.precio_unitario
+          };
+        }
         if (art.imei) {
           return {
             articulo_id: art.articulo_id,
@@ -168,7 +187,6 @@ export function useVentas() {
           };
         }
       });
-      console.log('Payload articulos:', articulosParaEnviar);
 
       await addVenta({
         cliente_id: venta.cliente_id,
@@ -186,17 +204,16 @@ export function useVentas() {
       await cargarArticulos();
       await cargarVentas();
     } catch (e) {
-      toast.add({ severity: 'error', summary: 'Error al guardar', detail: e.message, life: 4000 });
+      toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la venta.', life: 4000 });
     }
   }
 
   async function cargarDetalleVenta(event) {
-    const id = event.data?.id || ventaSeleccionada.value?.id;
-    if (!id) return;
-    detalleVenta.value = await getDetalleVenta(id);
+    if (!event?.data?.id) return;
+    detalleVenta.value = await getDetalleVenta(event.data.id);
+    ventaSeleccionada.value = event.data;
   }
 
-  // Watch para loggear cuando se asigna un IMEI a un artículo
   watch(
     () => venta.articulos.map(a => a.imei),
     (nuevosImeis, viejosImeis) => {
