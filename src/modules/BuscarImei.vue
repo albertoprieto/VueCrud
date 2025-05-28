@@ -23,7 +23,30 @@
       <Column field="imei" header="IMEI" sortable />
       <Column field="articulo_nombre" header="Artículo" sortable />
       <Column field="ubicacion" header="Ubicación" sortable />
-      <Column field="status" header="Estado" sortable />
+      <Column field="status" header="Estado">
+        <template #body="slotProps">
+          <span
+            :class="{
+              'imei-disponible': slotProps.data.status === 'Disponible',
+              'imei-vendido': slotProps.data.status === 'Vendido',
+              'imei-devuelto': slotProps.data.status === 'Devuelto'
+            }"
+          >
+            {{ slotProps.data.status }}
+          </span>
+        </template>
+      </Column>
+      <Column header="Acciones">
+        <template #body="slotProps">
+          <Button
+            v-if="slotProps.data.status === 'Vendido'"
+            label="Devolver"
+            icon="pi pi-undo"
+            class="p-button-text p-button-warning"
+            @click="devolver(slotProps.data.imei)"
+          />
+        </template>
+      </Column>
     </DataTable>
   </div>
 </template>
@@ -35,6 +58,7 @@ import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import axios from 'axios';
+import { devolverIMEI } from '@/services/imeiService';
 
 const imeis = ref([]);
 const filtro = ref('');
@@ -59,6 +83,11 @@ const imeisFiltrados = computed(() => {
     i.ubicacion?.toLowerCase().includes(f)
   );
 });
+
+const devolver = async (imei) => {
+  await devolverIMEI(imei);
+  await cargarImeis();
+};
 </script>
 
 <style scoped>
@@ -87,5 +116,10 @@ const imeisFiltrados = computed(() => {
 }
 .buscar-imei-table {
   margin-top: 1rem;
+}
+.imei-devuelto {
+  background: #ffe082;
+  color: #795548;
+  font-weight: bold;
 }
 </style>

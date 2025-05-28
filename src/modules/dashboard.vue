@@ -69,8 +69,8 @@ const items = ref([
       { label: 'Alta artículos', route: '/alta-articulo' },
       { label: 'Asignar IMEIs', route: '/asignar-imeis' },
       { label: 'Ubicaciones', route: '/ubicaciones' },
+      { label: 'Buscar IMEI', route: '/buscar-imei' },
       { label: 'Historico', route: '/articulos-con-imeis' },
-      { label: 'Buscar IMEI', route: '/buscar-imei' }, // <-- agrega esto
     ]
   },
   {

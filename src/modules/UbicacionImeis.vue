@@ -28,14 +28,16 @@
           <Chip
             :label="slotProps.data.status"
             :class="[
-              slotProps.data.status === 'Disponible' ? 'chip-disponible' :
-              slotProps.data.status === 'Vendido' ? 'chip-vendido' : 'chip-otro'
+
+              slotProps.data.status === 'Vendido' ? 'chip-vendido' :
+              slotProps.data.status === 'Devuelto' ? 'chip-devuelto' : 'chip-otro'
             ]"
           />
         </template>
       </Column>
       <Column field="date" header="Fecha registro" />
       <Column field="registeredBy" header="Registró" />
+
     </DataTable>
   </div>
 </template>
@@ -44,6 +46,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { getUbicaciones, getImeisPorUbicacion } from '@/services/ubicacionesService';
+import { devolverIMEI } from '@/services/imeiService';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -58,7 +61,8 @@ const filtroStatus = ref(null);
 const statusOptions = [
   { label: 'Todos', value: null },
   { label: 'Disponibles', value: 'Disponible' },
-  { label: 'Vendidos', value: 'Vendido' }
+  { label: 'Vendidos', value: 'Vendido' },
+  { label: 'Devueltos', value: 'Devuelto' }
 ];
 
 const cargarDatos = async () => {
@@ -73,6 +77,11 @@ const imeisFiltrados = computed(() => {
   if (!filtroStatus.value) return imeis.value;
   return imeis.value.filter(i => i.status === filtroStatus.value);
 });
+
+const marcarDevuelto = async (imei) => {
+  await devolverIMEI(imei);
+  await cargarDatos();
+};
 
 onMounted(cargarDatos);
 </script>
@@ -108,6 +117,10 @@ onMounted(cargarDatos);
   color: #444;
 }
 .chip-otro {
+  background: #ffe082;
+  color: #795548;
+}
+.chip-devuelto {
   background: #ffe082;
   color: #795548;
 }
