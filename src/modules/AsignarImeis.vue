@@ -14,6 +14,7 @@
           optionLabel="nombre"
           placeholder="Selecciona artículo"
           class="w-full"
+          :disabled="modoTransferencia"
         />
       </div>
       <div class="form-group">
