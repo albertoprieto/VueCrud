@@ -10,7 +10,7 @@
         <Dropdown
           id="articulo"
           v-model="selectedArticulo"
-          :options="articulos"
+          :options="articulosFiltrados"
           optionLabel="nombre"
           placeholder="Selecciona artículo"
           class="w-full"
@@ -42,9 +42,10 @@
           Ubicación destino
         </label>
         <Dropdown
+          :disabled="!modoTransferencia"
           id="ubicacionDestino"
           v-model="ubicacionDestino"
-          :options="ubicaciones"
+          :options="ubicacionesDestino"
           optionLabel="nombre"
           placeholder="Selecciona ubicación"
           class="w-full"
@@ -87,7 +88,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
@@ -109,6 +110,16 @@ const ubicaciones = ref([]);
 const ubicacionDestino = ref(null);
 const modoTransferencia = ref(false);
 const ubicacionOrigen = ref(null);
+
+const articulosFiltrados = computed(() =>
+  articulos.value.filter(a => a.tipo && a.tipo.toLowerCase() !== 'servicio')
+);
+
+const ubicacionesDestino = computed(() => {
+  if (!modoTransferencia.value || !ubicacionOrigen.value) return ubicaciones.value;
+  // Excluir la ubicación origen de las opciones de destino
+  return ubicaciones.value.filter(u => u.id !== ubicacionOrigen.value.id);
+});
 
 onMounted(async () => {
   articulos.value = await getTodosArticulos();
@@ -137,6 +148,13 @@ const eliminarImei = (idx) => {
 const registrarYAsignar = async () => {
   if (!selectedArticulo.value || imeis.value.length === 0 || !ubicacionDestino.value) return;
 
+  // Validar que origen y destino sean diferentes en modo transferencia
+  if (modoTransferencia.value && ubicacionOrigen.value && ubicacionDestino.value && ubicacionOrigen.value.id === ubicacionDestino.value.id) {
+    warningMessage.value = 'La ubicación origen y destino no pueden ser la misma.';
+    showWarningDialog.value = true;
+    return;
+  }
+
   // Validar IMEIs existentes en la base de datos
   try {
     const todosIMEIs = await getIMEIs();
@@ -148,13 +166,35 @@ const registrarYAsignar = async () => {
     return;
   }
 
+  if (modoTransferencia.value) {
+    // En transferencia, todos los IMEIs deben existir y estar en la ubicación origen
+    const todosIMEIs = await getIMEIs();
+    const imeisEnOrigen = todosIMEIs.filter(i => imeis.value.includes(i.imei) && i.ubicacion_id === ubicacionOrigen.value.id);
+    if (imeisEnOrigen.length !== imeis.value.length) {
+      warningMessage.value = 'Todos los IMEIs deben existir y estar en la ubicación origen para transferir.';
+      showWarningDialog.value = true;
+      return;
+    }
+    // Aquí deberías llamar a tu servicio de transferencia, por ejemplo:
+    try {
+      await asignarImeisUbicacion(ubicacionDestino.value.id, imeis.value, ubicacionOrigen.value.id);
+      mensaje.value = `${imeis.value.length} IMEIs transferidos de "${ubicacionOrigen.value.nombre}" a "${ubicacionDestino.value.nombre}" correctamente.`;
+      imeis.value = [];
+      imeisExistentes.value = [];
+    } catch (e) {
+      mensaje.value = 'Ocurrió un error al transferir los IMEIs.';
+    }
+    showDialog.value = true;
+    return;
+  }
+
   if (imeisExistentes.value.length > 0) {
     mensaje.value = `Los siguientes IMEIs ya están registrados en el sistema:\n${imeisExistentes.value.join('\n')}\nElimínalos de la lista para continuar.`;
     showDialog.value = true;
     return;
   }
 
-  // Si todo está bien, guardar
+  // Si todo está bien, guardar (alta normal)
   try {
     await registrarYAsignarIMEIsPorNombre(selectedArticulo.value.nombre, imeis.value);
     await asignarImeisUbicacion(ubicacionDestino.value.id, imeis.value);

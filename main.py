@@ -600,6 +600,8 @@ class Cliente(BaseModel):
     telefono: Optional[str] = None
     correo: Optional[str] = None
     direccion: Optional[str] = None
+    usuario: Optional[str] = None
+    plataforma: Optional[str] = None
 
 @app.get("/clientes")
 def get_clientes():
@@ -626,8 +628,8 @@ def add_cliente(cliente: Cliente):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO clientes (nombre, telefono, correo, direccion) VALUES (%s, %s, %s, %s)",
-        (cliente.nombre, cliente.telefono, cliente.correo, cliente.direccion)
+        "INSERT INTO clientes (nombre, telefono, correo, direccion, usuario, plataforma) VALUES (%s, %s, %s, %s, %s, %s)",
+        (cliente.nombre, cliente.telefono, cliente.correo, cliente.direccion, cliente.usuario, cliente.plataforma)
     )
     db.commit()
     cursor.close()
@@ -644,12 +646,14 @@ def update_cliente(cliente_id: int, cliente: dict):
     )
     cursor = db.cursor()
     cursor.execute(
-        "UPDATE clientes SET nombre=%s, telefono=%s, correo=%s, direccion=%s WHERE id=%s",
+        "UPDATE clientes SET nombre=%s, telefono=%s, correo=%s, direccion=%s, usuario=%s, plataforma=%s WHERE id=%s",
         (
             cliente.get("nombre"),
             cliente.get("telefono"),
             cliente.get("correo"),
             cliente.get("direccion"),
+            cliente.get("usuario"),
+            cliente.get("plataforma"),
             cliente_id
         )
     )
@@ -703,13 +707,22 @@ def crear_venta(venta: Venta):
     venta_id = cursor.lastrowid
 
     for item in venta.articulos:
+        # Obtener el tipo de artículo
+        cursor.execute("SELECT tipo FROM articulos WHERE id=%s", (item.articulo_id,))
+        tipo_row = cursor.fetchone()
+        tipo = tipo_row[0].lower() if tipo_row and tipo_row[0] else ""
+
         cursor.execute(
             "INSERT INTO detalle_venta (venta_id, articulo_id, cantidad, precio_unitario, subtotal, imei) VALUES (%s, %s, %s, %s, %s, %s)",
             (venta_id, item.articulo_id, item.cantidad, item.precio_unitario, item.cantidad * item.precio_unitario, getattr(item, "imei", None))
         )
-        # Descontar inventario
+
+        # Si es servicio, NO descontar stock ni validar stock ni IMEI
+        if tipo == "servicio":
+            continue
+
+        # Descontar inventario solo si NO es servicio
         if getattr(item, "imei", None):
-            # Solo marca como vendido si está disponible
             cursor.execute("UPDATE imeis SET status='Vendido' WHERE imei=%s AND status='Disponible'", (item.imei,))
             if cursor.rowcount == 0:
                 db.rollback()
