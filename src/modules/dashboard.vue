@@ -70,6 +70,7 @@ const items = ref([
       { label: 'Asignar IMEIs', route: '/asignar-imeis' },
       { label: 'Ubicaciones', route: '/ubicaciones' },
       { label: 'Historico', route: '/articulos-con-imeis' },
+      { label: 'Buscar IMEI', route: '/buscar-imei' }, // <-- agrega esto
     ]
   },
   {

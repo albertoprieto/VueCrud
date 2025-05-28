@@ -14,7 +14,6 @@
           optionLabel="nombre"
           placeholder="Selecciona artículo"
           class="w-full"
-          :disabled="modoTransferencia"
         />
       </div>
       <div class="form-group">
@@ -27,16 +26,33 @@
           :disabled="!selectedArticulo"
           @keydown.enter.prevent="agregarImei"
         />
-        <ul v-if="imeis.length" class="imeis-list">
-          <li
-            v-for="(imei, idx) in imeis"
-            :key="idx"
-            :class="{ 'imei-existente': imeisExistentes.includes(imei) }"
-          >
-            {{ imei }}
-            <Button icon="pi pi-times" class="p-button-text p-button-danger" @click="eliminarImei(idx)" />
-          </li>
-        </ul>
+        <DataTable
+          v-if="imeis.length"
+          :value="imeis"
+          class="imeis-table"
+          :rows="5"
+          :paginator="imeis.length > 5"
+          responsiveLayout="scroll"
+          emptyMessage="No hay IMEIs agregados."
+        >
+          <Column header="#" style="width: 50px;">
+            <template #body="slotProps">
+              {{ slotProps.index + 1 }}
+            </template>
+          </Column>
+          <Column header="IMEI">
+            <template #body="slotProps">
+              <span :class="{ 'imei-existente': imeisExistentes.includes(slotProps.data) }">
+                {{ slotProps.data }}
+              </span>
+            </template>
+          </Column>
+          <Column header="Eliminar" style="width: 70px;">
+            <template #body="slotProps">
+              <Button icon="pi pi-times" class="p-button-text p-button-danger" @click="eliminarImei(slotProps.index)" />
+            </template>
+          </Column>
+        </DataTable>
       </div>
       <div class="form-group">
         <label for="ubicacionDestino">
@@ -94,6 +110,8 @@ import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
 import { getTodosArticulos } from '@/services/articulosService';
 import { registrarYAsignarIMEIsPorNombre, getIMEIs } from '@/services/imeiService';
 import { getUbicaciones, asignarImeisUbicacion } from '@/services/ubicacionesService';
@@ -267,5 +285,13 @@ label {
   background: #d32f2f;
   border-radius: 4px;
   padding: 2px 8px;
+}
+.imeis-table {
+  margin-top: 0.5rem;
+  background: var(--color-card, #23232b);
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+  border: 1.5px solid #fff3;
+  overflow: hidden;
 }
 </style>

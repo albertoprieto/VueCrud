@@ -947,3 +947,24 @@ def transferir_imeis(request: TransferirIMEIsRequest):
     cursor.close()
     db.close()
     return {"message": "IMEIs transferidos correctamente"}
+
+@app.get("/buscar-imei")
+def buscar_imei(digitos: str):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    query = """
+        SELECT i.imei, i.articulo_nombre, i.status, u.nombre as ubicacion
+        FROM imeis i
+        LEFT JOIN ubicaciones u ON i.ubicacion_id = u.id
+        WHERE i.imei LIKE %s
+    """
+    cursor.execute(query, ('%' + digitos,))
+    resultados = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return resultados
