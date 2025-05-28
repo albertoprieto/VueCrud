@@ -110,6 +110,10 @@ const routes = [
     path: '/consultar-ventas',
     name: 'consultar-ventas',
     component: () => import('@/modules/consultarVentas.vue')
+  },
+  {
+    path: '/buscar-imei',
+    component: () => import('@/modules/BuscarImei.vue')
   }
 ];
 
