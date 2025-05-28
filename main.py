@@ -597,11 +597,11 @@ def get_stock_articulo_nombre(articulo_nombre: str):
 # MODELO CLIENTE
 class Cliente(BaseModel):
     nombre: str
-    telefono: Optional[str] = None
-    correo: Optional[str] = None
+    correos: Optional[List[str]] = []
     direccion: Optional[str] = None
-    usuario: Optional[str] = None
-    plataforma: Optional[str] = None
+    telefonos: Optional[List[str]] = []
+    usuarios: Optional[List[str]] = []
+    plataformas: Optional[List[str]] = []
 
 @app.get("/clientes")
 def get_clientes():
@@ -614,6 +614,14 @@ def get_clientes():
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM clientes")
     clientes = cursor.fetchall()
+    for cliente in clientes:
+        cliente_id = cliente["id"]
+        cursor.execute("SELECT telefono FROM telefonos_cliente WHERE cliente_id=%s", (cliente_id,))
+        cliente["telefonos"] = [row["telefono"] for row in cursor.fetchall()]
+        cursor.execute("SELECT usuario FROM usuarios_cliente WHERE cliente_id=%s", (cliente_id,))
+        cliente["usuarios"] = [row["usuario"] for row in cursor.fetchall()]
+        cursor.execute("SELECT plataforma FROM plataformas_cliente WHERE cliente_id=%s", (cliente_id,))
+        cliente["plataformas"] = [row["plataforma"] for row in cursor.fetchall()]
     cursor.close()
     db.close()
     return clientes
@@ -628,16 +636,23 @@ def add_cliente(cliente: Cliente):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO clientes (nombre, telefono, correo, direccion, usuario, plataforma) VALUES (%s, %s, %s, %s, %s, %s)",
-        (cliente.nombre, cliente.telefono, cliente.correo, cliente.direccion, cliente.usuario, cliente.plataforma)
+        "INSERT INTO clientes (nombre, correo, direccion) VALUES (%s, %s, %s)",
+        (cliente.nombre, ",".join(cliente.correos or []), cliente.direccion)
     )
+    cliente_id = cursor.lastrowid
+    for tel in cliente.telefonos or []:
+        cursor.execute("INSERT INTO telefonos_cliente (cliente_id, telefono) VALUES (%s, %s)", (cliente_id, tel))
+    for usuario in cliente.usuarios or []:
+        cursor.execute("INSERT INTO usuarios_cliente (cliente_id, usuario) VALUES (%s, %s)", (cliente_id, usuario))
+    for plataforma in cliente.plataformas or []:
+        cursor.execute("INSERT INTO plataformas_cliente (cliente_id, plataforma) VALUES (%s, %s)", (cliente_id, plataforma))
     db.commit()
     cursor.close()
     db.close()
     return {"message": "Cliente registrado exitosamente"}
 
 @app.put("/clientes/{cliente_id}")
-def update_cliente(cliente_id: int, cliente: dict):
+def update_cliente(cliente_id: int, cliente: Cliente):
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -646,17 +661,18 @@ def update_cliente(cliente_id: int, cliente: dict):
     )
     cursor = db.cursor()
     cursor.execute(
-        "UPDATE clientes SET nombre=%s, telefono=%s, correo=%s, direccion=%s, usuario=%s, plataforma=%s WHERE id=%s",
-        (
-            cliente.get("nombre"),
-            cliente.get("telefono"),
-            cliente.get("correo"),
-            cliente.get("direccion"),
-            cliente.get("usuario"),
-            cliente.get("plataforma"),
-            cliente_id
-        )
+        "UPDATE clientes SET nombre=%s, correo=%s, direccion=%s WHERE id=%s",
+        (cliente.nombre, ",".join(cliente.correos or []), cliente.direccion, cliente_id)
     )
+    cursor.execute("DELETE FROM telefonos_cliente WHERE cliente_id=%s", (cliente_id,))
+    for tel in cliente.telefonos or []:
+        cursor.execute("INSERT INTO telefonos_cliente (cliente_id, telefono) VALUES (%s, %s)", (cliente_id, tel))
+    cursor.execute("DELETE FROM usuarios_cliente WHERE cliente_id=%s", (cliente_id,))
+    for usuario in cliente.usuarios or []:
+        cursor.execute("INSERT INTO usuarios_cliente (cliente_id, usuario) VALUES (%s, %s)", (cliente_id, usuario))
+    cursor.execute("DELETE FROM plataformas_cliente WHERE cliente_id=%s", (cliente_id,))
+    for plataforma in cliente.plataformas or []:
+        cursor.execute("INSERT INTO plataformas_cliente (cliente_id, plataforma) VALUES (%s, %s)", (cliente_id, plataforma))
     db.commit()
     cursor.close()
     db.close()
