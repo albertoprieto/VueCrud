@@ -258,8 +258,8 @@ watch(filtroPlataforma, (val) => {
   max-width: 1100px;
   margin: 2rem auto;
   padding: 2rem;
-  background: var(--color-bg, #23272f);
-  color: var(--color-text, #fff);
+  background: var(--color-bg);
+  color: var(--color-text);
   border-radius: 16px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.10);
 }
@@ -289,7 +289,7 @@ watch(filtroPlataforma, (val) => {
   min-width: 220px;
 }
 .clientes-card {
-  background: var(--color-card, #292d36);
+  background: var(--color-card);
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -313,8 +313,8 @@ watch(filtroPlataforma, (val) => {
   border-radius: 12px;
   font-size: 0.95em;
   font-weight: 500;
-  background: #e0e0e0;
-  color: #333;
+  background: var(--color-card);
+  color: var(--color-text);
 }
 .chip-usuario {
   background: #b2ebf2;
