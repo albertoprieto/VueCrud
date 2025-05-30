@@ -43,16 +43,13 @@
               type="number"
               v-model.number="slotProps.data.cantidad"
               :min="1"
-              :max="!esServicio(slotProps.data.articulo_id) && mostrarColumnaIMEI(slotProps.data.articulo_id) ? 1 : (!esServicio(slotProps.data.articulo_id) ? getStockDisponible(slotProps.data.articulo_id, slotProps.data) : null)"
+              :max="!esServicio(slotProps.data.articulo_id) ? getStockDisponible(slotProps.data.articulo_id, slotProps.data) : null"
               class="w-full"
-              :disabled="!slotProps.data.articulo_id || (mostrarColumnaIMEI(slotProps.data.articulo_id) && !esServicio(slotProps.data.articulo_id))"
+              :disabled="!slotProps.data.articulo_id"
               @input="validateCantidad(slotProps.data)"
             />
             <small v-if="!esServicio(slotProps.data.articulo_id) && slotProps.data.cantidad > getStockDisponible(slotProps.data.articulo_id, slotProps.data)" class="error-text">
               Máx: {{ getStockDisponible(slotProps.data.articulo_id, slotProps.data) }}
-            </small>
-            <small v-if="mostrarColumnaIMEI(slotProps.data.articulo_id) && !esServicio(slotProps.data.articulo_id)" class="info-text">
-              Solo puedes vender un equipo por fila si requiere IMEI.
             </small>
           </template>
         </Column>
@@ -77,20 +74,25 @@
               <template v-if="esServicio(slotProps.data.articulo_id)">
                 <span>NA</span>
               </template>
-              <template v-else>
-                <Dropdown
-                  v-if="mostrarColumnaIMEI(slotProps.data.articulo_id)"
-                  v-model="slotProps.data.imei"
-                  :options="imeisDisponiblesPorArticulo(slotProps.data.articulo_id, slotProps.data)"
-                  optionLabel="imei"
-                  optionValue="imei"
-                  placeholder="Selecciona IMEI"
-                  class="w-full imei-dropdown"
-                  :disabled="!slotProps.data.articulo_id"
-                />
-                <div v-if="slotProps.data.imei" class="imei-seleccionado">
-                  <span>IMEI seleccionado:</span>
-                  <span class="imei-value">{{ slotProps.data.imei }}</span>
+              <template v-else-if="mostrarColumnaIMEI(slotProps.data.articulo_id)">
+                <div v-for="idx in slotProps.data.cantidad" :key="idx" style="margin-bottom: 0.2em;">
+                  <Dropdown
+                    v-model="slotProps.data.imeis[idx - 1]"
+                    :options="imeisDisponiblesPorArticulo(slotProps.data.articulo_id, slotProps.data, idx - 1)"
+                    optionLabel="imei"
+                    optionValue="imei"
+                    placeholder="Selecciona IMEI"
+                    class="w-full imei-dropdown"
+                    :disabled="!slotProps.data.articulo_id"
+                    filter
+                    filterMatchMode="custom"
+                    :filterFunction="(option, filter) => option.imei?.includes(filter) || option.imei?.slice(-5).includes(filter)"
+                  />
+                </div>
+                <div v-if="slotProps.data.imeis && slotProps.data.imeis.length">
+                  <span v-for="(imei, idx) in slotProps.data.imeis" :key="imei" class="imei-seleccionado" v-if="imei">
+                    IMEI {{ idx + 1 }}: <span class="imei-value">{{ imei }}</span>
+                  </span>
                 </div>
               </template>
             </div>
@@ -110,59 +112,10 @@
         <InputText v-model="venta.observaciones" class="w-full" />
       </div>
 
-      <div class="mb-2">
+      <div class="mb-2 acciones-footer">
         <strong>Total: ${{ totalVenta.toFixed(2) }}</strong>
+        <Button label="Guardar Venta" class="mb-2" @click="guardarVenta" :disabled="!venta.cliente_id || venta.articulos.length === 0" />
       </div>
-
-      <Button label="Guardar Venta" class="mb-2" @click="guardarVenta" :disabled="!venta.cliente_id || venta.articulos.length === 0" />
-
-      <h2 class="ventas-title">Ventas Registradas</h2>
-      <DataTable :value="ventas" selectionMode="single" v-model:selection="ventaSeleccionada" @rowSelect="cargarDetalleVenta">
-        <Column field="id" header="ID" />
-        <Column field="cliente_nombre" header="Cliente" />
-        <Column field="fecha" header="Fecha" />
-        <Column field="total" header="Total" />
-        <Column header="Acciones">
-          <template #body="slotProps">
-            <Button label="Ver Detalle" icon="pi pi-eye" class="p-button-text" @click="cargarDetalleVenta({ data: slotProps.data }); showDetalleDialog = true" />
-          </template>
-        </Column>
-      </DataTable>
-      <Dialog v-model:visible="showDetalleDialog" header="Detalle de Venta" :modal="true" class="ventas-dialog">
-        <div v-if="detalleVenta && detalleVenta.length" class="detalle-venta-dialog">
-          <table class="detalle-table">
-            <thead>
-              <tr>
-                <th>Artículo</th>
-                <th>Cantidad</th>
-                <th>Precio</th>
-                <th>Subtotal</th>
-                <th v-if="detalleVenta.some(i => i.imei)">IMEI</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in detalleVenta" :key="item.id">
-                <td>{{ item.articulo_nombre }}</td>
-                <td>{{ item.cantidad }}</td>
-                <td>${{ item.precio_unitario.toFixed(2) }}</td>
-                <td>${{ (item.cantidad * item.precio_unitario).toFixed(2) }}</td>
-                <td v-if="item.imei">{{ item.imei }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="detalle-venta-footer">
-            <div><strong>Observaciones:</strong> {{ ventaSeleccionada?.observaciones || 'Sin observaciones' }}</div>
-            <div class="detalle-total">
-              <strong>Total:</strong>
-              ${{ detalleVenta.reduce((acc, item) => acc + (item.cantidad * item.precio_unitario), 0).toFixed(2) }}
-            </div>
-          </div>
-        </div>
-        <div v-else>
-          <span>No hay detalle disponible.</span>
-        </div>
-        <Button label="Cerrar" @click="showDetalleDialog = false" class="detalle-cerrar-btn" />
-      </Dialog>
 
       <Dialog v-model:visible="showDialog" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
         <p>La nota de venta se registró correctamente.</p>
@@ -341,6 +294,16 @@ const esServicio = (articulo_id) => {
 .detalle-cerrar-btn {
   margin-top: 1.5rem;
   float: right;
+}
+.acciones-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 1rem;
+}
+.acciones-footer strong {
+  font-size: 1.1em;
 }
 @media (max-width: 700px) {
   .ventas-container {

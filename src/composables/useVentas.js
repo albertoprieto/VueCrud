@@ -97,15 +97,19 @@ export function useVentas() {
       return;
     }
     if (mostrarColumnaIMEI(row.articulo_id)) {
-      row.cantidad = 1;
+      // Inicializa el array imeis si no existe
+      if (!Array.isArray(row.imeis)) row.imeis = [];
+      // Ajusta el tamaño del array imeis según la cantidad
+      if (row.cantidad > row.imeis.length) {
+        for (let i = row.imeis.length; i < row.cantidad; i++) row.imeis.push(null);
+      } else if (row.cantidad < row.imeis.length) {
+        row.imeis.length = row.cantidad;
+      }
     } else {
+      row.imeis = [];
       const stock = getStockDisponible(row.articulo_id, row);
-      if (row.cantidad > stock) {
-        row.cantidad = stock;
-      }
-      if (row.cantidad < 1) {
-        row.cantidad = 1;
-      }
+      if (row.cantidad > stock) row.cantidad = stock;
+      if (row.cantidad < 1) row.cantidad = 1;
     }
   }
 
@@ -225,6 +229,24 @@ export function useVentas() {
     }
   );
 
+  const clienteSeleccionado = computed(() =>
+    clientes.value.find(c => c.id === venta.cliente_id)
+  );
+
+  function agregarUsuario() {
+    if (clienteSeleccionado.value) {
+      if (!Array.isArray(clienteSeleccionado.value.usuarios)) clienteSeleccionado.value.usuarios = [];
+      clienteSeleccionado.value.usuarios.push('');
+    }
+  }
+
+  function agregarPlataforma() {
+    if (clienteSeleccionado.value) {
+      if (!Array.isArray(clienteSeleccionado.value.plataformas)) clienteSeleccionado.value.plataformas = [];
+      clienteSeleccionado.value.plataformas.push('');
+    }
+  }
+
   onMounted(() => {
     cargarClientes();
     cargarArticulos();
@@ -252,6 +274,9 @@ export function useVentas() {
     validateCantidad,
     onArticuloChange,
     guardarVenta,
-    cargarDetalleVenta
+    cargarDetalleVenta,
+    clienteSeleccionado,
+    agregarUsuario,
+    agregarPlataforma
   };
 }
