@@ -85,8 +85,6 @@
                     class="w-full imei-dropdown"
                     :disabled="!slotProps.data.articulo_id"
                     filter
-                    filterMatchMode="custom"
-                    :filterFunction="(option, filter) => option.imei?.includes(filter) || option.imei?.slice(-5).includes(filter)"
                   />
                 </div>
                 <div v-if="slotProps.data.imeis && slotProps.data.imeis.length">
@@ -114,7 +112,12 @@
 
       <div class="mb-2 acciones-footer">
         <strong>Total: ${{ totalVenta.toFixed(2) }}</strong>
-        <Button label="Guardar Venta" class="mb-2" @click="guardarVenta" :disabled="!venta.cliente_id || venta.articulos.length === 0" />
+        <Button
+          label="Guardar Venta"
+          class="mb-2"
+          @click="guardarVentaConLoading"
+          :disabled="!venta.cliente_id || venta.articulos.length === 0 || loadingGuardar"
+        />
       </div>
 
       <Dialog v-model:visible="showDialog" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
@@ -160,12 +163,24 @@ const {
 } = useVentas();
 
 const showDetalleDialog = ref(false);
+const loadingGuardar = ref(false);
 
 // Devuelve true si el artículo es de tipo Servicio
 const esServicio = (articulo_id) => {
   const art = articulosDisponibles.value.find(a => a.id === articulo_id);
   return art && art.tipo && art.tipo.toLowerCase() === 'servicio';
 };
+
+async function guardarVentaConLoading() {
+  console.log('Guardando venta:', venta);
+  
+  loadingGuardar.value = true;
+  try {
+    await guardarVenta();
+  } finally {
+    loadingGuardar.value = false;
+  }
+}
 </script>
 
 <style scoped>

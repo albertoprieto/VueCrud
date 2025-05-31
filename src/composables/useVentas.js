@@ -3,6 +3,7 @@ import { useToast } from 'primevue/usetoast';
 import { getClientes } from '@/services/clientesService';
 import { getVentas, addVenta, getDetalleVenta } from '@/services/ventasService';
 import { getIMEIs } from '@/services/imeiService';
+import { sincronizarStockArticulos } from '@/services/articulosService';
 
 export function useVentas() {
   const toast = useToast();
@@ -29,12 +30,14 @@ export function useVentas() {
 
   const articulosAgrupados = computed(() => {
     const grupos = {};
-    imeis.value.forEach(i => {
-      if (!grupos[i.articulo_nombre]) {
-        grupos[i.articulo_nombre] = [];
-      }
-      grupos[i.articulo_nombre].push(i);
-    });
+    imeis.value
+      .filter(i => i.status === 'Disponible' || i.status === 'Devuelto')
+      .forEach(i => {
+        if (!grupos[i.articulo_nombre]) {
+          grupos[i.articulo_nombre] = [];
+        }
+        grupos[i.articulo_nombre].push(i);
+      });
     return Object.entries(grupos).map(([articulo_nombre, imeisArr]) => ({
       articulo_nombre,
       cantidad: imeisArr.length,
@@ -63,24 +66,33 @@ export function useVentas() {
     });
   }
 
-  function imeisDisponiblesPorArticulo(articulo_id, currentRow = null) {
+  function imeisDisponiblesPorArticulo(articulo_id, row = null, idx = null) {
     const articulo = articulosDisponibles.value.find(a => a.id === articulo_id);
     if (!articulo) return [];
-    const imeisSeleccionados = venta.articulos
-      .filter(a => a.articulo_id === articulo_id && a.imei && a !== currentRow)
-      .map(a => a.imei);
+    let imeisSeleccionados = [];
+    if (row && Array.isArray(row.imeis)) {
+      imeisSeleccionados = row.imeis.filter((imei, i) => imei && i !== idx);
+    }
+    const imeisSeleccionadosOtrasFilas = venta.articulos
+      .filter(a => a.articulo_id === articulo_id && a !== row && Array.isArray(a.imeis))
+      .flatMap(a => a.imeis.filter(Boolean));
+    const imeisNoDisponibles = [...imeisSeleccionados, ...imeisSeleccionadosOtrasFilas];
     return imeis.value.filter(i =>
       i.articulo_nombre === articulo.nombre &&
-      i.status === 'Disponible' &&
-      !imeisSeleccionados.includes(i.imei)
+      (i.status === 'Disponible' || i.status === 'Devuelto') &&
+      !imeisNoDisponibles.includes(i.imei)
     );
   }
 
-  function mostrarColumnaIMEI(articulo_id) {
+  function mostrarColumnaIMEI(articulo_id, row = null, idx = null) {
     const articulo = articulosDisponibles.value.find(a => a.id === articulo_id);
     if (!articulo) return false;
     if (articulo.tipo && articulo.tipo.toLowerCase() === 'servicio') return false;
-    return imeisDisponiblesPorArticulo(articulo_id).length > 0;
+    // Mostrar si hay al menos un IMEI disponible o devuelto
+    return imeis.value.some(i =>
+      i.articulo_nombre === articulo.nombre &&
+      (i.status === 'Disponible' || i.status === 'Devuelto')
+    );
   }
 
   function addArticulo() {
@@ -119,6 +131,13 @@ export function useVentas() {
       row.precio_unitario = Number(articulo.precioVenta) || 0;
       row.cantidad = 1;
       row.imei = null;
+      // Inicializa imeis si corresponde
+      if (!Array.isArray(row.imeis)) row.imeis = [];
+      if (mostrarColumnaIMEI(articulo_id)) {
+        row.imeis = [null];
+      } else {
+        row.imeis = [];
+      }
     }
   }
 
@@ -154,41 +173,56 @@ export function useVentas() {
           return;
         }
         if (mostrarColumnaIMEI(art.articulo_id)) {
-          if (!art.imei) {
+          if (Array.isArray(art.imeis)) {
+            if (art.imeis.length !== art.cantidad || art.imeis.some(i => !i)) {
+              toast.add({ severity: 'error', summary: 'IMEI requerido', detail: 'Selecciona todos los IMEIs para este artículo.', life: 4000 });
+              return;
+            }
+            const todosImeis = venta.articulos.flatMap(a => Array.isArray(a.imeis) ? a.imeis : a.imei ? [a.imei] : []).filter(Boolean);
+            if (new Set(todosImeis).size !== todosImeis.length) {
+              toast.add({ severity: 'error', summary: 'IMEI duplicado', detail: 'No puedes vender el mismo IMEI dos veces.', life: 4000 });
+              return;
+            }
+          } else if (!art.imei) {
             toast.add({ severity: 'error', summary: 'IMEI requerido', detail: 'Selecciona un IMEI para este artículo.', life: 4000 });
-            return;
-          }
-          const todosImeis = venta.articulos.filter(a => a.imei).map(a => a.imei);
-          if (new Set(todosImeis).size !== todosImeis.length) {
-            toast.add({ severity: 'error', summary: 'IMEI duplicado', detail: 'No puedes vender el mismo IMEI dos veces.', life: 4000 });
             return;
           }
         }
       }
     }
     try {
-      const articulosParaEnviar = venta.articulos.map(art => {
+      const articulosParaEnviar = venta.articulos.flatMap(art => {
         const articulo = articulosDisponibles.value.find(a => a.id === art.articulo_id);
         if (articulo && articulo.tipo && articulo.tipo.toLowerCase() === 'servicio') {
-          return {
+          return [{
             articulo_id: art.articulo_id,
             cantidad: art.cantidad,
             precio_unitario: art.precio_unitario
-          };
+          }];
         }
-        if (art.imei) {
-          return {
+        if (Array.isArray(art.imeis) && art.imeis.length > 0) {
+          // Un objeto por cada IMEI seleccionado
+          return art.imeis
+            .filter(imei => imei)
+            .map(imei => ({
+              articulo_id: art.articulo_id,
+              cantidad: 1,
+              precio_unitario: art.precio_unitario,
+              imei
+            }));
+        } else if (art.imei) {
+          return [{
             articulo_id: art.articulo_id,
             cantidad: 1,
             precio_unitario: art.precio_unitario,
             imei: art.imei
-          };
+          }];
         } else {
-          return {
+          return [{
             articulo_id: art.articulo_id,
             cantidad: art.cantidad,
             precio_unitario: art.precio_unitario
-          };
+          }];
         }
       });
 
@@ -199,6 +233,7 @@ export function useVentas() {
         total: totalVenta.value,
         articulos: articulosParaEnviar
       });
+      await sincronizarStockArticulos();
       showDialog.value = true;
       toast.add({ severity: 'success', summary: 'Venta registrada', life: 3000 });
       venta.cliente_id = null;

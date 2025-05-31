@@ -26,3 +26,7 @@ export const deleteArticulo = async (id) => {
   const res = await axios.delete(`${API_URL}/${id}`);
   return res.data;
 };
+
+export const sincronizarStockArticulos = async () => {
+  return await axios.post('https://64.227.15.111/articulos/sincronizar-stock-imeis');
+};
