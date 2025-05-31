@@ -114,6 +114,11 @@ const routes = [
   {
     path: '/buscar-imei',
     component: () => import('@/modules/BuscarImei.vue')
+  },
+  {
+    path: '/historico-notas',
+    name: 'historico-notas',
+    component: () => import('@/modules/HistoricoNotasVenta.vue')
   }
 ];
 
