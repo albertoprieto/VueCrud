@@ -1,0 +1,1 @@
+import{av as a}from"./index-DAEkg-Eb.js";const s="https://64.227.15.111/ventas",r=async()=>(await a.get(s)).data,o=async t=>(await a.post(s,t)).data,c=async t=>(await a.get(`${s}/${t}/detalle`)).data;export{r as a,o as b,c as g};
