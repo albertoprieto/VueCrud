@@ -7,18 +7,9 @@
       responsiveLayout="scroll"
       class="historico-table"
     >
-      <Column
-        field="id"
-        header="Folio"
-      />
-      <Column
-        field="cliente_nombre"
-        header="Cliente"
-      />
-      <Column
-        field="tecnicoNombre"
-        header="Asignado a"
-      >
+      <Column field="id" header="Folio" />
+      <Column field="cliente_nombre" header="Cliente" />
+      <Column field="tecnicoNombre" header="Asignado a">
         <template #body="slotProps">
           <span v-if="slotProps.data.tecnicoNombre" class="chip chip-asignado">
             {{ slotProps.data.tecnicoNombre }}
@@ -26,10 +17,7 @@
           <span v-else class="chip chip-sinasignar">Sin asignar</span>
         </template>
       </Column>
-      <Column
-        field="status"
-        header="Status"
-      >
+      <Column field="status" header="Status">
         <template #body="slotProps">
           <span
             class="chip"
@@ -86,7 +74,13 @@
         placeholder="Selecciona técnico"
         class="w-full mb-3"
       />
-      <Button label="Asignar" icon="pi pi-check" @click="asignarTecnico" :disabled="!tecnicoSeleccionado" />
+      <Calendar
+        v-model="fechaServicio"
+        dateFormat="yy-mm-dd"
+        placeholder="Selecciona fecha de servicio"
+        class="w-full mb-3"
+      />
+      <Button label="Asignar" icon="pi pi-check" @click="asignarTecnico" :disabled="!tecnicoSeleccionado || !fechaServicio" />
       <Button label="Cancelar" icon="pi pi-times" @click="showAsignarDialog = false" class="p-button-secondary ml-2" />
     </Dialog>
     <Dialog v-model:visible="showResponseDialog" header="Resultado" :modal="true">
@@ -102,6 +96,7 @@
 import { ref, onMounted } from 'vue';
 import DataTable from 'primevue/datatable';
 import Dropdown from 'primevue/dropdown';
+import Calendar from 'primevue/calendar';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
@@ -126,6 +121,7 @@ const showAsignarDialog = ref(false);
 const ventaParaAsignar = ref(null);
 const tecnicos = ref([]);
 const tecnicoSeleccionado = ref(null);
+const fechaServicio = ref(null); // NUEVO: fecha de servicio
 const showResponseDialog = ref(false);
 const responseMessage = ref('');
 
@@ -171,18 +167,25 @@ async function descargarPDF(venta) {
 async function abrirAsignarTecnico(venta) {
   ventaParaAsignar.value = venta;
   const usuarios = await getUsuarios();
-  tecnicos.value = usuarios.map(u => ({
+  tecnicos.value = usuarios.filter(u => u.perfil === 'Tecnico').map(u => ({
     nombre: u.username,
     id: u.id,
     perfil: u.perfil
   }));
   tecnicoSeleccionado.value = venta.tecnicoAsignado ?? null;
+  fechaServicio.value = null; // Limpia la fecha al abrir
   showAsignarDialog.value = true;
 }
 
 async function asignarTecnico() {
-  if (!ventaParaAsignar.value || !tecnicoSeleccionado.value) return;
-  const res = await asignarTecnicoVenta(ventaParaAsignar.value.id, tecnicoSeleccionado.value);
+  if (!ventaParaAsignar.value || !tecnicoSeleccionado.value || !fechaServicio.value) return;
+  const fechaFormateada = fechaServicio.value instanceof Date
+    ? fechaServicio.value.toISOString().slice(0, 10)
+    : (typeof fechaServicio.value === 'string' && fechaServicio.value.includes('T'))
+      ? fechaServicio.value.split('T')[0]
+      : fechaServicio.value;
+
+  await asignarTecnicoVenta(ventaParaAsignar.value.id, tecnicoSeleccionado.value, fechaFormateada);
   const tecnico = tecnicos.value.find(t => t.id === tecnicoSeleccionado.value);
   const idx = ventas.value.findIndex(v => v.id === ventaParaAsignar.value.id);
   if (idx !== -1 && tecnico) {
@@ -191,7 +194,7 @@ async function asignarTecnico() {
     ventas.value = nuevasVentas;
   }
   showAsignarDialog.value = false;
-  responseMessage.value = res?.message || 'Técnico asignado';
+  responseMessage.value = 'Técnico asignado';
   showResponseDialog.value = true;
 }
 

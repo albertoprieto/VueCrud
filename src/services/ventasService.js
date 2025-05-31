@@ -17,8 +17,11 @@ export const getDetalleVenta = async (ventaId) => {
   return res.data;
 };
 
-export const asignarTecnicoVenta = async (ventaId, tecnicoId) => {
-  return await axios.post(`https://64.227.15.111/ventas/${ventaId}/asignar-tecnico`, { tecnico_id: tecnicoId });
+export const asignarTecnicoVenta = async (ventaId, tecnicoId, fecha_servicio) => {
+  return await axios.post(`https://64.227.15.111/ventas/${ventaId}/asignar-tecnico`, {
+    tecnico_id: tecnicoId,
+    fecha_servicio
+  });
 };
 
 export const getTecnicoVenta = async (ventaId) => {

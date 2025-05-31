@@ -83,6 +83,16 @@ const items = ref([
       { label: 'Histórico Notas', route: '/historico-notas' } // <-- AGREGA ESTA LÍNEA
     ]
   },
+  {
+    label: 'Usuarios',
+    icon: 'pi pi-fw pi-users',
+    route: '/usuarios'
+  },
+  {
+    label: 'Calendario Técnicos',
+    icon: 'pi pi-fw pi-calendar',
+    route: '/calendario-asignaciones'
+  },
   // {
   //   label: 'Cotizaciones',
   //   icon: 'pi pi-fw pi-dollar',

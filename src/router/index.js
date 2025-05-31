@@ -119,6 +119,22 @@ const routes = [
     path: '/historico-notas',
     name: 'historico-notas',
     component: () => import('@/modules/HistoricoNotasVenta.vue')
+  },
+
+  {
+    path: '/usuarios',
+    name: 'usuarios',
+    component: () => import('@/modules/Usuarios.vue')
+  },
+  {
+    path: '/calendario-asignaciones',
+    name: 'calendario-asignaciones',
+    component: () => import('@/modules/CalendarioAsignaciones.vue')
+  },
+  {
+    path: '/asignacion/:id',
+    name: 'detalle-asignacion',
+    component: () => import('@/modules/DetalleAsignacion.vue')
   }
 ];
 
