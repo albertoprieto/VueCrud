@@ -1,0 +1,1 @@
+import{av as e}from"./index-LITIrOfu.js";const s="https://64.227.15.111/clientes",c=async()=>(await e.get(s)).data,o=async t=>(await e.post(s,t)).data,i=async(t,a)=>(await e.put(`${s}/${t}`,a)).data,d=async t=>(await e.delete(`${s}/${t}`)).data;export{o as a,d,c as g,i as u};
