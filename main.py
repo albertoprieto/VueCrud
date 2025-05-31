@@ -1029,6 +1029,7 @@ def sincronizar_stock_articulos():
 @app.post("/ventas/{venta_id}/asignar-tecnico")
 def asignar_tecnico_venta(venta_id: int, data: dict = Body(...)):
     tecnico_id = data.get("tecnico_id")
+    fecha_servicio = data.get("fecha_servicio")
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -1037,8 +1038,8 @@ def asignar_tecnico_venta(venta_id: int, data: dict = Body(...)):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO venta_tecnico (venta_id, tecnico_id) VALUES (%s, %s)",
-        (venta_id, tecnico_id)
+        "INSERT INTO venta_tecnico (venta_id, tecnico_id, fecha_servicio) VALUES (%s, %s, %s)",
+        (venta_id, tecnico_id, fecha_servicio)
     )
     db.commit()
     cursor.close()
@@ -1079,3 +1080,23 @@ def eliminar_asignacion_tecnico(venta_id: int):
     cursor.close()
     db.close()
     return {"message": "Asignación eliminada"}
+
+@app.get("/asignaciones-tecnicos")
+def get_asignaciones_tecnicos():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT vt.id, vt.fecha_servicio, vt.venta_id, v.cliente_id, u.username as tecnico, v.fecha as fecha_venta
+        FROM venta_tecnico vt
+        JOIN usuarios u ON vt.tecnico_id = u.id
+        JOIN ventas v ON vt.venta_id = v.id
+    """)
+    asignaciones = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return asignaciones
