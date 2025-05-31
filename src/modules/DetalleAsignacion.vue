@@ -57,24 +57,62 @@
           </tbody>
         </table>
       </div>
+      <Button
+        v-if="puedeReportar"
+        label="Generar Reporte de Servicio"
+        icon="pi pi-file-edit"
+        class="p-button-success"
+        @click="showReporteDialog = true"
+      />
+      <ReporteServicio
+        v-if="showReporteDialog"
+        :asignacionId="asignacion.id"
+        :visible="showReporteDialog"
+        @update:visible="showReporteDialog = $event"
+        @close="showReporteDialog = false"
+        @saved="onReporteGuardado"
+      />
+      <div v-if="reporteServicio">
+        <h3>Reporte de Servicio</h3>
+        <p><b>Descripción:</b> {{ reporteServicio.descripcion }}</p>
+        <p><b>Observaciones:</b> {{ reporteServicio.observaciones }}</p>
+        <p><b>Fecha de reporte:</b> {{ reporteServicio.fecha }}</p>
+      </div>
     </div>
     <Button label="Regresar" icon="pi pi-arrow-left" @click="$router.back()" class="btn-regresar" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getDetalleVenta, getVentas } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import Button from 'primevue/button';
+import ReporteServicio from './ReporteServicio.vue';
+import { getReportePorAsignacion } from '@/services/reportesServicio';
 
 const route = useRoute();
 const asignacion = ref(null);
 const ventaDetalle = ref(null);
 const detalleVenta = ref([]);
 const clienteNombre = ref('');
+const reporteServicio = ref(null);
+const showReporteDialog = ref(false);
+
+const puedeReportar = computed(() => {
+  return (
+    asignacion.value &&
+    // asignacion.value.tecnico_id === userId &&   <--- solo el tecnico
+    new Date(asignacion.value.fecha_servicio) <= new Date() &&
+    !reporteServicio.value
+  );
+});
+
+async function onReporteGuardado() {
+  reporteServicio.value = await getReportePorAsignacion(asignacion.value.id);
+}
 
 onMounted(async () => {
   const asignaciones = await getAsignacionesTecnicos();
@@ -93,6 +131,7 @@ onMounted(async () => {
     const cliente = clientes.find(c => c.id == asignacion.value.cliente_id);
     clienteNombre.value = cliente ? cliente.nombre : '';
   }
+  reporteServicio.value = await getReportePorAsignacion(asignacion.value.id);
 });
 </script>
 
