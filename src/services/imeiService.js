@@ -56,6 +56,6 @@ export const getStockByArticuloNombre = async (articuloNombre) => {
 };
 
 export const devolverIMEI = async (imei) => {
-  const res = await axios.post(`/imeis/${imei}/devolver`);
+  const res = await axios.post(`https://64.227.15.111/imeis/${imei}/devolver`);
   return res.data;
 };

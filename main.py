@@ -739,12 +739,16 @@ def crear_venta(venta: Venta):
 
         # Descontar inventario solo si NO es servicio
         if getattr(item, "imei", None):
-            cursor.execute("UPDATE imeis SET status='Vendido' WHERE imei=%s AND status='Disponible'", (item.imei,))
-            if cursor.rowcount == 0:
-                db.rollback()
-                cursor.close()
-                db.close()
-                raise HTTPException(status_code=400, detail=f"IMEI {item.imei} no disponible")
+            # Actualiza el status del IMEI
+            cursor.execute(
+                "UPDATE imeis SET status='Vendido' WHERE imei=%s AND status IN ('Disponible', 'Devuelto')",
+                (item.imei,)
+            )
+            # Descuenta stock del artículo también
+            cursor.execute(
+                "UPDATE articulos SET stock = stock - 1 WHERE id = %s AND stock >= 1",
+                (item.articulo_id,)
+            )
         else:
             cursor.execute(
                 "UPDATE articulos SET stock = stock - %s WHERE id = %s AND stock >= %s",
@@ -929,7 +933,7 @@ def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequ
     return {"message": "IMEIs asignados a la ubicación"}
 
 @app.post("/ubicaciones/{ubicacion_id}/remover-imeis")
-def remover_imeis_de_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest):
+def remover_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest):
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -999,3 +1003,25 @@ def devolver_imei(imei: str):
     cursor.close()
     db.close()
     return {"message": "IMEI marcado como devuelto"}
+
+@app.post("/articulos/sincronizar-stock-imeis")
+def sincronizar_stock_articulos():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    # Actualiza el stock de todos los artículos según la cantidad de IMEIs disponibles o devueltos
+    cursor.execute("""
+        UPDATE articulos a
+        SET stock = (
+            SELECT COUNT(*) FROM imeis i
+            WHERE i.articulo_id = a.id AND i.status IN ('Disponible', 'Devuelto')
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Stock de artículos sincronizado con IMEIs"}
