@@ -16,3 +16,16 @@ export const getDetalleVenta = async (ventaId) => {
   const res = await axios.get(`${API_URL}/${ventaId}/detalle`);
   return res.data;
 };
+
+export const asignarTecnicoVenta = async (ventaId, tecnicoId) => {
+  return await axios.post(`https://64.227.15.111/ventas/${ventaId}/asignar-tecnico`, { tecnico_id: tecnicoId });
+};
+
+export const getTecnicoVenta = async (ventaId) => {
+  const res = await axios.get(`https://64.227.15.111/ventas/${ventaId}/tecnico`);
+  return res.data;
+};
+
+export const deleteAsignacionTecnico = async (ventaId) => {
+  return await axios.delete(`https://64.227.15.111/ventas/${ventaId}/asignar-tecnico`);
+};

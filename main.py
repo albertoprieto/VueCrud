@@ -334,7 +334,7 @@ def get_usuarios():
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT username, perfil FROM usuarios")
+    cursor.execute("SELECT id, username, perfil FROM usuarios")
     usuarios = cursor.fetchall()
     cursor.close()
     db.close()
@@ -1025,3 +1025,57 @@ def sincronizar_stock_articulos():
     cursor.close()
     db.close()
     return {"message": "Stock de artículos sincronizado con IMEIs"}
+
+@app.post("/ventas/{venta_id}/asignar-tecnico")
+def asignar_tecnico_venta(venta_id: int, data: dict = Body(...)):
+    tecnico_id = data.get("tecnico_id")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO venta_tecnico (venta_id, tecnico_id) VALUES (%s, %s)",
+        (venta_id, tecnico_id)
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Técnico asignado a la venta"}
+
+@app.get("/ventas/{venta_id}/tecnico")
+def get_tecnico_venta(venta_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.* FROM venta_tecnico vt
+        JOIN usuarios u ON vt.tecnico_id = u.id
+        WHERE vt.venta_id = %s
+        ORDER BY vt.fecha_asignacion DESC LIMIT 1
+    """, (venta_id,))
+    tecnico = cursor.fetchone()
+    cursor.close()
+    db.close()
+    return tecnico
+
+@app.delete("/ventas/{venta_id}/asignar-tecnico")
+def eliminar_asignacion_tecnico(venta_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM venta_tecnico WHERE venta_id = %s", (venta_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Asignación eliminada"}
