@@ -55,12 +55,12 @@
         </Column>
         <Column field="precio_unitario" header="Precio">
           <template #body="slotProps">
-            <span>{{ slotProps.data.precio_unitario.toFixed(2) }}</span>
+            <span>{{ (slotProps.data.precio_unitario ?? 0).toFixed(2) }}</span>
           </template>
         </Column>
         <Column field="subtotal" header="Subtotal">
           <template #body="slotProps">
-            {{ (slotProps.data.cantidad * slotProps.data.precio_unitario).toFixed(2) }}
+            {{ ((slotProps.data.cantidad ?? 0) * (slotProps.data.precio_unitario ?? 0)).toFixed(2) }}
           </template>
         </Column>
         <Column header="Acciones">
@@ -111,7 +111,7 @@
       </div>
 
       <div class="mb-2 acciones-footer">
-        <strong>Total: ${{ totalVenta.toFixed(2) }}</strong>
+        <strong>Total: ${{ (totalVenta ?? 0).toFixed(2) }}</strong>
         <Button
           label="Guardar Venta"
           class="mb-2"
@@ -122,7 +122,14 @@
 
       <Dialog v-model:visible="showDialog" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
         <p>La nota de venta se registró correctamente.</p>
-        <Button label="Aceptar" icon="pi pi-check" @click="showDialog = false" autofocus />
+        <NotaVentaPDF
+          :venta="venta"
+          :cliente="clientePDF"
+          :articulos="articulosPDF"
+          :empresa="{ nombre: 'GPSubicacion.com', direccion: 'Guadalajara', rfc: 'RFC123456' }"
+          :venta-registrada="ventaRegistrada"
+        />
+        <Button label="Aceptar" icon="pi pi-check" @click="cerrarDialogoVenta" autofocus />
       </Dialog>
     </div>
   </div>
@@ -130,6 +137,10 @@
 
 <script setup>
 import { useVentas } from '@/composables/useVentas.js';
+import NotaVentaPDF from '@/components/NotaVentaPDF.vue';
+import { getDetalleVenta } from '@/services/ventasService';
+import { getClientes } from '@/services/clientesService';
+import { getTodosArticulos } from '@/services/articulosService';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
@@ -137,7 +148,7 @@ import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 const {
   today,
@@ -149,38 +160,69 @@ const {
   imeis,
   showDialog,
   venta,
-  totalVenta,
+  guardarVenta,
+  cargarDetalleVenta,
   articulosConStock,
-  getStockDisponible,
-  imeisDisponiblesPorArticulo,
-  mostrarColumnaIMEI,
   addArticulo,
+  getStockDisponible,
+  mostrarColumnaIMEI,
+  onArticuloChange,
   removeArticulo,
   validateCantidad,
-  onArticuloChange,
-  guardarVenta,
-  cargarDetalleVenta
+  totalVenta,
+  imeisDisponiblesPorArticulo,
+  getVentas
 } = useVentas();
+
+const ventaRegistrada = ref(false);
+const detalleVentaPDF = ref([]);
+const clientePDF = ref({});
+const articulosPDF = ref([]);
+
+async function guardarVentaConLoading() {
+  loadingGuardar.value = true;
+  try {
+    await guardarVenta();
+    // Obtener detalle de la última venta registrada
+    const ventas = await getVentas();
+    const ultimaVenta = ventas[ventas.length - 1];
+    const detalle = await getDetalleVenta(ultimaVenta.id);
+    detalleVentaPDF.value = detalle;
+
+    // Obtener cliente
+    const clientes = await getClientes();
+    clientePDF.value = clientes.find(c => c.id === ultimaVenta.cliente_id) || {};
+
+    // Obtener artículos para SKU y nombre formal
+    const articulos = await getTodosArticulos();
+    articulosPDF.value = detalle.map(item => {
+      const art = articulos.find(a => a.id === item.articulo_id) || {};
+      return {
+        ...item,
+        sku: art.sku,
+        nombre: art.nombre
+      };
+    });
+
+    ventaRegistrada.value = true;
+  } finally {
+    loadingGuardar.value = false;
+  }
+}
 
 const showDetalleDialog = ref(false);
 const loadingGuardar = ref(false);
+
+function cerrarDialogoVenta() {
+  showDialog.value = false;
+  ventaRegistrada.value = false;
+}
 
 // Devuelve true si el artículo es de tipo Servicio
 const esServicio = (articulo_id) => {
   const art = articulosDisponibles.value.find(a => a.id === articulo_id);
   return art && art.tipo && art.tipo.toLowerCase() === 'servicio';
 };
-
-async function guardarVentaConLoading() {
-  console.log('Guardando venta:', venta);
-  
-  loadingGuardar.value = true;
-  try {
-    await guardarVenta();
-  } finally {
-    loadingGuardar.value = false;
-  }
-}
 </script>
 
 <style scoped>

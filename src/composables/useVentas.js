@@ -312,6 +312,7 @@ export function useVentas() {
     cargarDetalleVenta,
     clienteSeleccionado,
     agregarUsuario,
-    agregarPlataforma
+    agregarPlataforma,
+    getVentas
   };
 }

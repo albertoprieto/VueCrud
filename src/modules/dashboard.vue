@@ -79,7 +79,8 @@ const items = ref([
     items: [
       { label: 'Clientes', route: '/clientes' },
       { label: 'Notas de Venta', route: '/ventas' },
-      { label: 'Consultar Ventas', route: '/consultar-ventas' }
+      { label: 'Consultar Ventas', route: '/consultar-ventas' },
+      { label: 'Histórico Notas', route: '/historico-notas' } // <-- AGREGA ESTA LÍNEA
     ]
   },
   // {
