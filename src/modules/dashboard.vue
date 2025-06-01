@@ -83,38 +83,21 @@ const items = ref([
       { label: 'Histórico Notas', route: '/historico-notas' } // <-- AGREGA ESTA LÍNEA
     ]
   },
+
   {
     label: 'Usuarios',
     icon: 'pi pi-fw pi-users',
     route: '/usuarios'
   },
-  {
-    label: 'Calendario Técnicos',
-    icon: 'pi pi-fw pi-calendar',
-    route: '/calendario-asignaciones'
-  },
-  // {
-  //   label: 'Cotizaciones',
-  //   icon: 'pi pi-fw pi-dollar',
-  //   items: [
-  //     { label: 'Crear', route: '/cotizacion' },
-  //     { label: 'Consultar', route: '/consultar-cotizaciones' }
-  //   ],
-  //   locked: true // campo personalizado para el slot
-  // },
-  // {
-  //   label: 'Calendario',
-  //   icon: 'pi pi-fw pi-calendar',
-  //   route: '/calendario-cotizaciones',
-  //   locked: true // campo personalizado para el slot
-  // },
-  // {
-  //   label: 'Seguimiento',
-  //   icon: 'pi pi-fw pi-file',
-  //   route:'/seguimiento',
-  //   locked: true // campo personalizado para el slot
-  // },
 
+  {
+    label: 'Técnicos',
+    icon: 'pi pi-fw pi-user-cog',
+    items: [
+      { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones' },
+      { label: 'Reportes de Servicio', route: '/consultar-reportes' },
+    ]
+  },
   {
     label: 'Cerrar',
     icon: 'pi pi-fw pi-sign-out',
