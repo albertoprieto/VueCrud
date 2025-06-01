@@ -1,0 +1,1 @@
+import{d as a}from"./index-B_EOEPfX.js";const t="https://64.227.15.111/usuarios",n=async()=>(await a.get(t)).data,c=async s=>(await a.post(t,s)).data,u=async(s,r)=>(await a.put(`${t}/${s}`,r)).data,d=async s=>(await a.delete(`${t}/${s}`)).data;export{c as a,d,n as g,u};
