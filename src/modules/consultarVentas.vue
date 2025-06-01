@@ -10,7 +10,7 @@
       <Column field="cliente_nombre" header="Cliente" />
       <Column field="fecha" header="Fecha">
         <template #body="slotProps">
-          {{ slotProps.data.fecha?.split(' ')[0] || '' }}
+          {{ formatFecha(slotProps.data.fecha) }}
         </template>
       </Column>
       <Column field="total" header="Total">
@@ -29,7 +29,7 @@
       <div v-if="detalleVenta && detalleVenta.length" class="detalle-venta-dialog">
         <div class="mb-2">
           <strong>Fecha de nota:</strong>
-          {{ ventaDetalle?.fecha?.split(' ')[0] || 'Sin fecha' }}
+          {{ formatFecha(ventaDetalle?.fecha) || 'Sin fecha' }}
         </div>
         <table class="detalle-table">
           <thead>
@@ -98,6 +98,18 @@ const ventasFiltradas = computed(() =>
 
 function formatoMoneda(valor) {
   return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor) || 0);
+}
+
+function formatFecha(fecha) {
+  if (!fecha) return '';
+  // Si ya está en formato YYYY-MM-DD, regresa igual
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return fecha;
+  // Si viene con hora o con 'T', corta solo la fecha
+  if (typeof fecha === 'string' && (fecha.includes(' ') || fecha.includes('T')))
+    return fecha.split(/[ T]/)[0];
+  // Si es Date, formatea
+  if (fecha instanceof Date) return fecha.toISOString().slice(0, 10);
+  return fecha;
 }
 
 async function verDetalle(venta) {
