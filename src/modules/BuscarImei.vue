@@ -66,7 +66,7 @@ const cargando = ref(false);
 
 const cargarImeis = async () => {
   cargando.value = true;
-  const res = await axios.get('https://64.227.15.111/buscar-imei?digitos=');
+  const res = await axios.get('https://api.gpsubicacionapi.com/buscar-imei?digitos=');
   imeis.value = res.data;
   cargando.value = false;
 };
