@@ -59,3 +59,8 @@ export const devolverIMEI = async (imei) => {
   const res = await axios.post(`https://api.gpsubicacionapi.com/imeis/${imei}/devolver`);
   return res.data;
 };
+
+export const deleteIMEI = async (imei) => {
+  const res = await axios.delete(`https://api.gpsubicacionapi.com/imeis/${imei}`);
+  return res.data;
+};
