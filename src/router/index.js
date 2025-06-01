@@ -135,6 +135,11 @@ const routes = [
     path: '/asignacion/:id',
     name: 'detalle-asignacion',
     component: () => import('@/modules/DetalleAsignacion.vue')
+  },
+  {
+    path: '/reporte-servicio/:asignacionId',
+    name: 'reporte-servicio',
+    component: () => import('@/modules/ReporteServicio.vue')
   }
 ];
 

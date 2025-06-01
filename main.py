@@ -1100,3 +1100,92 @@ def get_asignaciones_tecnicos():
     cursor.close()
     db.close()
     return asignaciones
+
+class ReporteServicio(BaseModel):
+    asignacion_id: int
+    tipo_servicio: str
+    lugar_instalacion: str = ""
+    marca: str = ""
+    submarca: str = ""
+    modelo: str = ""
+    placas: str = ""
+    color: str = ""
+    numero_economico: str = ""
+    equipo_plan: str = ""
+    imei: str = ""
+    serie: str = ""
+    accesorios: str = ""
+    sim_proveedor: str = ""
+    sim_serie: str = ""
+    sim_instalador: str = ""
+    sim_telefono: str = ""
+    bateria: str = ""
+    ignicion: str = ""
+    corte: str = ""
+    ubicacion_corte: str = ""
+    observaciones: str = ""
+    plataforma: str = ""
+    usuario: str = ""
+    subtotal: str = ""
+    forma_pago: str = ""
+    pagado: bool = False
+    nombre_cliente: str = ""
+    firma_cliente: str = ""
+    nombre_instalador: str = ""
+    firma_instalador: str = ""
+
+@app.post("/reportes-servicio")
+def add_reporte_servicio(reporte: ReporteServicio):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO reportes_servicio (asignacion_id, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico, equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria, ignicion, corte, ubicacion_corte, observaciones, plataforma, usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (
+            reporte.asignacion_id, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
+            reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
+            reporte.imei, reporte.serie, reporte.accesorios, reporte.sim_proveedor, reporte.sim_serie,
+            reporte.sim_instalador, reporte.sim_telefono, reporte.bateria, reporte.ignicion, reporte.corte,
+            reporte.ubicacion_corte, reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
+            reporte.forma_pago, int(reporte.pagado), reporte.nombre_cliente, reporte.firma_cliente,
+            reporte.nombre_instalador, reporte.firma_instalador
+        )
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Reporte de servicio creado exitosamente"}
+
+@app.get("/reportes-servicio")
+def get_reporte_servicio(asignacion_id: int = Query(...)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM reportes_servicio WHERE asignacion_id = %s", (asignacion_id,))
+    reporte = cursor.fetchone()
+    cursor.close()
+    db.close()
+    return reporte
+
+@app.get("/reportes-servicio-todos")
+def get_reportes_servicio_todos():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM reportes_servicio ORDER BY id DESC")
+    reportes = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return reportes

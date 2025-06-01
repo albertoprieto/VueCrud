@@ -62,7 +62,7 @@
         label="Generar Reporte de Servicio"
         icon="pi pi-file-edit"
         class="p-button-success"
-        @click="showReporteDialog = true"
+        @click="irAReporte"
       />
       <ReporteServicio
         v-if="showReporteDialog"
@@ -85,7 +85,7 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getDetalleVenta, getVentas } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
@@ -94,6 +94,7 @@ import ReporteServicio from './ReporteServicio.vue';
 import { getReportePorAsignacion } from '@/services/reportesServicio';
 
 const route = useRoute();
+const router = useRouter();
 const asignacion = ref(null);
 const ventaDetalle = ref(null);
 const detalleVenta = ref([]);
@@ -112,6 +113,10 @@ const puedeReportar = computed(() => {
 
 async function onReporteGuardado() {
   reporteServicio.value = await getReportePorAsignacion(asignacion.value.id);
+}
+
+function irAReporte() {
+  router.push({ name: 'reporte-servicio', params: { asignacionId: asignacion.value.id } });
 }
 
 onMounted(async () => {
