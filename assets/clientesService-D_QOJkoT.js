@@ -1,1 +1,0 @@
-import{d as e}from"./index-B_EOEPfX.js";const s="https://64.227.15.111/clientes",c=async()=>(await e.get(s)).data,o=async t=>(await e.post(s,t)).data,d=async(t,a)=>(await e.put(`${s}/${t}`,a)).data,i=async t=>(await e.delete(`${s}/${t}`)).data;export{o as a,i as d,c as g,d as u};
