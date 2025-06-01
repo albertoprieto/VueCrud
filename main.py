@@ -1227,3 +1227,18 @@ def delete_reporte_servicio(reporte_id: int):
     cursor.close()
     db.close()
     return {"message": "Reporte eliminado"}
+
+@app.delete("/imeis/{imei}")
+def delete_imei(imei: str):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM imeis WHERE imei=%s", (imei,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "IMEI eliminado"}

@@ -4,15 +4,25 @@
     <div class="form-card">
       <div class="form-group">
         <label for="articulo">
-          Artículo
-          <span class="required-tooltip" title="Obligatorio">*</span>
+          Artículo <span class="required-tooltip" title="Obligatorio">*</span>
         </label>
         <Dropdown
           id="articulo"
           v-model="selectedArticulo"
           :options="articulosFiltrados"
-          optionLabel="nombre"
+          optionLabel="sku"
           placeholder="Selecciona artículo"
+          class="w-full"
+        />
+      </div>
+      <div class="form-group">
+        <label for="ubicacionDestino">Ubicación destino</label>
+        <Dropdown
+          id="ubicacionDestino"
+          v-model="ubicacionDestino"
+          :options="ubicaciones"
+          optionLabel="nombre"
+          placeholder="Selecciona ubicación"
           class="w-full"
         />
       </div>
@@ -53,37 +63,6 @@
             </template>
           </Column>
         </DataTable>
-      </div>
-      <div class="form-group">
-        <label for="ubicacionDestino">
-          Ubicación destino
-        </label>
-        <Dropdown
-          :disabled="!modoTransferencia"
-          id="ubicacionDestino"
-          v-model="ubicacionDestino"
-          :options="ubicacionesDestino"
-          optionLabel="nombre"
-          placeholder="Selecciona ubicación"
-          class="w-full"
-        />
-      </div>
-      <div class="form-group">
-        <label>
-          <input type="checkbox" v-model="modoTransferencia" />
-          Transferencia entre ubicaciones
-        </label>
-      </div>
-      <div v-if="modoTransferencia" class="form-group">
-        <label for="ubicacionOrigen">Ubicación origen</label>
-        <Dropdown
-          id="ubicacionOrigen"
-          v-model="ubicacionOrigen"
-          :options="ubicaciones"
-          optionLabel="nombre"
-          placeholder="Selecciona ubicación origen"
-          class="w-full"
-        />
       </div>
       <div class="form-actions">
         <Button label="Registrar y asignar IMEIs" icon="pi pi-save" @click="registrarYAsignar" class="p-button-success" :disabled="imeis.length === 0" />
@@ -127,24 +106,15 @@ const warningMessage = ref('');
 const imeisExistentes = ref([]);
 const ubicaciones = ref([]);
 const ubicacionDestino = ref(null);
-const modoTransferencia = ref(false);
-const ubicacionOrigen = ref(null);
 
 const articulosFiltrados = computed(() =>
   articulos.value.filter(a => a.tipo && a.tipo.toLowerCase() !== 'servicio')
 );
 
-const ubicacionesDestino = computed(() => {
-  if (!modoTransferencia.value || !ubicacionOrigen.value) return ubicaciones.value;
-  // Excluir la ubicación origen de las opciones de destino
-  return ubicaciones.value.filter(u => u.id !== ubicacionOrigen.value.id);
-});
-
 onMounted(async () => {
   articulos.value = await getTodosArticulos();
   ubicaciones.value = await getUbicaciones();
   ubicacionDestino.value = ubicaciones.value[0] || null;
-  ubicacionOrigen.value = ubicaciones.value[0] || null;
 });
 
 const agregarImei = () => {
@@ -167,13 +137,6 @@ const eliminarImei = (idx) => {
 const registrarYAsignar = async () => {
   if (!selectedArticulo.value || imeis.value.length === 0 || !ubicacionDestino.value) return;
 
-  // Validar que origen y destino sean diferentes en modo transferencia
-  if (modoTransferencia.value && ubicacionOrigen.value && ubicacionDestino.value && ubicacionOrigen.value.id === ubicacionDestino.value.id) {
-    warningMessage.value = 'La ubicación origen y destino no pueden ser la misma.';
-    showWarningDialog.value = true;
-    return;
-  }
-
   // Validar IMEIs existentes en la base de datos
   try {
     const todosIMEIs = await getIMEIs();
@@ -181,28 +144,6 @@ const registrarYAsignar = async () => {
     imeisExistentes.value = imeis.value.filter(i => imeisEnBD.has(i));
   } catch (e) {
     mensaje.value = 'Error al validar IMEIs existentes en la base de datos.';
-    showDialog.value = true;
-    return;
-  }
-
-  if (modoTransferencia.value) {
-    // En transferencia, todos los IMEIs deben existir y estar en la ubicación origen
-    const todosIMEIs = await getIMEIs();
-    const imeisEnOrigen = todosIMEIs.filter(i => imeis.value.includes(i.imei) && i.ubicacion_id === ubicacionOrigen.value.id);
-    if (imeisEnOrigen.length !== imeis.value.length) {
-      warningMessage.value = 'Todos los IMEIs deben existir y estar en la ubicación origen para transferir.';
-      showWarningDialog.value = true;
-      return;
-    }
-    // Aquí deberías llamar a tu servicio de transferencia, por ejemplo:
-    try {
-      await asignarImeisUbicacion(ubicacionDestino.value.id, imeis.value, ubicacionOrigen.value.id);
-      mensaje.value = `${imeis.value.length} IMEIs transferidos de "${ubicacionOrigen.value.nombre}" a "${ubicacionDestino.value.nombre}" correctamente.`;
-      imeis.value = [];
-      imeisExistentes.value = [];
-    } catch (e) {
-      mensaje.value = 'Ocurrió un error al transferir los IMEIs.';
-    }
     showDialog.value = true;
     return;
   }
