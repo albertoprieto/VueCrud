@@ -2,14 +2,18 @@
   <div class="consultar-reportes-container">
     <h2 class="consultar-reportes-title">Consultar Reportes de Servicio</h2>
     <DataTable :value="reportes" responsiveLayout="scroll" :loading="loading">
-      <Column field="id" header="ID" />
-      <Column field="asignacion_id" header="Asignación" />
-      <Column field="tipo_servicio" header="Tipo de Servicio" />
+      <!-- <Column field="id" header="ID" />
+      <Column field="asignacion_id" header="Asignación" /> -->
+      <Column field="tipo_servicio" header="Tipo" />
       <Column field="marca" header="Marca" />
       <Column field="modelo" header="Modelo" />
       <Column field="placas" header="Placas" />
       <Column field="nombre_cliente" header="Cliente" />
-      <Column field="fecha" header="Fecha" />
+      <Column field="fecha" header="Fecha">
+        <template #body="slotProps">
+          {{ formatearFecha(slotProps.data.fecha) }}
+        </template>
+      </Column>
       <Column field="nombre_instalador" header="Instalador" />
       <Column field="observaciones" header="Observaciones" />
       <Column header="Nota de Venta">
@@ -235,6 +239,15 @@ async function eliminarReporteConfirmado() {
   }
   showConfirmDeleteDialog.value = false;
   loading.value = false;
+}
+
+function formatearFecha(fecha) {
+  if (!fecha) return '';
+  const d = new Date(fecha);
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const anio = d.getFullYear();
+  return `${dia}/${mes}/${anio}`;
 }
 
 onMounted(cargarReportes);
