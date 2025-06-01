@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'https://64.227.15.111/cotizaciones';
+const API_URL = 'https://api.gpsubicacionapi.com/cotizaciones';
 
 export const addQuotation = async (quotationData) => {
   const response = await axios.post(API_URL, quotationData);
@@ -13,6 +13,6 @@ export const getQuotations = async () => {
 };
 
 export const updateQuotation = async (id, data) => {
-  const response = await axios.put(`https://64.227.15.111/cotizaciones/${id}`, data);
+  const response = await axios.put(`https://api.gpsubicacionapi.com/cotizaciones/${id}`, data);
   return response.data;
 };

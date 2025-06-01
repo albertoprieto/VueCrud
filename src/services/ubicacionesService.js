@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'https://64.227.15.111/ubicaciones';
+const API_URL = 'https://api.gpsubicacionapi.com/ubicaciones';
 
 export const getUbicaciones = async () => {
   const res = await axios.get(API_URL);

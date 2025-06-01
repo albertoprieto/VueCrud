@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'https://64.227.15.111/articulos';
+const API_URL = 'https://api.gpsubicacionapi.com/articulos';
 
 export const getArticulos = async () => {
   const res = await axios.get(API_URL);
@@ -28,5 +28,5 @@ export const deleteArticulo = async (id) => {
 };
 
 export const sincronizarStockArticulos = async () => {
-  return await axios.post('https://64.227.15.111/articulos/sincronizar-stock-imeis');
+  return await axios.post('https://api.gpsubicacionapi.com/articulos/sincronizar-stock-imeis');
 };

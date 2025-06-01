@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'https://64.227.15.111/eventos';
+const API_URL = 'https://api.gpsubicacionapi.com/eventos';
 
 export const getEventos = async () => {
   const response = await axios.get(API_URL);
@@ -14,6 +14,6 @@ export const updateEventoStatus = async (id, status) => {
 };
 
 export const addEvento = async (eventoData) => {
-  const response = await axios.post('https://64.227.15.111/eventos', eventoData);
+  const response = await axios.post('https://api.gpsubicacionapi.com/eventos', eventoData);
   return response.data;
 };

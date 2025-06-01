@@ -1189,3 +1189,41 @@ def get_reportes_servicio_todos():
     cursor.close()
     db.close()
     return reportes
+
+@app.put("/reportes-servicio/{reporte_id}")
+def update_reporte_servicio(reporte_id: int, reporte: dict):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    campos = []
+    valores = []
+    for k, v in reporte.items():
+        if k != "id":
+            campos.append(f"{k}=%s")
+            valores.append(v)
+    valores.append(reporte_id)
+    sql = f"UPDATE reportes_servicio SET {', '.join(campos)} WHERE id=%s"
+    cursor.execute(sql, valores)
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Reporte actualizado"}
+
+@app.delete("/reportes-servicio/{reporte_id}")
+def delete_reporte_servicio(reporte_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM reportes_servicio WHERE id=%s", (reporte_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Reporte eliminado"}
