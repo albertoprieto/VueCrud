@@ -2,29 +2,24 @@
   <div class="consultar-reportes-container">
     <h2 class="consultar-reportes-title">Consultar Reportes de Servicio</h2>
     <DataTable :value="reportes" responsiveLayout="scroll" :loading="loading">
-      <!-- <Column field="id" header="ID" />
-      <Column field="asignacion_id" header="Asignación" /> -->
       <Column field="tipo_servicio" header="Tipo" />
-      <Column field="marca" header="Marca" />
-      <Column field="modelo" header="Modelo" />
-      <Column field="placas" header="Placas" />
       <Column field="nombre_cliente" header="Cliente" />
       <Column field="fecha" header="Fecha">
         <template #body="slotProps">
           {{ formatearFecha(slotProps.data.fecha) }}
         </template>
       </Column>
-      <Column field="nombre_instalador" header="Instalador" />
-      <Column field="observaciones" header="Observaciones" />
-      <Column header="Nota de Venta">
+      <Column field="subtotal" header="Subtotal">
         <template #body="slotProps">
-          <Button
-            icon="pi pi-file-pdf"
-            label="Ver PDF"
-            size="small"
-            @click="mostrarNota(slotProps.data)"
-            v-if="slotProps.data.asignacion_id"
-          />
+          {{ slotProps.data.subtotal ? '$' + Number(slotProps.data.subtotal).toFixed(2) : '-' }}
+        </template>
+      </Column>
+      <Column field="forma_pago" header="Forma de pago" />
+      <Column field="pagado" header="¿Pagado?">
+        <template #body="slotProps">
+          <span :style="{ color: slotProps.data.pagado ? '#28a745' : '#d32f2f', fontWeight: 'bold' }">
+            {{ slotProps.data.pagado ? 'Sí' : 'No' }}
+          </span>
         </template>
       </Column>
       <Column header="Acciones">
@@ -67,8 +62,16 @@
             <input v-model="reporteEditando.tipo_servicio" class="w-full" />
           </div>
           <div class="form-group">
+            <label>Lugar/Centro de instalación</label>
+            <input v-model="reporteEditando.lugar_instalacion" class="w-full" />
+          </div>
+          <div class="form-group">
             <label>Marca</label>
             <input v-model="reporteEditando.marca" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Submarca</label>
+            <input v-model="reporteEditando.submarca" class="w-full" />
           </div>
           <div class="form-group">
             <label>Modelo</label>
@@ -79,10 +82,104 @@
             <input v-model="reporteEditando.placas" class="w-full" />
           </div>
           <div class="form-group">
+            <label>Color</label>
+            <input v-model="reporteEditando.color" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Número económico</label>
+            <input v-model="reporteEditando.numero_economico" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Equipo/Plan</label>
+            <input v-model="reporteEditando.equipo_plan" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>IMEI</label>
+            <input v-model="reporteEditando.imei" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Serie</label>
+            <input v-model="reporteEditando.serie" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Accesorios</label>
+            <input v-model="reporteEditando.accesorios" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>SIM Proveedor</label>
+            <input v-model="reporteEditando.sim_proveedor" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>SIM Serie</label>
+            <input v-model="reporteEditando.sim_serie" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>SIM Instalador</label>
+            <input v-model="reporteEditando.sim_instalador" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>SIM Teléfono</label>
+            <input v-model="reporteEditando.sim_telefono" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Batería</label>
+            <input v-model="reporteEditando.bateria" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Ignición</label>
+            <input v-model="reporteEditando.ignicion" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Corte bomba/switch</label>
+            <input v-model="reporteEditando.corte" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Ubicación corte</label>
+            <input v-model="reporteEditando.ubicacion_corte" class="w-full" />
+          </div>
+          <div class="form-group">
             <label>Observaciones</label>
             <textarea v-model="reporteEditando.observaciones" class="w-full" />
           </div>
-          <!-- Agrega más campos según tu modelo -->
+          <div class="form-group">
+            <label>Plataforma</label>
+            <input v-model="reporteEditando.plataforma" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Usuario</label>
+            <input v-model="reporteEditando.usuario" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Subtotal</label>
+            <input v-model="reporteEditando.subtotal" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Forma de pago</label>
+            <input v-model="reporteEditando.forma_pago" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>¿Pagado?</label>
+            <select v-model="reporteEditando.pagado" class="w-full">
+              <option :value="true">Sí</option>
+              <option :value="false">No</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Nombre del cliente</label>
+            <input v-model="reporteEditando.nombre_cliente" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Firma del cliente</label>
+            <input v-model="reporteEditando.firma_cliente" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Nombre del instalador</label>
+            <input v-model="reporteEditando.nombre_instalador" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Firma del instalador</label>
+            <input v-model="reporteEditando.firma_instalador" class="w-full" />
+          </div>
         </div>
         <div class="modal-actions">
           <Button label="Guardar" icon="pi pi-save" type="submit" />

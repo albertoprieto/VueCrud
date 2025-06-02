@@ -1,8 +1,47 @@
 <template>
   <div class="historico-notas-container">
     <h2 class="historico-title">Histórico de Notas de Venta</h2>
+    <!-- Agrega esto antes del DataTable -->
+    <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+      <InputText v-model="filtroFolio" placeholder="Buscar por folio..." class="filtro-input" clearable />
+      <Dropdown
+        v-model="filtroCliente"
+        :options="clientesUnicos"
+        placeholder="Filtrar por cliente"
+        class="filtro-dropdown"
+        showClear
+        filter
+      />
+      <InputText v-model="filtroTecnico" placeholder="Buscar por técnico..." class="filtro-input" clearable />
+      <!-- Reemplaza el filtro de status por este filtro de técnico -->
+      <Dropdown
+        v-model="filtroTecnico"
+        :options="tecnicosUnicos"
+        placeholder="Filtrar por asignado a"
+        class="filtro-dropdown"
+        showClear
+        filter
+      />
+      <!-- <Calendar
+        v-model="filtroFecha"
+        selectionMode="range"
+        dateFormat="yy-mm-dd"
+        placeholder="Filtrar por fecha"
+        class="filtro-calendar"
+        showIcon
+      /> -->
+      <InputText v-model="filtroImei" placeholder="Buscar por IMEI..." class="filtro-input" clearable />
+      <Button label="Limpiar" icon="pi pi-times" class="p-button-secondary" @click="() => {
+        filtroFolio = '';
+        filtroCliente = '';
+        filtroTecnico = '';
+        filtroStatus = '';
+        filtroFecha = [];
+        filtroImei = '';
+      }" />
+    </div>
     <DataTable
-      :value="ventas"
+      :value="ventasFiltradas"
       :loading="loading"
       responsiveLayout="scroll"
       class="historico-table"
@@ -93,7 +132,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import DataTable from 'primevue/datatable';
 import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
@@ -125,6 +164,14 @@ const fechaServicio = ref(null); // NUEVO: fecha de servicio
 const showResponseDialog = ref(false);
 const responseMessage = ref('');
 
+// Filtros
+const filtroFolio = ref('');
+const filtroCliente = ref('');
+const filtroTecnico = ref('');
+const filtroStatus = ref('');
+const filtroFecha = ref([]);
+const filtroImei = ref('');
+
 // Cargar ventas y técnicos asignados
 onMounted(async () => {
   loading.value = true;
@@ -143,6 +190,52 @@ onMounted(async () => {
   );
   ventas.value = ventasConTecnico;
   loading.value = false;
+});
+
+const clientesUnicos = computed(() => {
+  const set = new Set();
+  ventas.value.forEach(v => v.cliente_nombre && set.add(v.cliente_nombre));
+  return Array.from(set);
+});
+
+const tecnicosUnicos = computed(() => {
+  const set = new Set();
+  ventas.value.forEach(v => v.tecnicoNombre && set.add(v.tecnicoNombre));
+  return Array.from(set);
+});
+
+const ventasFiltradas = computed(() => {
+  return ventas.value.filter(v => {
+    const folioOk = !filtroFolio.value || String(v.id).toLowerCase().includes(filtroFolio.value.toLowerCase());
+    const clienteOk = !filtroCliente.value || v.cliente_nombre === filtroCliente.value;
+    // const tecnicoOk = !filtroTecnico.value ||
+    const tecnicoOk = !filtroTecnico.value || v.tecnicoNombre === filtroTecnico.value;
+      (typeof filtroTecnico.value === 'string'
+        ? v.tecnicoNombre && v.tecnicoNombre.toLowerCase().includes(filtroTecnico.value.toLowerCase())
+        : v.tecnicoNombre && v.tecnicoNombre === filtroTecnico.value.nombre);
+    const statusOk = !filtroStatus.value || v.status === filtroStatus.value;
+
+    // Fecha (rango)
+    let fechaOk = true;
+    if (filtroFecha.value && filtroFecha.value.length === 2 && filtroFecha.value[0] && filtroFecha.value[1]) {
+      const fechaVenta = new Date(v.fecha);
+      const desde = new Date(filtroFecha.value[0]);
+      const hasta = new Date(filtroFecha.value[1]);
+      fechaOk = fechaVenta >= desde && fechaVenta <= hasta;
+    }
+
+    // IMEI (en detalle)
+    const imeiOk = !filtroImei.value ||
+      (v.detalle && v.detalle.some(item =>
+        item.imei &&
+        (
+          item.imei.includes(filtroImei.value) ||
+          item.imei.slice(-5) === filtroImei.value
+        )
+      ));
+
+    return folioOk && clienteOk && tecnicoOk && statusOk && fechaOk && imeiOk;
+  });
 });
 
 async function descargarPDF(venta) {

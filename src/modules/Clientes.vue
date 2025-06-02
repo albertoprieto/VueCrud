@@ -20,15 +20,15 @@
         @item-select="e => filtroUsuario = e.value.label"
       />
       <AutoComplete
-        v-model="filtroPlataforma"
-        :suggestions="plataformasFiltradas"
-        @complete="buscarPlataforma"
+        v-model="filtroTelefono"
+        :suggestions="telefonosFiltrados"
+        @complete="buscarTelefono"
         optionLabel="label"
-        placeholder="Filtrar por plataforma"
+        placeholder="Filtrar por teléfono"
         class="filtro-autocomplete"
         :dropdown="true"
         forceSelection
-        @item-select="e => filtroPlataforma = e.value.label"
+        @item-select="e => filtroTelefono = e.value.label"
       />
       <Button label="Limpiar" icon="pi pi-times" class="p-button-secondary" @click="limpiarFiltros" />
       <Button label="Agregar Cliente" icon="pi pi-plus" @click="openModal" class="p-button-success" />
@@ -142,19 +142,21 @@ const form = ref({
 const filtroNombre = ref('');
 const filtroUsuario = ref(null);
 const filtroPlataforma = ref(null);
+const filtroTelefono = ref(null);
 
 const limpiarFiltros = () => {
   filtroNombre.value = '';
   filtroUsuario.value = null;
-  filtroPlataforma.value = null;
+  filtroTelefono.value = null;
 };
 
 const clientesFiltrados = computed(() => {
   return clientes.value.filter(c => {
     const nombreOk = !filtroNombre.value || c.nombre.toLowerCase().includes(filtroNombre.value.toLowerCase());
     const usuarioOk = !filtroUsuario.value || (c.usuarios && c.usuarios.includes(filtroUsuario.value));
-    const plataformaOk = !filtroPlataforma.value || (c.plataformas && c.plataformas.includes(filtroPlataforma.value));
-    return nombreOk && usuarioOk && plataformaOk;
+    const telefonoOk = !filtroTelefono.value ||
+      (c.telefonos && c.telefonos.some(tel => tel.includes(filtroTelefono.value)));
+    return nombreOk && usuarioOk && telefonoOk;
   });
 });
 
@@ -168,10 +170,16 @@ const plataformasUnicas = computed(() => {
   clientes.value.forEach(c => (c.plataformas || []).forEach(p => set.add(p)));
   return Array.from(set).map(p => ({ label: p, value: p }));
 });
+const telefonosUnicos = computed(() => {
+  const set = new Set();
+  clientes.value.forEach(c => (c.telefonos || []).forEach(t => set.add(t)));
+  return Array.from(set).map(t => ({ label: t, value: t }));
+});
 
 // Para autocompletar usuarios/plataformas
 const usuariosFiltrados = ref([]);
 const plataformasFiltradas = ref([]);
+const telefonosFiltrados = ref([]);
 
 const buscarUsuario = (event) => {
   const query = event.query?.toLowerCase() || '';
@@ -181,6 +189,10 @@ const buscarUsuario = (event) => {
 const buscarPlataforma = (event) => {
   const query = event.query?.toLowerCase() || '';
   plataformasFiltradas.value = plataformasUnicas.value.filter(p => p.label.toLowerCase().includes(query));
+};
+const buscarTelefono = (event) => {
+  const query = event.query?.toLowerCase() || '';
+  telefonosFiltrados.value = telefonosUnicos.value.filter(t => t.label.toLowerCase().includes(query));
 };
 
 const loadClientes = async () => {

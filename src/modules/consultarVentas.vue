@@ -2,12 +2,42 @@
   <div class="consultar-ventas">
     <h2>Consultar Notas de Venta</h2>
     <div class="filtros">
-      <InputText v-model="filtroCliente" placeholder="Filtrar por cliente..." class="mb-2" />
-      <Button label="Buscar" icon="pi pi-search" @click="buscar" class="mb-2" />
+      <InputText v-model="filtroNombre" placeholder="Buscar por cliente..." class="mb-2 filtro-input" clearable />
+      <!-- <AutoComplete
+        v-model="filtroUsuario"
+        :suggestions="usuariosFiltrados"
+        @complete="buscarUsuario"
+        optionLabel="label"
+        placeholder="Filtrar por usuario"
+        class="filtro-autocomplete"
+        :dropdown="true"
+        forceSelection
+        @item-select="e => filtroUsuario = e.value.label"
+      /> -->
+      <!-- <AutoComplete
+        v-model="filtroTelefono"
+        :suggestions="telefonosFiltrados"
+        @complete="buscarTelefono"
+        optionLabel="label"
+        placeholder="Filtrar por teléfono"
+        class="filtro-autocomplete"
+        :dropdown="true"
+        forceSelection
+        @item-select="e => filtroTelefono = e.value.label"
+      /> -->
+      <!-- <InputText v-model="filtroImei" placeholder="Buscar por IMEI" class="mb-2 filtro-input" clearable /> -->
+      <Button label="Limpiar" icon="pi pi-times" class="p-button-secondary" @click="limpiarFiltros" />
     </div>
     <DataTable :value="ventasFiltradas">
-      <Column field="id" header="ID" />
       <Column field="cliente_nombre" header="Cliente" />
+      <Column field="telefonos" header="Teléfonos">
+        <template #body="slotProps">
+          <span v-if="slotProps.data.telefonos && slotProps.data.telefonos.length">
+            {{ slotProps.data.telefonos.join(', ') }}
+          </span>
+          <span v-else>-</span>
+        </template>
+      </Column>
       <Column field="fecha" header="Fecha">
         <template #body="slotProps">
           {{ formatFecha(slotProps.data.fecha) }}
@@ -16,6 +46,14 @@
       <Column field="total" header="Total">
         <template #body="slotProps">
           {{ formatoMoneda(slotProps.data.total) }}
+        </template>
+      </Column>
+      <Column field="imeis" header="IMEIs">
+        <template #body="slotProps">
+          <span v-if="slotProps.data.detalle && slotProps.data.detalle.length">
+            {{ slotProps.data.detalle.filter(i => i.imei).map(i => i.imei).join(', ') }}
+          </span>
+          <span v-else>-</span>
         </template>
       </Column>
       <Column header="Acciones">
@@ -81,20 +119,33 @@ import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
+import AutoComplete from 'primevue/autocomplete';
 import EditarVenta from './EditarVenta.vue';
 
 const { ventas, cargarDetalleVenta, detalleVenta } = useVentas();
-const filtroCliente = ref('');
+const filtroNombre = ref('');
+const filtroUsuario = ref(null);
+const filtroTelefono = ref(null);
+const filtroImei = ref('');
+const usuariosFiltrados = ref([]);
+const telefonosFiltrados = ref([]);
 const showDetalle = ref(false);
 const ventaDetalle = ref(null);
 const ventaEditando = ref(null);
 const reloadKey = ref('');
 
-const ventasFiltradas = computed(() =>
-  filtroCliente.value
-    ? ventas.value.filter(v => v.cliente_nombre?.toLowerCase().includes(filtroCliente.value.toLowerCase()))
-    : ventas.value
-);
+const ventasFiltradas = computed(() => {
+  return ventas.value.filter(v => {
+    const nombreOk = !filtroNombre.value || v.cliente_nombre?.toLowerCase().includes(filtroNombre.value.toLowerCase());
+    const telefonoOk = !filtroTelefono.value || (v.telefonos && v.telefonos.some(tel => tel.includes(filtroTelefono.value)));
+    const imeiOk = !filtroImei.value ||
+      (v.detalle && v.detalle.some(item =>
+        item.imei &&
+        (item.imei.includes(filtroImei.value) || item.imei.slice(-5) === filtroImei.value)
+      ));
+    return nombreOk && telefonoOk && imeiOk;
+  });
+});
 
 function formatoMoneda(valor) {
   return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor) || 0);
@@ -127,11 +178,38 @@ function handleCerrarEditar() {
   ventaEditando.value = null;
   reloadKey.value = '';
 }
+const limpiarFiltros = () => {
+  filtroNombre.value = '';
+  filtroUsuario.value = null;
+  filtroTelefono.value = null;
+  filtroImei.value = '';
+};
+
+const usuariosUnicos = computed(() => {
+  const set = new Set();
+  ventas.value.forEach(v => (v.usuarios || []).forEach(u => set.add(u)));
+  return Array.from(set).map(u => ({ label: u, value: u }));
+});
+const telefonosUnicos = computed(() => {
+  const set = new Set();
+  ventas.value.forEach(v => (v.telefonos || []).forEach(t => set.add(t)));
+  return Array.from(set).map(t => ({ label: t, value: t }));
+});
+
+const buscarUsuario = (event) => {
+  const query = event.query?.toLowerCase() || '';
+  usuariosFiltrados.value = usuariosUnicos.value.filter(u => u.label.toLowerCase().includes(query));
+};
+
+const buscarTelefono = (event) => {
+  const query = event.query?.toLowerCase() || '';
+  telefonosFiltrados.value = telefonosUnicos.value.filter(t => t.label.toLowerCase().includes(query));
+};
 </script>
 
 <style scoped>
 .consultar-ventas {
-  max-width: 800px;
+  /* max-width: 800px; */
   margin: 0 auto;
   padding: 1rem;
 }
