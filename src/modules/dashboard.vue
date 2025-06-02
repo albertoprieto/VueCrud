@@ -66,36 +66,33 @@ const items = ref([
     label: 'Inventario',
     icon: 'pi pi-fw pi-shopping-cart',
     items: [
-      { label: 'Alta artículos', route: '/alta-articulo' },
-      { label: 'Asignar IMEIs', route: '/asignar-imeis' },
-      { label: 'Ubicaciones', route: '/ubicaciones' },
-      { label: 'Buscar IMEI', route: '/buscar-imei' },
-      { label: 'Historico', route: '/articulos-con-imeis' },
+      { label: 'Alta artículos', route: '/alta-articulo', icon: 'pi pi-fw pi-plus-circle' },
+      { label: 'Asignar IMEIs', route: '/asignar-imeis', icon: 'pi pi-fw pi-barcode' },
+      { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
+      { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
+      { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
     ]
   },
   {
     label: 'Ventas',
     icon: 'pi pi-fw pi-briefcase',
     items: [
-      { label: 'Clientes', route: '/clientes' },
-      { label: 'Notas de Venta', route: '/ventas' },
-      { label: 'Consultar Ventas', route: '/consultar-ventas' },
-      { label: 'Histórico Notas', route: '/historico-notas' } // <-- AGREGA ESTA LÍNEA
+      { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users' },
+      { label: 'Notas de Venta', route: '/ventas', icon: 'pi pi-fw pi-file' },
+      { label: 'Histórico Notas', route: '/historico-notas', icon: 'pi pi-fw pi-calendar' }
     ]
   },
-
   {
     label: 'Usuarios',
     icon: 'pi pi-fw pi-users',
     route: '/usuarios'
   },
-
   {
     label: 'Técnicos',
     icon: 'pi pi-fw pi-user-cog',
     items: [
-      { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones' },
-      { label: 'Reportes de Servicio', route: '/consultar-reportes' },
+      { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones', icon: 'pi pi-fw pi-calendar' },
+      { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit' },
     ]
   },
   {

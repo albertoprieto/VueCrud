@@ -2,7 +2,7 @@
   <div class="tecnicos-container">
     <h2 class="tecnicos-title">Usuarios</h2>
     <div class="tecnicos-actions">
-      <Button label="Agregar Técnico" icon="pi pi-plus" @click="abrirModal" />
+      <Button label="Agregar Usuario" icon="pi pi-plus" @click="abrirModal" />
     </div>
     <DataTable :value="tecnicos" class="tecnicos-table" :loading="loading">
       <Column field="id" header="ID" />
