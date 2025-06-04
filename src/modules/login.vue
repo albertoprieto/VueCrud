@@ -50,6 +50,8 @@ const handleSubmit = async () => {
   loading.value = true;
   try {
     const result = await loginUsuario(username.value, password.value);
+    console.log('Login result:', result);
+    
     if (result.success) {
       loginStore.setUser(result.user.username);
       emit('session', true);

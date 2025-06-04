@@ -4,8 +4,10 @@ import mysql.connector
 from fastapi import FastAPI, Query, Body, HTTPException
 from typing import Optional, List
 import datetime
+from fastapi.responses import PlainTextResponse
 
 app = FastAPI()
+
 
 # Permitir CORS para tu frontend
 app.add_middleware(
@@ -30,6 +32,12 @@ class IMEI(BaseModel):
 @app.get("/ok")
 def get_ok():
     return {"status": "Ok"}
+
+
+@app.get("/google5bd3c87fea64a137.html", response_class=PlainTextResponse)
+def google_verification():
+    return "google-site-verification: google5bd3c87fea64a137.html"
+
 
 @app.get("/imeis")
 def get_imeis(articulo_nombre: str = None):
