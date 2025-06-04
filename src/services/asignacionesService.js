@@ -1,6 +1,8 @@
 import axios from 'axios';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 export const getAsignacionesTecnicos = async () => {
-  const res = await axios.get('https://api.gpsubicacionapi.com/asignaciones-tecnicos');
+  const res = await axios.get(`${API_URL}/asignaciones-tecnicos`);
   return res.data;
 };
