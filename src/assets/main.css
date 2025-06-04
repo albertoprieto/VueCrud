@@ -48,3 +48,56 @@ a,
     padding: 0 2rem;
   }
 }
+
+/* Tablas PrimeVue responsivas */
+@media (max-width: 700px) {
+  .p-datatable-wrapper {
+    overflow-x: auto !important;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .p-datatable .p-datatable-thead > tr > th,
+  .p-datatable .p-datatable-tbody > tr > td {
+    font-size: 0.85rem !important;
+    padding: 0.4rem !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* Diálogos PrimeVue responsivos */
+@media (max-width: 700px) {
+  .p-dialog,
+  .detalle-dialog,
+  .ventas-dialog,
+  .historico-dialog,
+  .clientes-dialog,
+  .imeis-dialog,
+  .ubicaciones-dialog {
+    min-width: unset !important;
+    max-width: 98vw !important;
+    width: 98vw !important;
+    padding: 0.5rem !important;
+  }
+}
+
+/* Formularios responsivos */
+@media (max-width: 700px) {
+  .form-grid,
+  .form-row {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  .modal-actions,
+  .dialog-actions {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+}
+
+/* Chips y listas responsivas */
+@media (max-width: 700px) {
+  .list-inline {
+    flex-wrap: wrap !important;
+    gap: 0.2rem !important;
+  }
+}

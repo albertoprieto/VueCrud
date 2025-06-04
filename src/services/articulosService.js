@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'https://api.gpsubicacionapi.com/articulos';
+const API_URL = import.meta.env.VITE_API_URL;
 
 export const getArticulos = async () => {
   const res = await axios.get(API_URL);
@@ -28,5 +28,5 @@ export const deleteArticulo = async (id) => {
 };
 
 export const sincronizarStockArticulos = async () => {
-  return await axios.post('https://api.gpsubicacionapi.com/articulos/sincronizar-stock-imeis');
+  return await axios.post(`${API_URL}/sincronizar-stock-imeis`);
 };
