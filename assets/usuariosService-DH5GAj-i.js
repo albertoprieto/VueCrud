@@ -1,1 +1,0 @@
-import{d as s}from"./index-Cosj08XU.js";const t="https://api.gpsubicacionapi.com/usuarios",n=async()=>(await s.get(t)).data,c=async a=>(await s.post(t,a)).data,i=async(a,r)=>(await s.put(`${t}/${a}`,r)).data,u=async a=>(await s.delete(`${t}/${a}`)).data;export{c as a,u as d,n as g,i as u};
