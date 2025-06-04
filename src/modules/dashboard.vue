@@ -1,5 +1,6 @@
 <template>
   <div>
+    <Loader v-if="loading" />
     <Menubar :model="items">
       <template #item="{ item, props, hasSubmenu }">
         <template v-if="item.separator">
@@ -37,11 +38,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import Menubar from 'primevue/menubar';
 import { useRouter, useRoute } from 'vue-router';
 import informacion from './informacion.vue';
 import { useLoginStore } from '@/stores/loginStore';
+import Loader from '@/components/Loader.vue';
 
 const emit = defineEmits(['logout']);
 
@@ -101,6 +103,17 @@ const items = ref([
     command: handleLogout
   }
 ]);
+
+const loading = ref(false);
+
+watch(
+  () => route.path,
+  async () => {
+    loading.value = true;
+    await nextTick();
+    loading.value = false;
+  }
+);
 </script>
 
 <style scoped>

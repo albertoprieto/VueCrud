@@ -29,6 +29,7 @@ import { useRouter } from 'vue-router';
 
 const router = useRouter();
 function goTo(route) {
+  console.log('Navegando a:', route); // <-- Agrega esto
   router.push(route);
 }
 
@@ -146,6 +147,10 @@ const groupedItems = [
   box-shadow:
     0 2px 8px var(--color-border, #444),
     0 4px 24px rgba(25, 118, 210, 0.10);
+  cursor: pointer;
+  user-select: none;
+  min-height: 100px;
+  min-width: 100px; /* Asegura que el área sea suficientemente grande para el dedo */
 }
 .info-card:hover {
   transform: translateY(-8px) scale(1.03);
