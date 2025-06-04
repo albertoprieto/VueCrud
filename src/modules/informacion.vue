@@ -1,156 +1,132 @@
 <template>
-  <div class="informacion">
-    <h1>Panel de Inicio</h1>
-    <div class="grid-container">
-      <div class="info-card" @click="showDetalle('disponibles')">
-        <h2>IMEIs Disponibles</h2>
-        <p class="info-value">{{ imeisDisponibles }}</p>
-        <p class="info-desc">Ver resumen por ubicación y artículo</p>
-      </div>
-      <div class="info-card" @click="showDetalle('vendidos')">
-        <h2>IMEIs Vendidos</h2>
-        <p class="info-value">{{ imeisVendidos }}</p>
-        <p class="info-desc">Ver resumen por ubicación y artículo</p>
-      </div>
-      <div class="info-card" @click="showDetalle('articulos')">
-        <h2>Artículos en Inventario</h2>
-        <p class="info-value">{{ totalArticulos }}</p>
-        <p class="info-desc">Ver total por artículo (todas las ubicaciones)</p>
+  <div>
+    <div class="informacion">
+      <h1 class="panel-title">Panel de Inicio</h1>
+      <div v-for="(group, idx) in groupedItems" :key="group.title" class="section-group">
+        <div class="section-header">
+          <span>{{ group.title }}</span>
+          <div class="section-divider"></div>
+        </div>
+        <div class="grid-container">
+          <div
+            v-for="item in group.items"
+            :key="item.route"
+            class="info-card"
+            @click="goTo(item.route)"
+          >
+            <span :class="['info-icon', item.icon]" style="font-size:2rem;margin-bottom:8px;" />
+            <h2>{{ item.label }}</h2>
+            <p class="info-desc">{{ item.desc }}</p>
+          </div>
+        </div>
       </div>
     </div>
-
-    <Dialog v-model:visible="showDialog" :header="dialogTitle" :modal="true" class="detalle-dialog">
-      <DataTable :value="detalleDialogRows" responsiveLayout="scroll">
-        <Column field="ubicacion" header="Ubicación" />
-        <Column field="nombre" header="Artículo" />
-        <Column field="stock" :header="dialogType === 'vendidos' ? 'Vendidos' : 'Disponibles'" />
-      </DataTable>
-    </Dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
-import Dialog from 'primevue/dialog';
-import { getIMEIs } from '@/services/imeiService';
-import { getTodosArticulos } from '@/services/articulosService';
-import { getUbicaciones } from '@/services/ubicacionesService';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
+import { useRouter } from 'vue-router';
 
-const imeis = ref([]);
-const articulos = ref([]);
-const ubicaciones = ref([]);
-const imeisDisponibles = computed(() => {
-  // Solo IMEIs disponibles, con artículo válido (no servicio)
-  return imeis.value.filter(i =>
-    i.status === 'Disponible' &&
-    articulos.value.some(a => a.nombre === i.articulo_nombre && a.tipo && a.tipo.toLowerCase() !== 'servicio')
-  ).length;
-});
-const imeisVendidos = ref(0);
-const totalArticulos = ref(0);
-
-const showDialog = ref(false);
-const dialogType = ref('');
-const dialogTitle = ref('');
-const detalleDialogRows = computed(() => {
-  if (dialogType.value === 'disponibles') {
-    return resumenDisponibles.value.flatMap(g =>
-      g.articulos.map(a => ({ ubicacion: g.ubicacion, nombre: a.nombre, stock: a.stock }))
-    );
-  }
-  if (dialogType.value === 'vendidos') {
-    return resumenVendidos.value.flatMap(g =>
-      g.articulos.map(a => ({ ubicacion: g.ubicacion, nombre: a.nombre, stock: a.stock }))
-    );
-  }
-  if (dialogType.value === 'articulos') {
-    return resumenArticulos.value.map(a => ({
-      ubicacion: 'Todas',
-      nombre: a.nombre,
-      stock: a.stock
-    }));
-  }
-  return [];
-});
-
-const resumenDisponibles = computed(() => {
-  const grupos = [];
-  ubicaciones.value.forEach(u => {
-    const imeisUbic = imeis.value.filter(i => i.status === 'Disponible' && i.ubicacion_id === u.id);
-    const articulosEnUbic = [];
-    articulos.value.forEach(a => {
-      if (a.tipo && a.tipo.toLowerCase() === 'servicio') return;
-      const stock = imeisUbic.filter(i => i.articulo_nombre === a.nombre).length;
-      if (stock > 0) {
-        articulosEnUbic.push({ nombre: a.nombre, stock });
-      }
-    });
-    if (articulosEnUbic.length > 0) {
-      grupos.push({ ubicacion: u.nombre, articulos: articulosEnUbic });
-    }
-  });
-  return grupos;
-});
-
-const resumenVendidos = computed(() => {
-  const grupos = [];
-  ubicaciones.value.forEach(u => {
-    const imeisUbic = imeis.value.filter(i => i.status === 'Vendido' && i.ubicacion_id === u.id);
-    const articulosEnUbic = [];
-    articulos.value.forEach(a => {
-      if (a.tipo && a.tipo.toLowerCase() === 'servicio') return;
-      const stock = imeisUbic.filter(i => i.articulo_nombre === a.nombre).length;
-      if (stock > 0) {
-        articulosEnUbic.push({ nombre: a.nombre, stock });
-      }
-    });
-    if (articulosEnUbic.length > 0) {
-      grupos.push({ ubicacion: u.nombre, articulos: articulosEnUbic });
-    }
-  });
-  return grupos;
-});
-
-const resumenArticulos = computed(() => {
-  // Total por artículo en todas las ubicaciones (solo disponibles)
-  return articulos.value
-    .filter(a => a.tipo && a.tipo.toLowerCase() !== 'servicio')
-    .map(a => {
-      const stock = imeis.value.filter(i => i.status === 'Disponible' && i.articulo_nombre === a.nombre).length;
-      return { nombre: a.nombre, stock };
-    })
-    .filter(a => a.stock > 0);
-});
-
-function showDetalle(tipo) {
-  dialogType.value = tipo;
-  if (tipo === 'disponibles') dialogTitle.value = 'Resumen de IMEIs Disponibles';
-  else if (tipo === 'vendidos') dialogTitle.value = 'Resumen de IMEIs Vendidos';
-  else if (tipo === 'articulos') dialogTitle.value = 'Artículos en Inventario';
-  showDialog.value = true;
+const router = useRouter();
+function goTo(route) {
+  router.push(route);
 }
 
-onMounted(async () => {
-  imeis.value = await getIMEIs();
-  articulos.value = await getTodosArticulos();
-  ubicaciones.value = await getUbicaciones();
-  imeisVendidos.value = imeis.value.filter(i => i.status === 'Vendido').length;
-  totalArticulos.value = articulos.value.filter(a => a.tipo && a.tipo.toLowerCase() !== 'servicio').length;
-});
+const groupedItems = [
+  {
+    title: 'Inventario',
+    items: [
+      { label: 'Alta artículos', route: '/alta-articulo', icon: 'pi pi-fw pi-plus-circle', desc: 'Registrar nuevos artículos' },
+      { label: 'Asignar IMEIs', route: '/asignar-imeis', icon: 'pi pi-fw pi-barcode', desc: 'Asignar IMEIs a artículos' },
+      { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker', desc: 'Gestionar ubicaciones' },
+      { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search', desc: 'Buscar IMEI por número' },
+      { label: 'Histórico IMEIs', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history', desc: 'Ver histórico de IMEIs' }
+    ]
+  },
+  {
+    title: 'Ventas',
+    items: [
+      { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users', desc: 'Gestión de clientes' },
+      { label: 'Notas de Venta', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar y consultar ventas' },
+      { label: 'Histórico Notas', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico de notas de venta' }
+    ]
+  },
+  {
+    title: 'Usuarios',
+    items: [
+      { label: 'Usuarios', route: '/usuarios', icon: 'pi pi-fw pi-users', desc: 'Gestión de usuarios' }
+    ]
+  },
+  {
+    title: 'Técnicos',
+    items: [
+      { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones', icon: 'pi pi-fw pi-calendar', desc: 'Ver calendario de asignaciones' },
+      { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' }
+    ]
+  }
+];
 </script>
 
 <style scoped>
+.info-icon {
+  display: block;
+}
 .informacion {
   text-align: center;
   margin: 20px;
+}
+.panel-title {
+  text-align: center;
+  /* font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif; */
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--color-title);
+  margin-bottom: 2.5rem;
+}
+.section-group {
+  margin-bottom: 2.5rem;
+}
+.section-header {
+  /* display: flex; */
+  color: --color-title;
+  align-items: center;
+  gap: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+.section-header span {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--color-title);
+  letter-spacing: 1px;
+  text-align: center;
+  width: 100%;
+  display: block;
+  position: relative;
+  margin-bottom: 0.7rem;
+}
+.section-header span::after {
+  content: "";
+  display: block;
+  margin: 0.5rem auto 0 auto;
+  width: 60px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--color-title) 0%, transparent 100%);
+  opacity: 0.35;
+}
+.section-divider {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-title) 0%, transparent 100%);
+  border-radius: 2px;
+  opacity: 0.25;
 }
 .grid-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 32px;
-  margin-top: 32px;
+  margin-top: 12px;
 }
 .info-card {
   background: var(--color-card);
@@ -166,48 +142,25 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  border: 2.5px solid var(--color-border); /* relieve marcado */
+  box-shadow:
+    0 2px 8px var(--color-border, #444),
+    0 4px 24px rgba(25, 118, 210, 0.10);
 }
 .info-card:hover {
   transform: translateY(-8px) scale(1.03);
-  box-shadow: 0 8px 32px rgba(25, 118, 210, 0.18);
+  box-shadow:
+    0 6px 24px var(--color-border, #444),
+    0 8px 32px rgba(25, 118, 210, 0.18);
   background: var(--color-bg);
 }
 .info-card h2 {
-  color: var(--color-title);
-}
-.info-value {
-  color: var(--color-title);
+  color: var(--color-title); /* Título de la tarjeta */
+  /* font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif; */
+  font-weight: 700;
 }
 .info-desc {
-  color: var(--color-text);
-}
-.detalle-dialog {
-  min-width: 350px;
-  max-width: 600px;
-  background: var(--color-bg);
-  border-radius: 12px;
-  padding: 1.5rem 1rem;
-}
-.detalle-grupo-resumen {
-  margin-bottom: 1.2rem;
-  text-align: left;
-  background: var(--color-card);
-  border-radius: 8px;
-  padding: 0.7rem 1rem;
-  color: var(--color-text);
-  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.05);
-}
-.articulo-nombre {
-  font-weight: 600;
-  color: var(--color-title);
-}
-.stock-label {
-  font-weight: 500;
-  color: var(--color-text);
-}
-.detalle-grupo-resumen ul {
-  margin: 0.2rem 0 0 1.2rem;
-  padding: 0;
+  color: var(--color-text); /* Texto descriptivo */
 }
 @media (max-width: 700px) {
   .grid-container {
