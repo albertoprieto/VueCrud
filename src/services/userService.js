@@ -8,8 +8,14 @@ export const getUsuarios = async () => {
   return response.data;
 };
 
-// Nuevo método para login seguro
 export const loginUsuario = async (username, password) => {
-  const response = await axios.post(`${API_URL}/usuarios/login`, { username, password });
+  const params = new URLSearchParams();
+  params.append('username', username);
+  params.append('password', password);
+
+  const response = await axios.post(`${API_URL}/token`, params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+
   return response.data;
 };
