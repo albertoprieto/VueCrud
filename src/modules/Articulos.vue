@@ -10,6 +10,9 @@ import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { useToast } from 'primevue/usetoast';
+
+const toast = useToast();
 
 const articulos = ref([]);
 const imeis = ref([]);
@@ -40,7 +43,7 @@ const articuloToDelete = ref(null);
 const loadArticulos = async () => {
   loadingArticulos.value = true;
   try {
-    articulos.value = await getTodosArticulos(); // <-- Cambia aquí
+    articulos.value = await getTodosArticulos();
     imeis.value = await getIMEIs();
   } finally {
     loadingArticulos.value = false;
@@ -92,6 +95,8 @@ const closeModal = () => {
 
 const saveArticulo = async () => {
   if (!form.value.nombre || !form.value.sku) {
+    // toast en vez de dialog de error
+    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Por favor, complete los campos obligatorios.', life: 4000 });
     errorMessage.value = 'Por favor, complete los campos obligatorios.';
     showErrorDialog.value = true;
     return;
@@ -104,12 +109,15 @@ const saveArticulo = async () => {
     };
     if (form.value.id) {
       await updateArticulo(articuloPayload);
+      toast.add({ severity: 'success', summary: 'Artículo actualizado', detail: 'El artículo se actualizó correctamente.', life: 3000 });
     } else {
       await addArticulo(articuloPayload);
+      toast.add({ severity: 'success', summary: 'Artículo agregado', detail: 'El artículo se agregó correctamente.', life: 3000 });
     }
     showModal.value = false;
     await loadArticulos();
   } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar el artículo.', life: 4000 });
     errorMessage.value = 'Error al guardar el artículo.';
     showErrorDialog.value = true;
   }
@@ -130,7 +138,9 @@ const deleteArticulo = async (id) => {
     await deleteArticuloService(id);
     await loadArticulos();
     showConfirmDelete.value = false;
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Artículo eliminado correctamente.', life: 3000 });
   } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar el artículo.', life: 4000 });
     errorMessage.value = 'Error al eliminar el artículo.';
     showErrorDialog.value = true;
   }

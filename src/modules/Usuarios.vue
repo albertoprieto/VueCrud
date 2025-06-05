@@ -44,7 +44,10 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
+import { useToast } from 'primevue/usetoast';
 import { getUsuarios, addUsuario, updateUsuario, deleteUsuario } from '@/services/usuariosService';
+
+const toast = useToast();
 
 const tecnicos = ref([]);
 const loading = ref(true);
@@ -73,19 +76,33 @@ function editarTecnico(tecnico) {
 }
 
 async function guardarTecnico() {
-  if (!form.value.username || !form.value.perfil) return;
-  if (editando.value) {
-    await updateUsuario(form.value.id, form.value);
-  } else {
-    await addUsuario(form.value);
+  if (!form.value.username || !form.value.perfil) {
+    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Usuario y perfil son obligatorios.', life: 4000 });
+    return;
   }
-  showModal.value = false;
-  await cargarTecnicos();
+  try {
+    if (editando.value) {
+      await updateUsuario(form.value.id, form.value);
+      toast.add({ severity: 'success', summary: 'Usuario actualizado', detail: 'El usuario se actualizó correctamente.', life: 3000 });
+    } else {
+      await addUsuario(form.value);
+      toast.add({ severity: 'success', summary: 'Usuario agregado', detail: 'El usuario se agregó correctamente.', life: 3000 });
+    }
+    showModal.value = false;
+    await cargarTecnicos();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar el usuario.', life: 4000 });
+  }
 }
 
 async function eliminarTecnico(id) {
-  await deleteUsuario(id);
-  await cargarTecnicos();
+  try {
+    await deleteUsuario(id);
+    await cargarTecnicos();
+    toast.add({ severity: 'success', summary: 'Usuario eliminado', detail: 'El usuario se eliminó correctamente.', life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar el usuario.', life: 4000 });
+  }
 }
 </script>
 

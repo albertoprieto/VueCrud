@@ -96,12 +96,14 @@ import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Dropdown from 'primevue/dropdown';
-
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
 import axios from 'axios';
 import { devolverIMEI, deleteIMEI } from '@/services/imeiService';
 import { getUbicaciones, asignarImeisUbicacion } from '@/services/ubicacionesService';
+import { useToast } from 'primevue/usetoast';
+
+const toast = useToast();
 
 const imeis = ref([]);
 const filtro = ref('');
@@ -143,8 +145,13 @@ const imeisFiltrados = computed(() => {
 });
 
 const devolver = async (imei) => {
-  await devolverIMEI(imei);
-  await cargarImeis();
+  try {
+    await devolverIMEI(imei);
+    await cargarImeis();
+    toast.add({ severity: 'success', summary: 'IMEI devuelto', detail: 'El IMEI fue devuelto correctamente.', life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo devolver el IMEI.', life: 4000 });
+  }
 };
 
 const eliminar = (imei) => {
@@ -154,8 +161,13 @@ const eliminar = (imei) => {
 
 const eliminarConfirmado = async () => {
   if (!imeiAEliminar.value) return;
-  await deleteIMEI(imeiAEliminar.value);
-  await cargarImeis();
+  try {
+    await deleteIMEI(imeiAEliminar.value);
+    await cargarImeis();
+    toast.add({ severity: 'success', summary: 'IMEI eliminado', detail: 'El IMEI fue eliminado correctamente.', life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el IMEI.', life: 4000 });
+  }
   showConfirmDelete.value = false;
   imeiAEliminar.value = null;
 };
@@ -168,8 +180,13 @@ const transferir = (imei) => {
 
 const transferirConfirmado = async () => {
   if (!imeiATransferir.value || !ubicacionDestino.value) return;
-  await asignarImeisUbicacion(ubicacionDestino.value.id, [imeiATransferir.value]);
-  await cargarImeis();
+  try {
+    await asignarImeisUbicacion(ubicacionDestino.value.id, [imeiATransferir.value]);
+    await cargarImeis();
+    toast.add({ severity: 'success', summary: 'IMEI transferido', detail: 'El IMEI fue transferido correctamente.', life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo transferir el IMEI.', life: 4000 });
+  }
   showTransferDialog.value = false;
   imeiATransferir.value = null;
   ubicacionDestino.value = null;

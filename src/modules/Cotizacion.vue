@@ -82,6 +82,9 @@ import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import InputNumber from 'primevue/inputnumber';
 import { addQuotation } from '@/services/quotationService';
+import { useToast } from 'primevue/usetoast';
+
+const toast = useToast();
 
 const cliente = ref('');
 const telefono = ref('');
@@ -115,15 +118,15 @@ const saveQuotation = async () => {
     !tipo.value ||
     !monto.value
   ) {
-    alert('Por favor, complete todos los campos obligatorios.');
+    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Por favor, complete todos los campos obligatorios.', life: 4000 });
     return;
   }
   if (!/^\d{10}$/.test(telefono.value)) {
-    alert('El teléfono debe tener 10 dígitos numéricos.');
+    toast.add({ severity: 'warn', summary: 'Teléfono inválido', detail: 'El teléfono debe tener 10 dígitos numéricos.', life: 4000 });
     return;
   }
   if (correo.value && !/^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/.test(correo.value)) {
-    alert('Ingrese un correo electrónico válido.');
+    toast.add({ severity: 'warn', summary: 'Correo inválido', detail: 'Ingrese un correo electrónico válido.', life: 4000 });
     return;
   }
 
@@ -150,7 +153,7 @@ const saveQuotation = async () => {
     monto.value = '';
     observaciones.value = '';
   } catch (error) {
-    alert('Error al registrar la cotización');
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al registrar la cotización', life: 4000 });
   }
 };
 

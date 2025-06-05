@@ -11,3 +11,17 @@ export const getReportesByEvento = async (eventoId) => {
   const response = await axios.get(`${API_URL}?eventoId=${eventoId}`);
   return response.data;
 };
+
+// Obtener todos los reportes de servicio
+export const getReportesServicioTodos = async () => {
+  const response = await axios.get('https://api.gpsubicacionapi.com/reportes-servicio-todos');
+  return response.data;
+};
+
+// Badge: contar reportes no pagados
+export async function getReportesNuevos() {
+  const reportes = await getReportesServicioTodos();
+  return Array.isArray(reportes)
+    ? reportes.filter(r => !r.pagado).length
+    : 0;
+}
