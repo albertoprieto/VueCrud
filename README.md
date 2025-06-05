@@ -115,10 +115,5 @@ src/
 
 Abrir un issue para discutir cambios importantes antes de hacer un PR.
 
----
-
-## Licencia
-
-MIT
 
 ---
