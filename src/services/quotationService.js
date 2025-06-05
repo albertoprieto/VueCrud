@@ -16,3 +16,11 @@ export const updateQuotation = async (id, data) => {
   const response = await axios.put(`${API_URL}/${id}`, data);
   return response.data;
 };
+
+export async function getCotizacionesPendientes() {
+  const res = await axios.get(API_URL);
+  // Filtra cotizaciones con status 'Pendiente'
+  return Array.isArray(res.data)
+    ? res.data.filter(c => c.status === 'Pendiente').length
+    : 0;
+}

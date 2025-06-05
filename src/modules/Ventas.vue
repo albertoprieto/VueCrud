@@ -149,6 +149,9 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
 import { ref, computed } from 'vue';
+import { useToast } from 'primevue/usetoast';
+
+const toast = useToast();
 
 const {
   today,
@@ -178,6 +181,8 @@ const ventaRegistrada = ref(false);
 const detalleVentaPDF = ref([]);
 const clientePDF = ref({});
 const articulosPDF = ref([]);
+const showDetalleDialog = ref(false);
+const loadingGuardar = ref(false);
 
 async function guardarVentaConLoading() {
   loadingGuardar.value = true;
@@ -205,13 +210,13 @@ async function guardarVentaConLoading() {
     });
 
     ventaRegistrada.value = true;
+    toast.add({ severity: 'success', summary: 'Venta registrada', detail: 'La nota de venta se registró correctamente.', life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la venta.', life: 4000 });
   } finally {
     loadingGuardar.value = false;
   }
 }
-
-const showDetalleDialog = ref(false);
-const loadingGuardar = ref(false);
 
 function cerrarDialogoVenta() {
   showDialog.value = false;

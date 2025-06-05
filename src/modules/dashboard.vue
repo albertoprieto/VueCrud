@@ -1,16 +1,71 @@
 <template>
   <div>
     <Loader v-if="loading" />
-    <Menubar :model="items">
+    <button class="hamburger" @click="showSidebar = true" aria-controls="main-sidebar" :aria-expanded="showSidebar">
+      <span class="pi pi-bars"></span>
+    </button>
+    <Sidebar
+      id="main-sidebar"
+      v-model:visible="showSidebar"
+      position="left"
+      class="mobile-sidebar"
+    >
+      <template #container="{ closeCallback }">
+        <div class="flex flex-column h-full">
+          <div class="flex align-items-center justify-content-between px-4 pt-3 flex-shrink-0">
+            <span class="font-bold text-xl">Menú</span>
+            <button @click="closeCallback" class="p-link p-ml-auto" style="font-size: 1.5rem;">
+              <span class="pi pi-times"></span>
+            </button>
+          </div>
+          <nav class="overflow-y-auto flex-1">
+            <ul class="list-none p-3 m-0">
+              <template v-for="item in items" :key="item.label || item.route">
+                <li v-if="item.route">
+                  <router-link :to="item.route" class="drawer-link" @click="showSidebar = false">
+                    <span :class="item.icon" />
+                    <span class="ml-2">{{ item.label }}</span>
+                    <span v-if="item.badge" class="menu-badge">{{ item.badge }}</span>
+                  </router-link>
+                </li>
+                <li v-else-if="item.items">
+                  <div class="drawer-link drawer-parent">
+                    <span :class="item.icon" />
+                    <span class="ml-2">{{ item.label }}</span>
+                  </div>
+                  <ul class="list-none pl-4">
+                    <li v-for="sub in item.items" :key="sub.label">
+                      <router-link :to="sub.route" class="drawer-link" @click="showSidebar = false">
+                        <span :class="sub.icon" />
+                        <span class="ml-2">{{ sub.label }}</span>
+                        <span v-if="sub.badge" class="menu-badge">{{ sub.badge }}</span>
+                      </router-link>
+                    </li>
+                  </ul>
+                </li>
+                <li v-else-if="item.command">
+                  <a href="#" class="drawer-link" @click.prevent="item.command">
+                    <span :class="item.icon" />
+                    <span class="ml-2">{{ item.label }}</span>
+                  </a>
+                </li>
+                <li v-else-if="item.separator">
+                  <hr class="menu-separator" />
+                </li>
+              </template>
+            </ul>
+          </nav>
+        </div>
+      </template>
+    </Sidebar>
+    <!-- Menubar normal para escritorio -->
+    <Menubar :model="items" class="desktop-menu">
       <template #item="{ item, props, hasSubmenu }">
         <template v-if="item.separator">
           <hr class="menu-separator" />
         </template>
         <template v-else-if="item.locked">
-          <span
-            v-bind="props.action"
-            class="menu-locked"
-          >
+          <span v-bind="props.action" class="menu-locked">
             <span :class="item.icon" />
             <span class="ml-2 menu-locked-label">{{ item.label }}</span>
           </span>
@@ -19,6 +74,7 @@
           <a v-ripple :href="href" v-bind="props.action" @click="navigate">
             <span :class="item.icon" />
             <span class="ml-2">{{ item.label }}</span>
+            <span v-if="item.badge" class="menu-badge">{{ item.badge }}</span>
           </a>
         </router-link>
         <a v-else-if="item.command" v-ripple href="#" v-bind="props.action" @click.prevent="item.command">
@@ -38,18 +94,24 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import Menubar from 'primevue/menubar';
+import TieredMenu from 'primevue/tieredmenu';
+import Sidebar from 'primevue/sidebar';
 import { useRouter, useRoute } from 'vue-router';
 import informacion from './informacion.vue';
 import { useLoginStore } from '@/stores/loginStore';
 import Loader from '@/components/Loader.vue';
+import { getCotizacionesPendientes } from '@/services/quotationService';
+import { getReportesNuevos } from '@/services/reportesService';
 
 const emit = defineEmits(['logout']);
 
 const router = useRouter();
 const route = useRoute();
 const loginStore = useLoginStore();
+
+const showSidebar = ref(false);
 
 const isHomeRoute = computed(() => route.path === '/dashboard');
 
@@ -59,8 +121,23 @@ const handleLogout = () => {
   emit('logout');
 };
 
-const items = ref([
+// Datos reactivos para los badges
+const cotizacionesPendientes = ref(0);
+const reportesNuevos = ref(0);
+
+// Cargar datos reales al montar el componente
+async function cargarBadges() {
+  cotizacionesPendientes.value = await getCotizacionesPendientes();
+  reportesNuevos.value = await getReportesNuevos();
+}
+onMounted(cargarBadges);
+
+// Opcional: recargar cuando cambie la ruta o cada cierto tiempo
+watch(() => route.path, cargarBadges);
+
+const items = computed(() => [
   {
+    label: 'Inicio',
     icon: 'pi pi-fw pi-home',
     route: '/dashboard'
   },
@@ -80,7 +157,7 @@ const items = ref([
     icon: 'pi pi-fw pi-briefcase',
     items: [
       { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users' },
-      { label: 'Notas de Venta', route: '/ventas', icon: 'pi pi-fw pi-file' },
+      { label: 'Notas de Venta', route: '/ventas', icon: 'pi pi-fw pi-file', badge: cotizacionesPendientes.value || undefined },
       { label: 'Histórico Notas', route: '/historico-notas', icon: 'pi pi-fw pi-calendar' }
     ]
   },
@@ -94,11 +171,11 @@ const items = ref([
     icon: 'pi pi-fw pi-user-cog',
     items: [
       { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones', icon: 'pi pi-fw pi-calendar' },
-      { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit' },
+      { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
     ]
   },
   {
-    label: 'Cerrar',
+    label: 'Cerrar Sesión',
     icon: 'pi pi-fw pi-sign-out',
     command: handleLogout
   }
@@ -117,9 +194,35 @@ watch(
 </script>
 
 <style scoped>
+.drawer-link {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  color: var(--color-text);
+  text-decoration: none;
+  transition: background 0.2s;
+  font-size: 1rem;
+}
+.drawer-link:hover {
+  background: var(--color-card);
+}
+.drawer-parent {
+  font-weight: bold;
+  margin-top: 1rem;
+}
+.menu-badge {
+  background: var(--color-title);
+  color: var(--color-bg);
+  border-radius: 1rem;
+  padding: 0 0.5rem;
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
 .menu-separator {
   border: none;
-  border-top: 1px solid var(--color-border, #ccc);
+  border-top: 1px solid var(--color-border);
   margin: 0.5rem 0;
 }
 .menu-locked {
@@ -130,14 +233,34 @@ watch(
 }
 .menu-locked-label {
   text-decoration: line-through;
-  /* Cambia color según tema */
-  color: var(--color-text-locked);
+  color: var(--color-border);
 }
-:root {
-  --color-text-locked: #222;
+.hamburger {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 2rem;
+  margin: 1rem;
 }
-body.dark,
-html.dark {
-  --color-text-locked: #eee;
+.mobile-sidebar {
+  width: 100vw !important;
+  max-width: 320px;
+}
+.mobile-menu {
+  width: 100%;
+  min-width: 220px;
+}
+@media (max-width: 768px) {
+  .desktop-menu {
+    display: none;
+  }
+  .hamburger {
+    display: block;
+  }
+}
+@media (min-width: 769px) {
+  .hamburger {
+    display: none;
+  }
 }
 </style>

@@ -26,16 +26,23 @@ import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import Calendar from 'primevue/calendar';
+import { useToast } from 'primevue/usetoast';
 
 const titulo = ref('');
 const fecha = ref(null);
 const showDialog = ref(false);
 
 const eventosStore = useEventosStore();
+const toast = useToast();
 
 const saveEvent = () => {
   if (!titulo.value || !fecha.value) {
-    alert('Por favor, complete todos los campos.');
+    toast.add({
+      severity: 'warn',
+      summary: 'Campos obligatorios',
+      detail: 'Por favor, complete todos los campos.',
+      life: 4000
+    });
     return;
   }
 

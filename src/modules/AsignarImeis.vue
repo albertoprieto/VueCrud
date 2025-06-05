@@ -94,6 +94,7 @@ import Column from 'primevue/column';
 import { getTodosArticulos } from '@/services/articulosService';
 import { registrarYAsignarIMEIsPorNombre, getIMEIs } from '@/services/imeiService';
 import { getUbicaciones, asignarImeisUbicacion } from '@/services/ubicacionesService';
+import { useToast } from 'primevue/usetoast';
 
 const articulos = ref([]);
 const selectedArticulo = ref(null);
@@ -106,6 +107,8 @@ const warningMessage = ref('');
 const imeisExistentes = ref([]);
 const ubicaciones = ref([]);
 const ubicacionDestino = ref(null);
+
+const toast = useToast();
 
 const articulosFiltrados = computed(() =>
   articulos.value.filter(a => a.tipo && a.tipo.toLowerCase() !== 'servicio')
@@ -135,7 +138,10 @@ const eliminarImei = (idx) => {
 };
 
 const registrarYAsignar = async () => {
-  if (!selectedArticulo.value || imeis.value.length === 0 || !ubicacionDestino.value) return;
+  if (!selectedArticulo.value || imeis.value.length === 0 || !ubicacionDestino.value) {
+    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Selecciona artículo, ubicación y agrega al menos un IMEI.', life: 4000 });
+    return;
+  }
 
   // Validar IMEIs existentes en la base de datos
   try {
@@ -145,12 +151,14 @@ const registrarYAsignar = async () => {
   } catch (e) {
     mensaje.value = 'Error al validar IMEIs existentes en la base de datos.';
     showDialog.value = true;
+    toast.add({ severity: 'error', summary: 'Error', detail: mensaje.value, life: 4000 });
     return;
   }
 
   if (imeisExistentes.value.length > 0) {
     mensaje.value = `Los siguientes IMEIs ya están registrados en el sistema:\n${imeisExistentes.value.join('\n')}\nElimínalos de la lista para continuar.`;
     showDialog.value = true;
+    toast.add({ severity: 'warn', summary: 'IMEIs existentes', detail: 'Elimina los IMEIs ya registrados para continuar.', life: 5000 });
     return;
   }
 
@@ -161,8 +169,10 @@ const registrarYAsignar = async () => {
     mensaje.value = `${imeis.value.length} IMEIs asignados al artículo "${selectedArticulo.value.nombre}" y a la ubicación "${ubicacionDestino.value.nombre}" correctamente.`;
     imeis.value = [];
     imeisExistentes.value = [];
+    toast.add({ severity: 'success', summary: 'Éxito', detail: mensaje.value, life: 4000 });
   } catch (e) {
     mensaje.value = 'Ocurrió un error al asignar los IMEIs.';
+    toast.add({ severity: 'error', summary: 'Error', detail: mensaje.value, life: 4000 });
   }
   showDialog.value = true;
 };

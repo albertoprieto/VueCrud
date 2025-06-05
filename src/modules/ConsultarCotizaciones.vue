@@ -83,6 +83,9 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import Calendar from 'primevue/calendar';
 import Dropdown from 'primevue/dropdown';
+import { useToast } from 'primevue/usetoast';
+
+const toast = useToast();
 
 const quotations = ref([]);
 const technicians = ref(['Juan', 'Pedro', 'Paco']);
@@ -108,6 +111,7 @@ const openAssignDialog = (quotation) => {
 
 const assignDetails = async () => {
   if (!calendarDate.value || !selectedTechnician.value) {
+    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Por favor, complete todos los campos.', life: 4000 });
     messageDialogText.value = 'Por favor, complete todos los campos.';
     showMessageDialog.value = true;
     return;
@@ -128,10 +132,12 @@ const assignDetails = async () => {
       start: calendarDate.value,
       status: 'Agendado'
     });
+    toast.add({ severity: 'success', summary: 'Asignación exitosa', detail: 'Detalles asignados exitosamente.', life: 3000 });
     messageDialogText.value = 'Detalles asignados exitosamente.';
     quotations.value = await getQuotations();
   } catch (error) {
     console.error('Error en assignDetails:', error);
+    toast.add({ severity: 'error', summary: 'Error', detail: `Error al actualizar la cotización: ${error?.message || error}`, life: 4000 });
     messageDialogText.value = `Error al actualizar la cotización: ${error?.message || error}`;
   }
   showMessageDialog.value = true;

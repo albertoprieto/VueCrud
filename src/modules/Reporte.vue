@@ -32,6 +32,7 @@ import { useReportesStore } from '@/stores/reportesStore';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import { useToast } from 'primevue/usetoast';
 
 const modelo = ref('');
 const placa = ref('');
@@ -39,10 +40,16 @@ const nombre = ref('');
 const showDialog = ref(false);
 
 const reportesStore = useReportesStore();
+const toast = useToast();
 
 const generateReport = () => {
   if (!modelo.value || !placa.value || !nombre.value) {
-    alert('Por favor, complete todos los campos.');
+    toast.add({
+      severity: 'warn',
+      summary: 'Campos obligatorios',
+      detail: 'Por favor, complete todos los campos.',
+      life: 4000
+    });
     return;
   }
 

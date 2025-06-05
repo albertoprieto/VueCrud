@@ -221,6 +221,11 @@ import { getVentas, getDetalleVenta } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
+import { useToast } from 'primevue/usetoast';
+
+const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
+
+const toast = useToast();
 
 const reportes = ref([]);
 const loading = ref(false);
@@ -249,12 +254,13 @@ const messageDialogText = ref('');
 async function cargarReportes() {
   loading.value = true;
   try {
-    const res = await axios.get('https://api.gpsubicacionapi.com/reportes-servicio-todos');
+    const res = await axios.get(`${API_URL}-todos`);
     reportes.value = res.data;
     asignaciones = await getAsignacionesTecnicos();
   } catch (e) {
     reportes.value = [];
     asignaciones = [];
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al cargar los reportes.', life: 4000 });
     messageDialogText.value = 'Error al cargar los reportes.';
     showMessageDialog.value = true;
   }
@@ -266,6 +272,7 @@ async function mostrarNota(reporte) {
   const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
   if (!asignacion || !asignacion.venta_id) {
     loading.value = false;
+    toast.add({ severity: 'warn', summary: 'No encontrada', detail: 'No se encontró la nota de venta relacionada.', life: 4000 });
     messageDialogText.value = 'No se encontró la nota de venta relacionada.';
     showMessageDialog.value = true;
     return;
@@ -274,6 +281,7 @@ async function mostrarNota(reporte) {
   const venta = ventas.find(v => v.id == asignacion.venta_id);
   if (!venta) {
     loading.value = false;
+    toast.add({ severity: 'warn', summary: 'No encontrada', detail: 'No se encontró la nota de venta.', life: 4000 });
     messageDialogText.value = 'No se encontró la nota de venta.';
     showMessageDialog.value = true;
     return;
@@ -305,12 +313,14 @@ async function guardarEdicion() {
   if (!reporteEditando.value) return;
   loading.value = true;
   try {
-    await axios.put(`https://api.gpsubicacionapi.com/reportes-servicio/${reporteEditando.value.id}`, reporteEditando.value);
+    await axios.put(`${API_URL}/${reporteEditando.value.id}`, reporteEditando.value);
     await cargarReportes();
     showEditDialog.value = false;
+    toast.add({ severity: 'success', summary: 'Actualizado', detail: 'Reporte actualizado correctamente.', life: 3000 });
     messageDialogText.value = 'Reporte actualizado correctamente.';
     showMessageDialog.value = true;
   } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar los cambios.', life: 4000 });
     messageDialogText.value = 'Error al guardar los cambios.';
     showMessageDialog.value = true;
   }
@@ -326,11 +336,13 @@ async function eliminarReporteConfirmado() {
   if (!reporteAEliminar.value) return;
   loading.value = true;
   try {
-    await axios.delete(`https://api.gpsubicacionapi.com/reportes-servicio/${reporteAEliminar.value.id}`);
+    await axios.delete(`${API_URL}/${reporteAEliminar.value.id}`);
     await cargarReportes();
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Reporte eliminado correctamente.', life: 3000 });
     messageDialogText.value = 'Reporte eliminado correctamente.';
     showMessageDialog.value = true;
   } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar el reporte.', life: 4000 });
     messageDialogText.value = 'Error al eliminar el reporte.';
     showMessageDialog.value = true;
   }

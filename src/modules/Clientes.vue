@@ -125,7 +125,10 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import AutoComplete from 'primevue/autocomplete';
+import { useToast } from 'primevue/usetoast';
 import { getClientes, addCliente, updateCliente, deleteCliente } from '@/services/clientesService';
+
+const toast = useToast();
 
 const clientes = ref([]);
 const showModal = ref(false);
@@ -184,7 +187,6 @@ const telefonosFiltrados = ref([]);
 const buscarUsuario = (event) => {
   const query = event.query?.toLowerCase() || '';
   usuariosFiltrados.value = usuariosUnicos.value.filter(u => u.label.toLowerCase().includes(query));
-
 };
 const buscarPlataforma = (event) => {
   const query = event.query?.toLowerCase() || '';
@@ -219,17 +221,26 @@ const closeModal = () => {
 };
 
 const saveCliente = async () => {
-  if (!form.value.nombre) return;
+  if (!form.value.nombre) {
+    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'El nombre es obligatorio.', life: 4000 });
+    return;
+  }
   form.value.telefonos = form.value.telefonos.filter(t => t);
   form.value.usuarios = form.value.usuarios.filter(u => u);
   form.value.plataformas = form.value.plataformas.filter(p => p);
-  if (form.value.id) {
-    await updateCliente(form.value.id, form.value);
-  } else {
-    await addCliente(form.value);
+  try {
+    if (form.value.id) {
+      await updateCliente(form.value.id, form.value);
+      toast.add({ severity: 'success', summary: 'Cliente actualizado', detail: 'El cliente se actualizó correctamente.', life: 3000 });
+    } else {
+      await addCliente(form.value);
+      toast.add({ severity: 'success', summary: 'Cliente agregado', detail: 'El cliente se agregó correctamente.', life: 3000 });
+    }
+    showModal.value = false;
+    await loadClientes();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar el cliente.', life: 4000 });
   }
-  showModal.value = false;
-  await loadClientes();
 };
 
 const editCliente = (cliente) => {
@@ -246,8 +257,13 @@ const editCliente = (cliente) => {
 };
 
 const handleDeleteCliente = async (id) => {
-  await deleteCliente(id);
-  await loadClientes();
+  try {
+    await deleteCliente(id);
+    await loadClientes();
+    toast.add({ severity: 'success', summary: 'Cliente eliminado', detail: 'El cliente se eliminó correctamente.', life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar el cliente.', life: 4000 });
+  }
 };
 
 const addTelefono = () => form.value.telefonos.push('');
