@@ -34,6 +34,15 @@ app.component('Toast', Toast);
 app.use(createPinia())
 app.use(router)
 
+axios.interceptors.request.use(config => {
+  const token = localStorage.getItem('access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+
 axios.interceptors.response.use(
   response => response,
   error => {
