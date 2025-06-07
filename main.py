@@ -9,6 +9,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+import json
 
 
 app = FastAPI()
@@ -835,8 +836,15 @@ def get_todos_articulos():
 
 # MODELO UBICACION
 class Ubicacion(BaseModel):
+    id: int
     nombre: str
-    descripcion: Optional[str] = None
+    descripcion: str = ""
+    encargado: str = ""
+    telefonos: list[str] = []
+    correo: str = ""
+    direccion: str = ""
+    capacidad_maxima: int = 0
+    estado: str = "activa"  # activa/inactiva
 
 @app.get("/ubicaciones")
 def get_ubicaciones():
@@ -847,8 +855,28 @@ def get_ubicaciones():
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM ubicaciones")
+    cursor.execute("""
+        SELECT 
+            id, 
+            nombre, 
+            descripcion, 
+            encargado, 
+            telefonos, 
+            correo, 
+            direccion, 
+            capacidad_maxima, 
+            estado
+        FROM ubicaciones
+    """)
     ubicaciones = cursor.fetchall()
+    # Si telefonos es string, conviértelo a lista
+    for u in ubicaciones:
+        if isinstance(u.get("telefonos"), str):
+            try:
+                import json
+                u["telefonos"] = json.loads(u["telefonos"])
+            except Exception:
+                u["telefonos"] = [u["telefonos"]]
     cursor.close()
     db.close()
     return ubicaciones
@@ -863,8 +891,17 @@ def add_ubicacion(ubicacion: Ubicacion):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO ubicaciones (nombre, descripcion) VALUES (%s, %s)",
-        (ubicacion.nombre, ubicacion.descripcion)
+        "INSERT INTO ubicaciones (nombre, descripcion, encargado, telefonos, correo, direccion, capacidad_maxima, estado) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+        (
+            ubicacion.nombre,
+            ubicacion.descripcion,
+            ubicacion.encargado,
+            json.dumps(ubicacion.telefonos),
+            ubicacion.correo,
+            ubicacion.direccion,
+            ubicacion.capacidad_maxima,
+            ubicacion.estado
+        )
     )
     db.commit()
     cursor.close()
@@ -872,7 +909,7 @@ def add_ubicacion(ubicacion: Ubicacion):
     return {"message": "Ubicación registrada exitosamente"}
 
 @app.put("/ubicaciones/{ubicacion_id}")
-def update_ubicacion(ubicacion_id: int, ubicacion: dict):
+def update_ubicacion(ubicacion_id: int, ubicacion: Ubicacion):
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -881,8 +918,18 @@ def update_ubicacion(ubicacion_id: int, ubicacion: dict):
     )
     cursor = db.cursor()
     cursor.execute(
-        "UPDATE ubicaciones SET nombre=%s, descripcion=%s WHERE id=%s",
-        (ubicacion.get("nombre"), ubicacion.get("descripcion"), ubicacion_id)
+        "UPDATE ubicaciones SET nombre=%s, descripcion=%s, encargado=%s, telefonos=%s, correo=%s, direccion=%s, capacidad_maxima=%s, estado=%s WHERE id=%s",
+        (
+            ubicacion.nombre,
+            ubicacion.descripcion,
+            ubicacion.encargado,
+            json.dumps(ubicacion.telefonos),
+            ubicacion.correo,
+            ubicacion.direccion,
+            ubicacion.capacidad_maxima,
+            ubicacion.estado,
+            ubicacion_id
+        )
     )
     db.commit()
     cursor.close()

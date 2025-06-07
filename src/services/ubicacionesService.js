@@ -17,16 +17,12 @@ export const asignarImeisUbicacion = async (ubicacionId, imeis) => {
   return res.data;
 };
 
-export const addUbicacion = async (ubicacion) => {
-  const res = await axios.post(API_URL, ubicacion);
-  return res.data;
-};
-
-export const updateUbicacion = async (id, ubicacion) => {
-  const res = await axios.put(`${API_URL}/${id}`, ubicacion);
-  return res.data;
-};
-
+export async function addUbicacion(data) {
+  return axios.post(API_URL, data);
+}
+export async function updateUbicacion(id, data) {
+  return axios.put(`${API_URL}/${id}`, data);
+}
 export const deleteUbicacion = async (id) => {
   const res = await axios.delete(`${API_URL}/${id}`);
   return res.data;
