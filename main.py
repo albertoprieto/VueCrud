@@ -17,7 +17,10 @@ app = FastAPI()
 # Permitir CORS para tu frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Cambia esto a tu dominio en producción
+    allow_origins=[
+        "https://albertoprieto.github.io",
+        "http://localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -405,9 +408,6 @@ class Articulo(BaseModel):
     sku: str | None = None
     unidad: str | None = None
     precioVenta: float | None = None
-    impuesto: str | None = None
-    descripcion: str | None = None
-    precioCompra: float | None = None
     codigoSat: str | None = None
     unidadSat: str | None = None
     codigoUnidadSat: str | None = None
@@ -553,7 +553,7 @@ def registrar_y_asignar_imeis(articulo_id: int, data: RegistrarAsignarIMEIsReque
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for imei in data.imeis:
         cursor.execute("UPDATE imeis SET articulo_id=%s WHERE imei=%s", (articulo_id, imei))
         if cursor.rowcount == 0:
@@ -579,7 +579,7 @@ def registrar_y_asignar_imeis_nombre(articulo_nombre: str, data: RegistrarAsigna
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for imei in data.imeis:
         cursor.execute("UPDATE imeis SET articulo_nombre=%s WHERE imei=%s", (articulo_nombre, imei))
         if cursor.rowcount == 0:

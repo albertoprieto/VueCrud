@@ -41,7 +41,8 @@ const groupedItems = [
       { label: 'Asignar IMEIs', route: '/asignar-imeis', icon: 'pi pi-fw pi-barcode', desc: 'Asignar IMEIs a artículos' },
       { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker', desc: 'Gestionar ubicaciones' },
       { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search', desc: 'Buscar IMEI por número' },
-      { label: 'Histórico IMEIs', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history', desc: 'Ver histórico de IMEIs' }
+      { label: 'Histórico IMEIs', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history', desc: 'Ver histórico de IMEIs' },
+      { label: 'Transferir IMEIs', route: '/transferir-imeis', icon: 'pi pi-fw pi-share-alt', desc: 'Transferir IMEIs entre ubicaciones' }
     ]
   },
   {
