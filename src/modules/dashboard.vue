@@ -150,6 +150,11 @@ const items = computed(() => [
       { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
       { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
       { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
+      {
+        label: 'Transferir IMEIs',
+        route: '/transferir-imeis',
+        icon: 'pi pi-fw pi-share-alt'
+      },
     ]
   },
   {
