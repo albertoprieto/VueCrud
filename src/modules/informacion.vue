@@ -49,8 +49,8 @@ const groupedItems = [
     title: 'Ventas',
     items: [
       { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users', desc: 'Gestión de clientes' },
-      { label: 'Notas de Venta', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar y consultar ventas' },
-      { label: 'Histórico Notas', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico de notas de venta' }
+      { label: 'Crear Orden de Venta', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar' },
+      { label: 'Consultar Orden de Venta', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' }
     ]
   },
   {

@@ -1,31 +1,112 @@
 <template>
   <div class="ventas-container">
-    <h2 class="ventas-title">Registrar Nota de Venta</h2>
+    <h2 class="ventas-title">Registrar Orden de Venta</h2>
     <div class="ventas-card">
+      <!-- Encabezado: Cliente, Folio, Fecha -->
       <div class="ventas-form-header">
         <div class="ventas-form-col">
           <label class="mb-2">Cliente</label>
           <Dropdown v-model="venta.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id" placeholder="Selecciona un cliente" class="w-full" />
         </div>
         <div class="ventas-form-col">
-          <label>Fecha</label>
-          <InputText v-model="venta.fecha" :value="today" readonly class="fecha-input" />
+          <label>Orden de venta nº</label>
+          <InputText :value="folioPropuesto" disabled class="w-full" />
+        </div>
+        <div class="ventas-form-col">
+          <label>Fecha de orden de venta</label>
+          <Calendar v-model="venta.fecha" dateFormat="yy-mm-dd" class="w-full" />
+        </div>
+      </div>
+
+      <div class="ventas-form-header">
+        <div class="ventas-form-col">
+          <label>N.º de referencia</label>
+          <InputText v-model="venta.referencia" class="w-full" />
+        </div>
+        <div class="ventas-form-col">
+          <label>Fecha de envío esperada</label>
+          <InputText v-model="venta.fecha_envio" type="date" class="w-full" />
+        </div>
+        <div class="ventas-form-col">
+          <label>Términos de pago</label>
+          <Dropdown
+            v-model="venta.terminos_pago"
+            :options="terminosPagoOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Selecciona términos de pago"
+            class="w-full"
+          />
+        </div>
+        <div class="ventas-form-col">
+          <label>Método de entrega</label>
+          <InputText v-model="venta.metodo_entrega" class="w-full" />
+        </div>
+      </div>
+
+      <div class="ventas-form-header">
+        <div class="ventas-form-col">
+          <label>Vendedor</label>
+          <Dropdown
+            v-model="venta.vendedor"
+            :options="vendedores"
+            optionLabel="username"
+            optionValue="username"
+            placeholder="Selecciona vendedor"
+            class="w-full"
+          />
+        </div>
+        <div class="ventas-form-col">
+          <label>Descuento (%)</label>
+          <InputText v-model.number="venta.descuento" type="number" min="0" max="100" class="w-full" />
         </div>
       </div>
 
       <h3>Artículos</h3>
-      <DataTable :value="venta.articulos" responsiveLayout="scroll" class="venta-articulos-table">
+      <!-- Selector de ubicación -->
+      <div class="ventas-form-header">
+        <div class="ventas-form-col">
+          <label>Ubicación</label>
+          <Dropdown
+            v-model="venta.ubicacion_id"
+            :options="ubicaciones"
+            optionLabel="nombre"
+            optionValue="id"
+            placeholder="Selecciona ubicación"
+            class="w-full"
+          />
+        </div>
+      </div>
+
+      <!-- Selector de artículos por ubicación -->
+      <div class="mb-2">
+        <Button
+          label="Agregar Artículo"
+          icon="pi pi-plus"
+          class="mb-2"
+          @click="addArticulo"
+          :disabled="!venta.ubicacion_id"
+        />
+      </div>
+
+      <!-- Tabla de artículos -->
+      <DataTable
+        :value="venta.articulos"
+        responsiveLayout="scroll"
+        class="venta-articulos-table"
+        :disabled="!venta.ubicacion_id"
+      >
         <Column header="Artículo">
           <template #body="slotProps">
             <Dropdown
               v-model="slotProps.data.articulo_id"
-              :options="articulosConStock(slotProps.data)"
+              :options="articulosConStockUbicacion(slotProps.data)"
               optionLabel="nombre"
               optionValue="id"
               placeholder="Selecciona artículo"
               class="w-full"
               @change="onArticuloChange(slotProps.data.articulo_id, slotProps.data)"
-              :disabled="articulosConStock(slotProps.data).length === 0"
+              :disabled="articulosConStockUbicacion(slotProps.data).length === 0"
             />
           </template>
         </Column>
@@ -53,12 +134,12 @@
             </small>
           </template>
         </Column>
-        <Column field="precio_unitario" header="Precio">
+        <Column field="precio_unitario" header="Tarifa">
           <template #body="slotProps">
             <span>{{ (slotProps.data.precio_unitario ?? 0).toFixed(2) }}</span>
           </template>
         </Column>
-        <Column field="subtotal" header="Subtotal">
+        <Column field="subtotal" header="Importe">
           <template #body="slotProps">
             {{ ((slotProps.data.cantidad ?? 0) * (slotProps.data.precio_unitario ?? 0)).toFixed(2) }}
           </template>
@@ -97,13 +178,6 @@
           </template>
         </Column>
       </DataTable>
-      <Button
-        label="Agregar Artículo"
-        icon="pi pi-plus"
-        class="mb-2"
-        @click="addArticulo"
-        :disabled="articulosConStock().length === 0"
-      />
 
       <div class="mb-2">
         <label>Observaciones</label>
@@ -111,7 +185,11 @@
       </div>
 
       <div class="mb-2 acciones-footer">
-        <strong>Total: ${{ (totalVenta ?? 0).toFixed(2) }}</strong>
+        <div>
+          <div><strong>Subtotal:</strong> ${{ subtotalVenta.toFixed(2) }}</div>
+          <div><strong>Descuento:</strong> {{ venta.descuento || 0 }}% (${{ descuentoMonto.toFixed(2) }})</div>
+          <div><strong>Total (MXN):</strong> ${{ totalVenta.toFixed(2) }}</div>
+        </div>
         <Button
           label="Guardar Venta"
           class="mb-2"
@@ -120,16 +198,19 @@
         />
       </div>
 
+
+      <div class="mb-2">
+        <label>Si necesita factura el pago sería más IVA.</label>
+      </div>
+      <div class="mb-2">
+        <label>Términos y condiciones:</label>
+        <small class="info-text">Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. 
+El tiempo de traslado en el envió de los paquetes depende de la paquetería.</small>
+      </div>
+
       <Dialog v-model:visible="showDialog" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
-        <p>La nota de venta se registró correctamente.</p>
-        <NotaVentaPDF
-          :venta="venta"
-          :cliente="clientePDF"
-          :articulos="articulosPDF"
-          :empresa="{ nombre: 'GPSubicacion.com', direccion: 'Guadalajara', rfc: 'RFC123456' }"
-          :venta-registrada="ventaRegistrada"
-        />
-        <Button label="Aceptar" icon="pi pi-check" @click="cerrarDialogoVenta" autofocus />
+        <p>La orden de venta se registró correctamente.</p>
+        <Button label="Aceptar" icon="pi pi-file-pdf" @click="cerrarDialogoVenta" autofocus />
       </Dialog>
     </div>
   </div>
@@ -137,10 +218,12 @@
 
 <script setup>
 import { useVentas } from '@/composables/useVentas.js';
-import NotaVentaPDF from '@/components/NotaVentaPDF.vue';
+import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
 import { getDetalleVenta } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
+import { getUbicaciones } from '@/services/ubicacionesService';
+import { getUsuarios } from '@/services/usuariosService';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
@@ -148,7 +231,8 @@ import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
-import { ref, computed } from 'vue';
+import Calendar from 'primevue/calendar';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 
 const toast = useToast();
@@ -172,7 +256,7 @@ const {
   onArticuloChange,
   removeArticulo,
   validateCantidad,
-  totalVenta,
+  totalVenta: totalVentaProp,
   imeisDisponiblesPorArticulo,
   getVentas
 } = useVentas();
@@ -183,22 +267,65 @@ const clientePDF = ref({});
 const articulosPDF = ref([]);
 const showDetalleDialog = ref(false);
 const loadingGuardar = ref(false);
+const folioPropuesto = ref('');
+const ubicaciones = ref([]);
+const vendedores = ref([]);
+
+const terminosPagoOptions = [
+  { label: 'Neto 15', value: 'Neto 15' },
+  { label: 'Neto 30', value: 'Neto 30' },
+  { label: 'Neto 45', value: 'Neto 45' },
+  { label: 'Neto 60', value: 'Neto 60' },
+  { label: 'Pago Contra Entrega', value: 'Pago Contra Entrega' }
+];
+
+function generarFolioConsecutivo(ventas) {
+  // Busca el mayor número de folio existente con formato SO-XXXXX
+  const max = ventas
+    .map(v => {
+      const match = typeof v.folio === 'string' && v.folio.match(/^SO-(\d+)$/);
+      return match ? parseInt(match[1], 10) : 0;
+    })
+    .reduce((a, b) => Math.max(a, b), 0);
+  // Siguiente consecutivo
+  const siguiente = max + 1;
+  return `SO-${siguiente.toString().padStart(5, '0')}`;
+}
+
+onMounted(async () => {
+  ubicaciones.value = await getUbicaciones();
+  const ventas = await getVentas();
+  folioPropuesto.value = generarFolioConsecutivo(ventas);
+  venta.folio = folioPropuesto.value;
+
+  // Cargar vendedores
+  const usuarios = await getUsuarios();
+  vendedores.value = usuarios.filter(u => u.perfil === 'Vendedor');
+});
+
+watch(
+  () => venta.ubicacion_id,
+  (nuevaUbicacion, anteriorUbicacion) => {
+    if (nuevaUbicacion !== anteriorUbicacion) {
+      venta.articulos = [];
+    }
+  }
+);
 
 async function guardarVentaConLoading() {
   loadingGuardar.value = true;
   try {
-    await guardarVenta();
-    // Obtener detalle de la última venta registrada
     const ventas = await getVentas();
-    const ultimaVenta = ventas[ventas.length - 1];
+    venta.folio = generarFolioConsecutivo(ventas); // recalcula por si hubo otra venta
+    await guardarVenta();
+    const ventasActualizadas = await getVentas();
+    const ultimaVenta = ventasActualizadas[ventasActualizadas.length - 1];
     const detalle = await getDetalleVenta(ultimaVenta.id);
     detalleVentaPDF.value = detalle;
 
-    // Obtener cliente
     const clientes = await getClientes();
     clientePDF.value = clientes.find(c => c.id === ultimaVenta.cliente_id) || {};
 
-    // Obtener artículos para SKU y nombre formal
     const articulos = await getTodosArticulos();
     articulosPDF.value = detalle.map(item => {
       const art = articulos.find(a => a.id === item.articulo_id) || {};
@@ -210,9 +337,17 @@ async function guardarVentaConLoading() {
     });
 
     ventaRegistrada.value = true;
-    toast.add({ severity: 'success', summary: 'Venta registrada', detail: 'La nota de venta se registró correctamente.', life: 3000 });
+    // Llama a la función para generar el PDF
+    await generarNotaVentaPDF({
+      venta: ultimaVenta,
+      cliente: clientePDF.value,
+      articulos: articulosPDF.value,
+      empresa: { nombre: 'GPSubicacion.com', direccion: 'Guadalajara', rfc: 'RFC123456' }
+    });
+
+    toast.add({ severity: 'success', summary: 'Orden de Venta registrada', detail: 'La orden de venta se registró correctamente.', life: 3000 });
   } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la venta.', life: 4000 });
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la orden.', life: 4000 });
   } finally {
     loadingGuardar.value = false;
   }
@@ -223,11 +358,34 @@ function cerrarDialogoVenta() {
   ventaRegistrada.value = false;
 }
 
-// Devuelve true si el artículo es de tipo Servicio
 const esServicio = (articulo_id) => {
   const art = articulosDisponibles.value.find(a => a.id === articulo_id);
   return art && art.tipo && art.tipo.toLowerCase() === 'servicio';
 };
+
+const subtotalVenta = computed(() =>
+  venta.articulos.reduce((sum, a) => sum + (a.cantidad * a.precio_unitario), 0)
+);
+const descuentoMonto = computed(() =>
+  subtotalVenta.value * ((venta.descuento || 0) / 100)
+);
+const totalVenta = computed(() =>
+  subtotalVenta.value - descuentoMonto.value
+);
+
+function articulosConStockUbicacion(row = null) {
+  if (!venta.ubicacion_id) return [];
+  // Para cada artículo, verifica si hay al menos un IMEI disponible en la ubicación seleccionada
+  return articulosDisponibles.value.filter(art => {
+    if (art.tipo && art.tipo.toLowerCase() === 'servicio') return true;
+    // Busca si hay al menos un IMEI disponible para este artículo en la ubicación seleccionada
+    return imeis.value.some(i =>
+      i.articulo_nombre === art.nombre &&
+      i.ubicacion_id === venta.ubicacion_id &&
+      (i.status === 'Disponible' || i.status === 'Devuelto')
+    );
+  });
+}
 </script>
 
 <style scoped>

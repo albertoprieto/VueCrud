@@ -183,6 +183,16 @@ const exportarArticulos = () => {
         :sortOrder="sortOrder"
         responsiveLayout="scroll"
         :loading="loadingArticulos"
+        :paginator="true"
+        :rows="10"
+        :rowsPerPageOptions="[10, 20, 50]"
+        :globalFilterFields="['nombre', 'sku', 'descripcion']"
+        :emptyMessage="'No se encontraron artículos'"
+        :header="`Artículos (${filteredArticulos.length})`"
+        :scrollable="true"
+        :scrollHeight="'400px'"
+        @sort="(e) => { sortField.value = e.sortField; sortOrder.value = e.sortOrder; }"
+        class="articulos-table"
       >
         <Column field="sku" header="SKU" sortable />
         <!-- <Column field="nombre" header="Nombre" sortable /> -->
