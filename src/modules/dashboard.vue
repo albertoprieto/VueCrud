@@ -147,14 +147,14 @@ const items = computed(() => [
     items: [
       { label: 'Alta artículos', route: '/alta-articulo', icon: 'pi pi-fw pi-plus-circle' },
       { label: 'Asignar IMEIs', route: '/asignar-imeis', icon: 'pi pi-fw pi-barcode' },
-      { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
-      { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
-      { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
       {
         label: 'Transferir IMEIs',
         route: '/transferir-imeis',
         icon: 'pi pi-fw pi-share-alt'
       },
+      { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
+      { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
+      { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
     ]
   },
   {
@@ -162,8 +162,8 @@ const items = computed(() => [
     icon: 'pi pi-fw pi-briefcase',
     items: [
       { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users' },
-      { label: 'Notas de Venta', route: '/ventas', icon: 'pi pi-fw pi-file', badge: cotizacionesPendientes.value || undefined },
-      { label: 'Histórico Notas', route: '/historico-notas', icon: 'pi pi-fw pi-calendar' }
+      { label: 'Crear Orden de Venta', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
+      { label: 'Consultar Orden de Venta', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
     ]
   },
   {

@@ -716,6 +716,16 @@ class DetalleVenta(BaseModel):
 class Venta(BaseModel):
     cliente_id: int
     fecha: Optional[str] = None
+    folio: Optional[str] = None
+    referencia: Optional[str] = None
+    fecha_envio: Optional[str] = None
+    terminos_pago: Optional[str] = None
+    metodo_entrega: Optional[str] = None
+    vendedor: Optional[str] = None
+    almacen: Optional[str] = None
+    descuento: Optional[float] = 0
+    notas_cliente: Optional[str] = ""
+    terminos_condiciones: Optional[str] = ""
     total: float
     observaciones: Optional[str] = ""
     articulos: list[DetalleVenta]
@@ -731,8 +741,16 @@ def crear_venta(venta: Venta):
     cursor = db.cursor()
     fecha = venta.fecha or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
-        "INSERT INTO ventas (cliente_id, fecha, total, observaciones) VALUES (%s, %s, %s, %s)",
-        (venta.cliente_id, fecha, venta.total, venta.observaciones)
+        """
+        INSERT INTO ventas
+        (cliente_id, fecha, folio, referencia, fecha_envio, terminos_pago, metodo_entrega, vendedor, almacen, descuento, notas_cliente, terminos_condiciones, total, observaciones)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            venta.cliente_id, fecha, venta.folio, venta.referencia, venta.fecha_envio, venta.terminos_pago,
+            venta.metodo_entrega, venta.vendedor, venta.almacen, venta.descuento, venta.notas_cliente,
+            venta.terminos_condiciones, venta.total, venta.observaciones
+        )
     )
     venta_id = cursor.lastrowid
 

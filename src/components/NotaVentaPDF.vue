@@ -1,7 +1,7 @@
 <template>
   <Button
     v-if="ventaRegistrada"
-    label="Descargar Nota de Venta (PDF)"
+    label="PDF"
     icon="pi pi-file-pdf"
     @click="generarPDF"
     class="p-button-success mb-2"
@@ -14,6 +14,7 @@ import Button from 'primevue/button';
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 
+// Props
 const props = defineProps({
   venta: { type: Object, required: true },
   cliente: { type: Object, required: true },
@@ -23,89 +24,123 @@ const props = defineProps({
 });
 
 const fecha = computed(() => {
-  return props.venta.fecha ? props.venta.fecha.split('T')[0] : new Date().toLocaleDateString();
+  if (!props.venta.fecha) return new Date().toLocaleDateString('es-MX');
+  // Si viene con hora o con 'T', corta solo la fecha
+  if (typeof props.venta.fecha === 'string' && (props.venta.fecha.includes(' ') || props.venta.fecha.includes('T')))
+    return props.venta.fecha.split(/[ T]/)[0];
+  // Si es Date, formatea
+  if (props.venta.fecha instanceof Date) return props.venta.fecha.toISOString().slice(0, 10);
+  return props.venta.fecha;
 });
 
-// Calcula el total real sumando subtotales de los artículos
-const totalCalculado = computed(() =>
-  props.articulos.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0)
-);
+async function getLogoBase64() {
+  const res = await fetch('/logoBase64.txt');
+  return await res.text();
+}
 
-// Extrae info adicional del cliente
-const telefonos = Array.isArray(props.cliente.telefonos) ? props.cliente.telefonos.join(', ') : (props.cliente.telefono || '');
-const correo = props.cliente.correo || '';
-const plataformas = Array.isArray(props.cliente.plataformas) ? props.cliente.plataformas.join(', ') : (props.cliente.plataforma || '');
-const usuarios = Array.isArray(props.cliente.usuarios) ? props.cliente.usuarios.join(', ') : (props.cliente.usuario || '');
 
-function generarPDF() {
+async function generarPDF() {
+
+  // Logo SVG como base64 (puedes usar un loader o util para base64 si lo necesitas)
+  // Aquí solo se referencia la ruta relativa, pdfMake requiere base64 para imágenes SVG
+  // Puedes usar un loader o convertir el SVG a base64 y pegarlo aquí si lo deseas
+  // Ejemplo: const logo = 'data:image/svg+xml;base64,...';
+  const logo = await getLogoBase64();
+      
+  // Empresa
+  const empresa = {
+    nombre: 'COMERCIALIZADORA TECNOLOGICA DEL RIO',
+    direccion: 'Mezquite 1272\n44900 Guadalajara Jalisco\nMexico',
+    rfc: 'CTR1905206K5',
+    regimen: '626 - Régimen Simplificado de Confianza',
+    telefono: '3325373183',
+    correo: 'gpsvector@gmail.com',
+    web: 'gpsubicacion.com'
+  };
+
+  // Cliente
+  const cliente = props.cliente || {};
+  const vendedor = props.venta.vendedor || '';
+  const fechaOrden = fecha.value;
+  const folio = props.venta.folio || props.venta.id || '---';
+
+  // Tabla de artículos
   const body = [
     [
-      { text: 'SKU', style: 'tableHeader' },
-      { text: 'Cantidad', style: 'tableHeader' },
-      { text: 'Precio Unitario', style: 'tableHeader' },
-      { text: 'Subtotal', style: 'tableHeader' },
-      { text: 'IMEI', style: 'tableHeader' }
+      { text: '#', style: 'tableHeader' },
+      { text: 'Artículo & Descripción', style: 'tableHeader' },
+      { text: 'Código del artículo', style: 'tableHeader' },
+      { text: 'Código de unidad', style: 'tableHeader' },
+      { text: 'Cant.', style: 'tableHeader' },
+      { text: 'Tarifa', style: 'tableHeader' },
+      { text: 'Importe', style: 'tableHeader' }
     ],
-    ...props.articulos.map(a => [
+    ...props.articulos.map((a, idx) => [
+      idx + 1,
+      `${a.nombre || ''}${a.descripcion ? '\n' + a.descripcion : ''}`,
       a.sku || '',
-      a.cantidad,
+      a.codigoUnidadSat || '',
+      `${a.cantidad} ${a.unidad || ''}`,
       `$${Number(a.precio_unitario).toFixed(2)}`,
-      `$${(Number(a.cantidad) * Number(a.precio_unitario)).toFixed(2)}`,
-      a.imei || ''
+      `$${(Number(a.cantidad) * Number(a.precio_unitario)).toFixed(2)}`
     ])
   ];
+
+  // Totales
+  const subtotal = props.articulos.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
+  const iva = 0; // Zero Rate (0%)
+  const total = subtotal + iva;
 
   const docDefinition = {
     content: [
       {
         columns: [
           [
-            { text: props.empresa.nombre || 'Mi Empresa S.A. de C.V.', style: 'header' },
-            { text: props.empresa.direccion || 'Dirección de la empresa', style: 'subheader' },
-            { text: props.empresa.rfc ? `RFC: ${props.empresa.rfc}` : '', style: 'subheader' }
+            { image: logo, width: 225, alignment: 'left', margin: [0, 0, 0, 10] } // 2.5x más grande (90*2.5=225)
           ],
           [
-            // { image: 'https://i.imgur.com/4M7IWwP.png', width: 80, alignment: 'right', margin: [0, 0, 0, 10] } // Logo opcional
+            // Datos de empresa ahora van a la izquierda, así que esta columna queda vacía
           ]
         ]
       },
-      { canvas: [ { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#ff4081' } ] },
-      { text: 'NOTA DE VENTA', style: 'title', margin: [0, 10, 0, 10] },
       {
+        // Nueva fila: datos de empresa a la izquierda
         columns: [
           [
-            { text: `Folio: ${props.venta.id || '---'}`, style: 'folio' },
-            { text: `Fecha: ${fecha.value}`, style: 'folio' }
-          ],
-          [
-            { text: `Observaciones: ${props.venta.observaciones || '-'}`, style: 'observaciones', alignment: 'right' }
+            { text: empresa.nombre, style: 'empresaHeader', alignment: 'left' },
+            { text: empresa.direccion, style: 'empresaSubheader', alignment: 'left' },
+            { text: `IVA ${empresa.rfc}`, style: 'empresaSubheader', alignment: 'left' },
+            { text: `Régimen fiscal: ${empresa.regimen}`, style: 'empresaSubheader', alignment: 'left' },
+            { text: empresa.telefono, style: 'empresaSubheader', alignment: 'left' },
+            { text: empresa.correo, style: 'empresaSubheader', alignment: 'left' },
+            { text: empresa.web, style: 'empresaSubheader', alignment: 'left' }
           ]
         ]
       },
       { text: '\n' },
+      { text: 'Orden de venta', style: 'title', alignment: 'center' },
+      { text: `Orden de venta nº ${folio}`, style: 'folio', alignment: 'center' },
+      { text: '\n' },
       {
-        style: 'clienteBox',
-        table: {
-          widths: ['*', '*', '*', '*'],
-          body: [
-            [
-              { text: `Cliente: ${props.cliente.nombre || ''}`, style: 'clienteLabel' },
-              { text: `Teléfonos: ${telefonos}`, style: 'clienteLabel' },
-              { text: `Correo: ${correo}`, style: 'clienteLabel' },
-              { text: `Plataformas: ${plataformas}`, style: 'clienteLabel' }
-            ],
-            [
-              { text: `Usuarios: ${usuarios}`, style: 'clienteLabel', colSpan: 4 }, {}, {}, {}
-            ]
+        columns: [
+          [
+            { text: 'Facturar a', style: 'sectionHeader' },
+            { text: cliente.nombre || '', style: 'clienteLabel' },
+            { text: cliente.direccion || '', style: 'clienteLabel' },
+            { text: `RFC del receptor ${cliente.rfc || ''}`, style: 'clienteLabel' },
+            { text: `Régimen fiscal: ${cliente.regimen_fiscal || ''}`, style: 'clienteLabel' }
+          ],
+          [
+            { text: `Fecha del pedido : ${fechaOrden}`, style: 'clienteLabel', alignment: 'right' },
+            { text: `Vendedor : ${vendedor}`, style: 'clienteLabel', alignment: 'right' }
           ]
-        },
-        layout: 'noBorders'
+        ]
       },
       { text: '\n' },
       {
         table: {
           headerRows: 1,
-          widths: [70, 40, 70, 70, '*'],
+          widths: [18, 120, 60, 60, 40, 50, 60],
           body
         },
         layout: {
@@ -122,10 +157,8 @@ function generarPDF() {
             width: 'auto',
             table: {
               body: [
-                [
-                  { text: 'Total:', style: 'totalLabel' },
-                  { text: `$${Number(totalCalculado.value).toFixed(2)}`, style: 'totalValue' }
-                ]
+                [ { text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' } ],
+                [ { text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' } ]
               ]
             },
             layout: 'noBorders'
@@ -133,23 +166,26 @@ function generarPDF() {
         ]
       },
       { text: '\n' },
-      { text: 'Gracias por su compra.', style: 'footer' }
+      { text: 'Notas', style: 'sectionHeader' },
+      { text: props.venta.notas_cliente || 'Si necesita factura el pago sería más IVA.', style: 'notas' },
+      { text: '\n' },
+      { text: 'Términos y condiciones', style: 'sectionHeader' },
+      { text: props.venta.terminos_condiciones || 'Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. El tiempo de traslado en el envió de los paquetes depende de la paquetería.', style: 'notas' }
     ],
     styles: {
-      header: { fontSize: 20, bold: true, color: '#ff4081', alignment: 'left', margin: [0, 0, 0, 2] },
-      subheader: { fontSize: 10, alignment: 'left', color: '#888', margin: [0, 0, 0, 2] },
-      title: { fontSize: 16, bold: true, alignment: 'center', color: '#333', margin: [0, 10, 0, 10] },
-      tableHeader: { bold: true, fillColor: '#ff4081', color: '#fff', fontSize: 11, alignment: 'center' },
-      clienteBox: { margin: [0, 0, 0, 10] },
+      empresaHeader: { fontSize: 14, bold: true, color: '#444' }, // gris oscuro
+      empresaSubheader: { fontSize: 9, color: '#666' }, // gris medio
+      title: { fontSize: 16, bold: true, color: '#222', margin: [0, 10, 0, 10] }, // gris muy oscuro
+      folio: { fontSize: 12, color: '#222', margin: [0, 2, 0, 2] },
+      sectionHeader: { fontSize: 11, bold: true, color: '#444', margin: [0, 8, 0, 2] }, // gris oscuro
       clienteLabel: { fontSize: 10, color: '#333', margin: [0, 2, 0, 2] },
-      folio: { fontSize: 11, color: '#333', margin: [0, 2, 0, 2] },
-      observaciones: { fontSize: 10, italics: true, color: '#666', margin: [0, 2, 0, 2] },
-      totalLabel: { bold: true, fontSize: 13, alignment: 'right', color: '#333' },
-      totalValue: { bold: true, fontSize: 13, alignment: 'right', color: '#ff4081' },
-      footer: { italics: true, alignment: 'center', margin: [0, 20, 0, 0], color: '#888' }
+      tableHeader: { bold: true, fillColor: '#666', color: '#fff', fontSize: 10, alignment: 'center' }, // gris medio
+      totalLabel: { bold: true, fontSize: 11, alignment: 'right', color: '#333' },
+      totalValue: { bold: true, fontSize: 11, alignment: 'right', color: '#444' },
+      notas: { fontSize: 9, color: '#444', margin: [0, 2, 0, 2] }
     },
     defaultStyle: {
-      fontSize: 10
+      fontSize: 9
     }
   };
 

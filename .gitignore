@@ -30,3 +30,4 @@ coverage
 *.tsbuildinfo
 TODO.md
 *TODO.md
+DataAPI.js

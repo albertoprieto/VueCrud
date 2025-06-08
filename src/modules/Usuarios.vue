@@ -26,7 +26,7 @@
       </div>
       <div class="form-group">
         <label>Perfil</label>
-        <Dropdown v-model="form.perfil" :options="['User', 'Admin','Tecnico','Cliente']" placeholder="Selecciona perfil" class="w-full" />
+        <Dropdown v-model="form.perfil" :options="['User', 'Admin', 'Tecnico', 'Vendedor', 'Cliente']" placeholder="Selecciona perfil" class="w-full" />
       </div>
       <div class="modal-actions">
         <Button label="Guardar" icon="pi pi-save" @click="guardarTecnico" />

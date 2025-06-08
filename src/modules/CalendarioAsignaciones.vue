@@ -29,32 +29,41 @@
     <DataTable :value="asignacionesFiltradas" :loading="loading" responsiveLayout="scroll">
       <Column field="fecha_servicio" header="Fecha de Servicio" sortable />
       <Column field="tecnico" header="Técnico" sortable />
-      <Column field="venta_id" header="Nota de Venta" sortable />
+      <Column field="venta_id" header="Nota de Venta" sortable>
+        <template #body="slotProps">
+          <span v-if="slotProps.data.venta_folio">
+            {{ slotProps.data.venta_folio }}
+          </span>
+          <span v-else>
+            {{ slotProps.data.venta_id }}
+          </span>
+        </template>
+      </Column>
       <Column field="cliente" header="Cliente" sortable />
       <Column header="Acciones">
         <template #body="slotProps">
-          <Button label="Ver Detalle" icon="pi pi-search" class="mr-2" @click="verDetalle(slotProps.data)" />
+          <Button
+            label="Ver Detalle"
+            icon="pi pi-search"
+            class="mr-2"
+            @click="irDetalleDirecto(slotProps.data)"
+          />
           <Button
             label="Agregar Reporte"
             icon="pi pi-plus"
-            class="p-button-success"
+            class="p-button-success mr-2"
             @click="irReporteServicio(slotProps.data)"
+          />
+          <Button
+            label="Descargar Orden"
+            icon="pi pi-file-pdf"
+            class="p-button-secondary"
+            @click="descargarNota(slotProps.data)"
+            v-if="slotProps.data.venta_id"
           />
         </template>
       </Column>
     </DataTable>
-    <Dialog v-model:visible="showDialog" header="Resumen de Asignación" :modal="true">
-      <div v-if="asignacionSeleccionada">
-        <p><b>Técnico:</b> {{ asignacionSeleccionada.tecnico }}</p>
-        <p><b>Fecha de servicio:</b> {{ asignacionSeleccionada.fecha_servicio }}</p>
-        <p><b>Nota de venta:</b> {{ asignacionSeleccionada.venta_id }}</p>
-        <p v-if="asignacionSeleccionada.cliente"><b>Cliente:</b> {{ asignacionSeleccionada.cliente }}</p>
-      </div>
-      <template #footer>
-        <Button label="Ver Detalle" icon="pi pi-search" @click="irDetalle" />
-        <Button label="Cerrar" icon="pi pi-times" class="p-button-secondary" @click="showDialog = false" />
-      </template>
-    </Dialog>
   </div>
 </template>
 
@@ -64,16 +73,16 @@ import { useRouter } from 'vue-router';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
-import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getClientes } from '@/services/clientesService';
+import { getVentas, getDetalleVenta } from '@/services/ventasService';
+import { getTodosArticulos } from '@/services/articulosService';
+import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
 
 const asignaciones = ref([]);
 const loading = ref(false);
-const showDialog = ref(false);
-const asignacionSeleccionada = ref(null);
 const tecnicoFiltro = ref(null);
 const clienteFiltro = ref(null);
 const busqueda = ref('');
@@ -82,19 +91,24 @@ const router = useRouter();
 const tecnicos = ref([]);
 const clientes = ref([]);
 const clientesMap = ref({});
+const ventasMap = ref({});
 
 onMounted(async () => {
   loading.value = true;
-  const [asignacionesRaw, clientesRaw] = await Promise.all([
+  const [asignacionesRaw, clientesRaw, ventasRaw] = await Promise.all([
     getAsignacionesTecnicos(),
-    getClientes()
+    getClientes(),
+    getVentas()
   ]);
   // Mapea id -> nombre para clientes
   clientesMap.value = Object.fromEntries(clientesRaw.map(c => [c.id, c.nombre]));
+  // Mapea id -> folio para ventas
+  ventasMap.value = Object.fromEntries(ventasRaw.map(v => [v.id, v.folio]));
   asignaciones.value = asignacionesRaw.map(a => ({
     ...a,
     cliente: clientesMap.value[a.cliente_id] || a.cliente_nombre || a.cliente_id || '',
-    tecnico: a.tecnico || a.tecnico_nombre || ''
+    tecnico: a.tecnico || a.tecnico_nombre || '',
+    venta_folio: ventasMap.value[a.venta_id] || ''
   }));
   tecnicos.value = [...new Set(asignaciones.value.map(a => a.tecnico).filter(Boolean))].map(t => ({ tecnico: t }));
   clientes.value = [...new Set(asignaciones.value.map(a => a.cliente).filter(Boolean))].map(c => ({ cliente: c }));
@@ -114,6 +128,7 @@ const asignacionesFiltradas = computed(() => {
     lista = lista.filter(a =>
       (a.tecnico && a.tecnico.toLowerCase().includes(b)) ||
       (a.cliente && a.cliente.toLowerCase().includes(b)) ||
+      (a.venta_folio && a.venta_folio.toLowerCase().includes(b)) ||
       (a.venta_id && String(a.venta_id).includes(b)) ||
       (a.fecha_servicio && a.fecha_servicio.includes(b))
     );
@@ -121,16 +136,43 @@ const asignacionesFiltradas = computed(() => {
   return lista.sort((a, b) => new Date(a.fecha_servicio) - new Date(b.fecha_servicio));
 });
 
-function verDetalle(asignacion) {
-  asignacionSeleccionada.value = asignacion;
-  showDialog.value = true;
-}
-function irDetalle() {
-  showDialog.value = false;
-  router.push(`/asignacion/${asignacionSeleccionada.value.id}`);
+function irDetalleDirecto(asignacion) {
+  router.push(`/asignacion/${asignacion.id}`);
 }
 function irReporteServicio(asignacion) {
   router.push(`/reporte-servicio/${asignacion.id}`);
+}
+
+async function descargarNota(asignacion) {
+  if (!asignacion.venta_id) return;
+  loading.value = true;
+  const [ventas, clientes, articulos, detalle] = await Promise.all([
+    getVentas(),
+    getClientes(),
+    getTodosArticulos(),
+    getDetalleVenta(asignacion.venta_id)
+  ]);
+  const venta = ventas.find(v => v.id === asignacion.venta_id);
+  const cliente = clientes.find(c => c.id === venta.cliente_id) || {};
+  const articulosSeleccionados = detalle.map(item => {
+    const art = articulos.find(a => a.id === item.articulo_id) || {};
+    return {
+      ...item,
+      sku: art.sku,
+      nombre: art.nombre
+    };
+  });
+  loading.value = false;
+  await generarNotaVentaPDF({
+    venta,
+    cliente,
+    articulos: articulosSeleccionados,
+    empresa: {
+      nombre: 'GPSubicacion.com',
+      direccion: 'Guadalajara',
+      rfc: 'RFC123456'
+    }
+  });
 }
 </script>
 

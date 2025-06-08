@@ -1,6 +1,6 @@
 <template>
   <div class="historico-notas-container">
-    <h2 class="historico-title">Histórico de Notas de Venta</h2>
+    <h2 class="historico-title">Consultar Orden de Venta</h2>
     <!-- Agrega esto antes del DataTable -->
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
       <InputText v-model="filtroFolio" placeholder="Buscar por folio..." class="filtro-input" clearable />
@@ -12,8 +12,6 @@
         showClear
         filter
       />
-      <InputText v-model="filtroTecnico" placeholder="Buscar por técnico..." class="filtro-input" clearable />
-      <!-- Reemplaza el filtro de status por este filtro de técnico -->
       <Dropdown
         v-model="filtroTecnico"
         :options="tecnicosUnicos"
@@ -72,12 +70,6 @@
       <Column header="Acciones">
         <template #body="slotProps">
           <Button
-            icon="pi pi-file-pdf"
-            label="PDF"
-            class="p-button-sm p-button-success"
-            @click="descargarPDF(slotProps.data)"
-          />
-          <Button
             :icon="slotProps.data.tecnicoNombre ? 'pi pi-user-edit' : 'pi pi-user-plus'"
             :label="slotProps.data.tecnicoNombre ? 'Cambiar técnico' : 'Asignar técnico'"
             class="p-button-sm p-button-info ml-2"
@@ -90,18 +82,16 @@
             class="p-button-sm p-button-danger ml-2"
             @click="eliminarAsignacion(slotProps.data)"
           />
+          <Button
+            icon="pi pi-file-pdf"
+            label="PDF"
+            class="p-button-sm p-button-success"
+            @click="descargarPDF(slotProps.data)"
+          />
         </template>
       </Column>
     </DataTable>
     <Dialog v-model:visible="showDialog" header="Nota de Venta" :modal="true" class="historico-dialog">
-      <NotaVentaPDF
-        v-if="ventaSeleccionada && clienteSeleccionado && articulosSeleccionados.length"
-        :venta="ventaSeleccionada"
-        :cliente="clienteSeleccionado"
-        :articulos="articulosSeleccionados"
-        :empresa="empresa"
-        :venta-registrada="true"
-      />
       <Button label="Cerrar" icon="pi pi-times" @click="showDialog = false" class="mt-3" />
     </Dialog>
     <Dialog v-model:visible="showAsignarDialog" header="Asignar Técnico" :modal="true">
@@ -139,11 +129,11 @@ import Calendar from 'primevue/calendar';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
-import NotaVentaPDF from '@/components/NotaVentaPDF.vue';
 import { getVentas, getDetalleVenta, asignarTecnicoVenta, getTecnicoVenta, deleteAsignacionTecnico } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getUsuarios } from '@/services/usuariosService';
+import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
 
 const ventas = ref([]);
 const loading = ref(true);
@@ -176,6 +166,7 @@ const filtroImei = ref('');
 onMounted(async () => {
   loading.value = true;
   const ventasRaw = await getVentas();
+  console.log(ventasRaw)
   // Para cada venta, consulta el técnico asignado
   const ventasConTecnico = await Promise.all(
     ventasRaw.map(async v => {
@@ -240,12 +231,11 @@ const ventasFiltradas = computed(() => {
 
 async function descargarPDF(venta) {
   loading.value = true;
-  ventaSeleccionada.value = venta;
   const detalle = await getDetalleVenta(venta.id);
   const clientes = await getClientes();
-  clienteSeleccionado.value = clientes.find(c => c.id === venta.cliente_id) || {};
+  const cliente = clientes.find(c => c.id === venta.cliente_id) || {};
   const articulos = await getTodosArticulos();
-  articulosSeleccionados.value = detalle.map(item => {
+  const articulosSeleccionados = detalle.map(item => {
     const art = articulos.find(a => a.id === item.articulo_id) || {};
     return {
       ...item,
@@ -253,8 +243,13 @@ async function descargarPDF(venta) {
       nombre: art.nombre
     };
   });
-  showDialog.value = true;
   loading.value = false;
+  await generarNotaVentaPDF({
+    venta,
+    cliente,
+    articulos: articulosSeleccionados,
+    empresa
+  });
 }
 
 async function abrirAsignarTecnico(venta) {
