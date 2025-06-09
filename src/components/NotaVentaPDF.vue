@@ -62,7 +62,11 @@ async function generarPDF() {
   const cliente = props.cliente || {};
   const vendedor = props.venta.vendedor || '';
   const fechaOrden = fecha.value;
-  const folio = props.venta.folio || props.venta.id || '---';
+  const folio = props.venta.folio
+  ? props.venta.folio
+  : props.venta.id
+    ? `SO-${String(props.venta.id).padStart(5, '0')}`
+    : 'SO-00000';
 
   // Tabla de artículos
   const body = [
@@ -119,7 +123,7 @@ async function generarPDF() {
       },
       { text: '\n' },
       { text: 'Orden de venta', style: 'title', alignment: 'center' },
-      { text: `Orden de venta nº ${folio}`, style: 'folio', alignment: 'center' },
+      { text: `${folio}`, style: 'folio', alignment: 'center' },
       { text: '\n' },
       {
         columns: [

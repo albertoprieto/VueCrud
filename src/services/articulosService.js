@@ -12,6 +12,11 @@ export const getTodosArticulos = async () => {
   return res.data;
 };
 
+export const getArticulosStockPorUbicacion = async (ubicacionId) => {
+  const res = await axios.get(`${import.meta.env.VITE_API_URL}/ubicaciones/${ubicacionId}/articulos-stock`);
+  return res.data;
+};
+
 export const addArticulo = async (articulo) => {
   const res = await axios.post(API_URL, articulo);
   return res.data;
