@@ -125,15 +125,8 @@ const handleLogout = () => {
 const cotizacionesPendientes = ref(0);
 const reportesNuevos = ref(0);
 
-// Cargar datos reales al montar el componente
-async function cargarBadges() {
-  cotizacionesPendientes.value = await getCotizacionesPendientes();
-  reportesNuevos.value = await getReportesNuevos();
-}
-onMounted(cargarBadges);
 
 // Opcional: recargar cuando cambie la ruta o cada cierto tiempo
-watch(() => route.path, cargarBadges);
 
 const items = computed(() => [
   {

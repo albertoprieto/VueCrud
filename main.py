@@ -760,6 +760,15 @@ def crear_venta(venta: Venta):
         tipo_row = cursor.fetchone()
         tipo = tipo_row[0].lower() if tipo_row and tipo_row[0] else ""
 
+        # Validar duplicado de IMEI solo si no es servicio y tiene IMEI
+        if tipo != "servicio" and getattr(item, "imei", None):
+            cursor.execute("SELECT COUNT(*) FROM detalle_venta WHERE imei=%s", (item.imei,))
+            if cursor.fetchone()[0] > 0:
+                db.rollback()
+                cursor.close()
+                db.close()
+                raise HTTPException(status_code=400, detail=f"El IMEI {item.imei} ya fue vendido.")
+
         cursor.execute(
             "INSERT INTO detalle_venta (venta_id, articulo_id, cantidad, precio_unitario, subtotal, imei) VALUES (%s, %s, %s, %s, %s, %s)",
             (venta_id, item.articulo_id, item.cantidad, item.precio_unitario, item.cantidad * item.precio_unitario, getattr(item, "imei", None))

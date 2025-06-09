@@ -1,12 +1,41 @@
 <template>
   <div class="consultar-reportes-container">
     <h2 class="consultar-reportes-title">Consultar Reportes de Servicio</h2>
-    <DataTable :value="reportes" responsiveLayout="scroll" :loading="loading">
+    <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+      <InputText v-model="filtroCliente" placeholder="Filtrar por cliente" class="filtro-input" clearable />
+      <InputText v-model="filtroSO" placeholder="Filtrar por SO" class="filtro-input" clearable />
+      <InputText v-model="filtroVendedor" placeholder="Filtrar por vendedor" class="filtro-input" clearable />
+      <InputText v-model="filtroFecha" placeholder="Filtrar por fecha (YYYY-MM-DD)" class="filtro-input" clearable />
+      <Dropdown
+        v-model="filtroPagado"
+        :options="[
+          { label: 'Todos', value: '' },
+          { label: 'Sí', value: true },
+          { label: 'No', value: false }
+        ]"
+        optionLabel="label"
+        optionValue="value"
+        placeholder="¿Pagado?"
+        class="filtro-input"
+        showClear
+      />
+    </div>
+    <DataTable :value="reportesFiltrados" responsiveLayout="scroll" :loading="loading">
       <Column field="tipo_servicio" header="Tipo" />
       <Column field="nombre_cliente" header="Cliente" />
-      <Column field="so_folio" header="SO">
+      <Column field="folio" header="SO">
         <template #body="slotProps">
-          {{ obtenerSO(slotProps.data) }}
+          <span v-if="slotProps.data.folio">
+            {{ slotProps.data.folio }}
+          </span>
+          <span v-else>
+            {{ obtenerSO(slotProps.data) }}
+          </span>
+        </template>
+      </Column>
+      <Column field="vendedor" header="Vendedor">
+        <template #body="slotProps">
+          {{ slotProps.data.vendedor || '-' }}
         </template>
       </Column>
       <Column field="fecha" header="Fecha">
@@ -119,11 +148,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import Dropdown from 'primevue/dropdown';
+import InputText from 'primevue/inputtext'; // <-- Agrega esta línea
 import NotaVentaPDF from '@/components/NotaVentaPDF.vue';
 import axios from 'axios';
 import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
@@ -197,12 +228,41 @@ const camposReporte = {
   firma_instalador: { label: 'Firma del instalador' }
 };
 
+const filtroCliente = ref('');
+const filtroSO = ref('');
+const filtroVendedor = ref('');
+const filtroFecha = ref('');
+const filtroPagado = ref('');
+
+const reportesFiltrados = computed(() => {
+  return reportes.value.filter(r => {
+    const clienteOk = !filtroCliente.value || (r.nombre_cliente && r.nombre_cliente.toLowerCase().includes(filtroCliente.value.toLowerCase()));
+    const so = r.folio || obtenerSO(r);
+    const soOk = !filtroSO.value || (so && so.toLowerCase().includes(filtroSO.value.toLowerCase()));
+    const vendedorOk = !filtroVendedor.value || (r.vendedor && r.vendedor.toLowerCase().includes(filtroVendedor.value.toLowerCase()));
+    const fechaOk = !filtroFecha.value || (r.fecha && r.fecha.includes(filtroFecha.value));
+    const pagadoOk = filtroPagado.value === '' || r.pagado === filtroPagado.value;
+    return clienteOk && soOk && vendedorOk && fechaOk && pagadoOk;
+  });
+});
+
 async function cargarReportes() {
   loading.value = true;
   try {
     const res = await axios.get(`${API_URL}-todos`);
     reportes.value = res.data;
     asignaciones = await getAsignacionesTecnicos();
+    if (Array.isArray(window.ventasGlobal)) {
+      reportes.value = reportes.value.map(r => {
+        const asignacion = asignaciones.find(a => a.id == r.asignacion_id);
+        let vendedor = '-';
+        if (asignacion && asignacion.venta_id) {
+          const venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
+          if (venta && venta.vendedor) vendedor = venta.vendedor;
+        }
+        return { ...r, vendedor };
+      });
+    }
   } catch (e) {
     reportes.value = [];
     asignaciones = [];
@@ -273,7 +333,6 @@ async function guardarEdicion() {
   loading.value = false;
 }
 
-// Eliminar con confirmación en Dialog
 function confirmarEliminarReporte(reporte) {
   reporteAEliminar.value = reporte;
   showConfirmDeleteDialog.value = true;
@@ -351,6 +410,9 @@ async function descargarReporteServicio(reporte) {
       const clientes = await getClientes();
       cliente = venta ? (clientes.find(c => c.id === venta.cliente_id) || {}) : {};
     }
+    const folio = venta?.folio || venta?.id || 'SO-XXXXX';
+    const nombreNota = `${folio}-NOTA-DE-VENTA.pdf`;
+    const nombreReporte = `${folio}-REPORTE-DE-SERVICIO.pdf`;
     await generarReporteServicioPDF({
       reporte,
       venta,
@@ -388,6 +450,17 @@ function obtenerSO(reporte) {
 onMounted(async () => {
   window.ventasGlobal = await getVentas();
   await cargarReportes();
+  // Mapea vendedor a cada reporte después de cargar
+  reportes.value = reportes.value.map(r => {
+    // Busca la asignación y la venta asociada
+    const asignacion = asignaciones.find(a => a.id == r.asignacion_id);
+    let vendedor = '-';
+    if (asignacion && asignacion.venta_id && Array.isArray(window.ventasGlobal)) {
+      const venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
+      if (venta && venta.vendedor) vendedor = venta.vendedor;
+    }
+    return { ...r, vendedor };
+  });
 });
 </script>
 
@@ -434,5 +507,14 @@ onMounted(async () => {
   justify-content: flex-end;
   gap: 1rem;
   margin-top: 1.5rem;
+}
+.filtro-input {
+  flex: 1;
+  min-width: 150px;
+  background: #2c2f3e;
+  color: #e4c8c8;
+  border: 1px solid #444851;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
 }
 </style>
