@@ -2,22 +2,26 @@
   <div class="asignaciones-lista">
     <h2>Asignaciones a Técnicos</h2>
     <div class="filtros">
-      <Dropdown
+      <AutoComplete
         v-model="tecnicoFiltro"
-        :options="tecnicos"
+        :suggestions="tecnicosFiltrados"
+        @complete="buscarTecnico"
         optionLabel="tecnico"
-        optionValue="tecnico"
         placeholder="Filtrar por técnico"
         class="mr-2"
+        :dropdown="true"
+        forceSelection
         showClear
       />
-      <Dropdown
+      <AutoComplete
         v-model="clienteFiltro"
-        :options="clientes"
+        :suggestions="clientesFiltrados"
+        @complete="buscarCliente"
         optionLabel="cliente"
-        optionValue="cliente"
         placeholder="Filtrar por cliente"
         class="mr-2"
+        :dropdown="true"
+        forceSelection
         showClear
       />
       <InputText
@@ -73,7 +77,7 @@ import { useRouter } from 'vue-router';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
-import Dropdown from 'primevue/dropdown';
+import AutoComplete from 'primevue/autocomplete';
 import InputText from 'primevue/inputtext';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getClientes } from '@/services/clientesService';
@@ -92,6 +96,9 @@ const tecnicos = ref([]);
 const clientes = ref([]);
 const clientesMap = ref({});
 const ventasMap = ref({});
+
+const tecnicosFiltrados = ref([]);
+const clientesFiltrados = ref([]);
 
 onMounted(async () => {
   loading.value = true;
@@ -115,13 +122,26 @@ onMounted(async () => {
   loading.value = false;
 });
 
+function buscarTecnico(event) {
+  const query = event.query?.toLowerCase() || '';
+  tecnicosFiltrados.value = tecnicos.value.filter(t =>
+    t.tecnico.toLowerCase().includes(query)
+  );
+}
+function buscarCliente(event) {
+  const query = event.query?.toLowerCase() || '';
+  clientesFiltrados.value = clientes.value.filter(c =>
+    c.cliente.toLowerCase().includes(query)
+  );
+}
+
 const asignacionesFiltradas = computed(() => {
   let lista = [...asignaciones.value];
   if (tecnicoFiltro.value) {
-    lista = lista.filter(a => a.tecnico === tecnicoFiltro.value);
+    lista = lista.filter(a => a.tecnico === (tecnicoFiltro.value.tecnico || tecnicoFiltro.value));
   }
   if (clienteFiltro.value) {
-    lista = lista.filter(a => a.cliente === clienteFiltro.value);
+    lista = lista.filter(a => a.cliente === (clienteFiltro.value.cliente || clienteFiltro.value));
   }
   if (busqueda.value) {
     const b = busqueda.value.toLowerCase();
