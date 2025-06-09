@@ -1380,3 +1380,24 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     # Aquí puedes consultar el usuario en la base de datos si lo necesitas
     return {"username": username, "user_id": user_id}
+
+@app.get("/ubicaciones/{ubicacion_id}/articulos-stock")
+def get_articulos_stock_por_ubicacion(ubicacion_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT a.*, COUNT(i.id) as stock
+        FROM articulos a
+        JOIN imeis i ON i.articulo_id = a.id
+        WHERE i.ubicacion_id = %s AND i.status IN ('Disponible', 'Devuelto')
+        GROUP BY a.id
+    """, (ubicacion_id,))
+    articulos = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return articulos

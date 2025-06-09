@@ -4,6 +4,11 @@
     <DataTable :value="reportes" responsiveLayout="scroll" :loading="loading">
       <Column field="tipo_servicio" header="Tipo" />
       <Column field="nombre_cliente" header="Cliente" />
+      <Column field="so_folio" header="SO">
+        <template #body="slotProps">
+          {{ obtenerSO(slotProps.data) }}
+        </template>
+      </Column>
       <Column field="fecha" header="Fecha">
         <template #body="slotProps">
           {{ formatearFecha(slotProps.data.fecha) }}
@@ -36,6 +41,18 @@
             label="Eliminar"
             @click="confirmarEliminarReporte(slotProps.data)"
           />
+          <Button
+            icon="pi pi-file-pdf"
+            class="p-button-sm p-button-success ml-2"
+            label="Orden de venta"
+            @click="descargarOrdenVenta(slotProps.data)"
+          />
+          <Button
+            icon="pi pi-file-pdf"
+            class="p-button-sm p-button-warning ml-2"
+            label="Reporte de servicio"
+            @click="descargarReporteServicio(slotProps.data)"
+          />
         </template>
       </Column>
     </DataTable>
@@ -57,128 +74,20 @@
     <Dialog v-model:visible="showEditDialog" header="Editar Reporte de Servicio" :modal="true">
       <form @submit.prevent="guardarEdicion">
         <div v-if="reporteEditando">
-          <div class="form-group">
-            <label>Tipo de Servicio</label>
-            <input v-model="reporteEditando.tipo_servicio" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Lugar/Centro de instalación</label>
-            <input v-model="reporteEditando.lugar_instalacion" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Marca</label>
-            <input v-model="reporteEditando.marca" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Submarca</label>
-            <input v-model="reporteEditando.submarca" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Modelo</label>
-            <input v-model="reporteEditando.modelo" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Placas</label>
-            <input v-model="reporteEditando.placas" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Color</label>
-            <input v-model="reporteEditando.color" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Número económico</label>
-            <input v-model="reporteEditando.numero_economico" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Equipo/Plan</label>
-            <input v-model="reporteEditando.equipo_plan" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>IMEI</label>
-            <input v-model="reporteEditando.imei" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Serie</label>
-            <input v-model="reporteEditando.serie" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Accesorios</label>
-            <input v-model="reporteEditando.accesorios" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>SIM Proveedor</label>
-            <input v-model="reporteEditando.sim_proveedor" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>SIM Serie</label>
-            <input v-model="reporteEditando.sim_serie" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>SIM Instalador</label>
-            <input v-model="reporteEditando.sim_instalador" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>SIM Teléfono</label>
-            <input v-model="reporteEditando.sim_telefono" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Batería</label>
-            <input v-model="reporteEditando.bateria" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Ignición</label>
-            <input v-model="reporteEditando.ignicion" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Corte bomba/switch</label>
-            <input v-model="reporteEditando.corte" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Ubicación corte</label>
-            <input v-model="reporteEditando.ubicacion_corte" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Observaciones</label>
-            <textarea v-model="reporteEditando.observaciones" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Plataforma</label>
-            <input v-model="reporteEditando.plataforma" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Usuario</label>
-            <input v-model="reporteEditando.usuario" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Subtotal</label>
-            <input v-model="reporteEditando.subtotal" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Forma de pago</label>
-            <input v-model="reporteEditando.forma_pago" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>¿Pagado?</label>
-            <select v-model="reporteEditando.pagado" class="w-full">
-              <option :value="true">Sí</option>
-              <option :value="false">No</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Nombre del cliente</label>
-            <input v-model="reporteEditando.nombre_cliente" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Firma del cliente</label>
-            <input v-model="reporteEditando.firma_cliente" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Nombre del instalador</label>
-            <input v-model="reporteEditando.nombre_instalador" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Firma del instalador</label>
-            <input v-model="reporteEditando.firma_instalador" class="w-full" />
+          <div class="form-group" v-for="(value, key) in camposReporte" :key="key">
+            <label :for="key">{{ value.label }}</label>
+            <template v-if="value.type === 'textarea'">
+              <textarea v-model="reporteEditando[key]" class="w-full" :id="key" />
+            </template>
+            <template v-else-if="value.type === 'select'">
+              <select v-model="reporteEditando[key]" class="w-full" :id="key">
+                <option :value="true">Sí</option>
+                <option :value="false">No</option>
+              </select>
+            </template>
+            <template v-else>
+              <input v-model="reporteEditando[key]" class="w-full" :id="key" />
+            </template>
           </div>
         </div>
         <div class="modal-actions">
@@ -217,11 +126,13 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import NotaVentaPDF from '@/components/NotaVentaPDF.vue';
 import axios from 'axios';
+import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
 import { getVentas, getDetalleVenta } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { useToast } from 'primevue/usetoast';
+import { generarReporteServicioPDF } from '@/services/reporteServicioPdfService.js';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
 
@@ -250,6 +161,41 @@ let asignaciones = [];
 
 const showMessageDialog = ref(false);
 const messageDialogText = ref('');
+
+// Campos para edición dinámica
+const camposReporte = {
+  tipo_servicio: { label: 'Tipo de Servicio' },
+  lugar_instalacion: { label: 'Lugar/Centro de instalación' },
+  marca: { label: 'Marca' },
+  submarca: { label: 'Submarca' },
+  modelo: { label: 'Modelo' },
+  placas: { label: 'Placas' },
+  color: { label: 'Color' },
+  numero_economico: { label: 'Número económico' },
+  equipo_plan: { label: 'Equipo/Plan' },
+  imei: { label: 'IMEI' },
+  serie: { label: 'Serie' },
+  accesorios: { label: 'Accesorios' },
+  sim_proveedor: { label: 'SIM Proveedor' },
+  sim_serie: { label: 'SIM Serie' },
+  sim_instalador: { label: 'SIM Instalador' },
+  sim_telefono: { label: 'SIM Teléfono' },
+  bateria: { label: 'Batería' },
+  ignicion: { label: 'Ignición' },
+  corte: { label: 'Corte bomba/switch' },
+  ubicacion_corte: { label: 'Ubicación corte' },
+  observaciones: { label: 'Observaciones', type: 'textarea' },
+  plataforma: { label: 'Plataforma' },
+  usuario: { label: 'Usuario' },
+  subtotal: { label: 'Subtotal' },
+  total: { label: 'Total' },
+  forma_pago: { label: 'Forma de pago' },
+  pagado: { label: '¿Pagado?', type: 'select' },
+  nombre_cliente: { label: 'Nombre del cliente' },
+  firma_cliente: { label: 'Firma del cliente' },
+  nombre_instalador: { label: 'Nombre del instalador' },
+  firma_instalador: { label: 'Firma del instalador' }
+};
 
 async function cargarReportes() {
   loading.value = true;
@@ -350,6 +296,72 @@ async function eliminarReporteConfirmado() {
   loading.value = false;
 }
 
+async function descargarOrdenVenta(reporte) {
+  loading.value = true;
+  try {
+    const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
+    if (!asignacion || !asignacion.venta_id) {
+      loading.value = false;
+      toast.add({ severity: 'warn', summary: 'No encontrada', detail: 'No se encontró la nota de venta relacionada.', life: 4000 });
+      messageDialogText.value = 'No se encontró la nota de venta relacionada.';
+      showMessageDialog.value = true;
+      return;
+    }
+    const ventas = await getVentas();
+    const venta = ventas.find(v => v.id == asignacion.venta_id);
+    if (!venta) {
+      loading.value = false;
+      toast.add({ severity: 'warn', summary: 'No encontrada', detail: 'No se encontró la nota de venta.', life: 4000 });
+      messageDialogText.value = 'No se encontró la nota de venta.';
+      showMessageDialog.value = true;
+      return;
+    }
+    const clientes = await getClientes();
+    const cliente = clientes.find(c => c.id === venta.cliente_id) || {};
+    const articulos = await getTodosArticulos();
+    const detalle = await getDetalleVenta(venta.id);
+    const articulosSeleccionados = detalle.map(item => {
+      const art = articulos.find(a => a.id === item.articulo_id) || {};
+      return {
+        ...item,
+        sku: art.sku,
+        nombre: art.nombre
+      };
+    });
+    await generarNotaVentaPDF({
+      venta,
+      cliente,
+      articulos: articulosSeleccionados,
+      empresa
+    });
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function descargarReporteServicio(reporte) {
+  loading.value = true;
+  try {
+    const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
+    let venta = null;
+    let cliente = null;
+    if (asignacion && asignacion.venta_id) {
+      const ventas = await getVentas();
+      venta = ventas.find(v => v.id == asignacion.venta_id);
+      const clientes = await getClientes();
+      cliente = venta ? (clientes.find(c => c.id === venta.cliente_id) || {}) : {};
+    }
+    await generarReporteServicioPDF({
+      reporte,
+      venta,
+      cliente,
+      empresa
+    });
+  } finally {
+    loading.value = false;
+  }
+}
+
 function formatearFecha(fecha) {
   if (!fecha) return '';
   const d = new Date(fecha);
@@ -359,12 +371,28 @@ function formatearFecha(fecha) {
   return `${dia}/${mes}/${anio}`;
 }
 
-onMounted(cargarReportes);
+function obtenerSO(reporte) {
+  // Busca la asignación y la venta asociada para obtener el folio SO
+  const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
+  if (asignacion && asignacion.venta_id && Array.isArray(window.ventasGlobal)) {
+    const venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
+    if (venta && venta.folio) {
+      console.log('SO encontrado para reporte', reporte.id, ':', venta.folio);
+      return venta.folio;
+    }
+  }
+  return '-';
+}
+
+// Carga ventas globalmente para acceso rápido en la tabla
+onMounted(async () => {
+  window.ventasGlobal = await getVentas();
+  await cargarReportes();
+});
 </script>
 
 <style scoped>
 .consultar-reportes-container {
-  max-width: 800px;
   margin: 2rem auto;
   text-align: center;
   background: #23272f;

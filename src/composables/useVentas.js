@@ -78,7 +78,8 @@ export function useVentas() {
       .flatMap(a => a.imeis.filter(Boolean));
     const imeisNoDisponibles = [...imeisSeleccionados, ...imeisSeleccionadosOtrasFilas];
     return imeis.value.filter(i =>
-      i.articulo_nombre === articulo.nombre &&
+      i.articulo_id === articulo_id &&
+      i.ubicacion_id === venta.ubicacion_id &&
       (i.status === 'Disponible' || i.status === 'Devuelto') &&
       !imeisNoDisponibles.includes(i.imei)
     );
@@ -229,8 +230,18 @@ export function useVentas() {
       await addVenta({
         cliente_id: venta.cliente_id,
         fecha: venta.fecha,
-        observaciones: venta.observaciones,
+        folio: venta.folio,
+        referencia: venta.referencia,
+        fecha_envio: venta.fecha_envio,
+        terminos_pago: venta.terminos_pago,
+        metodo_entrega: venta.metodo_entrega,
+        vendedor: venta.vendedor,
+        almacen: venta.almacen,
+        descuento: venta.descuento,
+        notas_cliente: venta.notas_cliente,
+        terminos_condiciones: venta.terminos_condiciones,
         total: totalVenta.value,
+        observaciones: venta.observaciones,
         articulos: articulosParaEnviar
       });
       await sincronizarStockArticulos();

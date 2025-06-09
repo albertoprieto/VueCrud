@@ -45,12 +45,12 @@
             class="p-button-text p-button-warning"
             @click="devolver(slotProps.data.imei)"
           />
-          <!-- <Button
+          <Button
             label="Transferir"
             icon="pi pi-exchange"
             class="p-button-text p-button-info ml-2"
             @click="transferir(slotProps.data.imei)"
-          /> -->
+          />
           <Button
             label="Eliminar"
             icon="pi pi-trash"

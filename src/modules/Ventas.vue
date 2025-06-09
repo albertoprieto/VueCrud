@@ -234,6 +234,8 @@ import Dialog from 'primevue/dialog';
 import Calendar from 'primevue/calendar';
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
+import { getArticulosStockPorUbicacion } from '@/services/articulosService';
+import { getImeisPorUbicacion } from '@/services/ubicacionesService';
 
 const toast = useToast();
 
@@ -305,9 +307,17 @@ onMounted(async () => {
 
 watch(
   () => venta.ubicacion_id,
-  (nuevaUbicacion, anteriorUbicacion) => {
+  async (nuevaUbicacion, anteriorUbicacion) => {
     if (nuevaUbicacion !== anteriorUbicacion) {
       venta.articulos = [];
+      if (nuevaUbicacion) {
+        articulosDisponibles.value = await getArticulosStockPorUbicacion(nuevaUbicacion);
+        // Carga los IMEIs solo de esa ubicación
+        imeis.value = await getImeisPorUbicacion(nuevaUbicacion);
+      } else {
+        articulosDisponibles.value = [];
+        imeis.value = [];
+      }
     }
   }
 );
@@ -316,8 +326,84 @@ async function guardarVentaConLoading() {
   loadingGuardar.value = true;
   try {
     const ventas = await getVentas();
-    venta.folio = generarFolioConsecutivo(ventas); // recalcula por si hubo otra venta
-    await guardarVenta();
+    venta.folio = generarFolioConsecutivo(ventas);
+
+    venta.fecha = venta.fecha || new Date().toISOString().slice(0, 10);
+    venta.referencia = venta.referencia || '';
+    venta.fecha_envio = venta.fecha_envio || '';
+    venta.terminos_pago = venta.terminos_pago || '';
+    venta.metodo_entrega = venta.metodo_entrega || '';
+    venta.vendedor = venta.vendedor || '';
+    venta.almacen = venta.ubicacion_id || '';
+    venta.descuento = venta.descuento || 0;
+    venta.notas_cliente = venta.notas_cliente || '';
+    venta.terminos_condiciones = venta.terminos_condiciones || '';
+    venta.total = totalVenta.value;
+    venta.observaciones = venta.observaciones || '';
+
+    // --- MODIFICACIÓN: Forzar POST directo para asegurar guardado ---
+    const { addVenta } = await import('@/services/ventasService');
+    // Busca el nombre de la ubicación seleccionada
+    const ubicacionObj = ubicaciones.value.find(u => u.id === venta.ubicacion_id);
+    venta.almacen = ubicacionObj ? ubicacionObj.nombre : '';
+
+    // Limpia los artículos para quitar campos no válidos y ajusta IMEIs
+    const articulosLimpios = venta.articulos.flatMap(a => {
+      const articulo = articulosDisponibles.value.find(art => art.id === a.articulo_id);
+      if (articulo && articulo.tipo && articulo.tipo.toLowerCase() === 'servicio') {
+        // Servicio: no lleva imei
+        return [{
+          articulo_id: a.articulo_id,
+          cantidad: a.cantidad,
+          precio_unitario: a.precio_unitario
+        }];
+      }
+      // Si tiene arreglo de imeis, genera un objeto por cada imei
+      if (Array.isArray(a.imeis) && a.imeis.length > 0) {
+        return a.imeis
+          .filter(imei => imei)
+          .map(imei => ({
+            articulo_id: a.articulo_id,
+            cantidad: 1,
+            precio_unitario: a.precio_unitario,
+            imei
+          }));
+      }
+      // Si tiene un solo imei
+      if (a.imei) {
+        return [{
+          articulo_id: a.articulo_id,
+          cantidad: 1,
+          precio_unitario: a.precio_unitario,
+          imei: a.imei
+        }];
+      }
+      // Artículo normal sin imei
+      return [{
+        articulo_id: a.articulo_id,
+        cantidad: a.cantidad,
+        precio_unitario: a.precio_unitario
+      }];
+    });
+
+    await addVenta({
+      cliente_id: venta.cliente_id,
+      fecha: venta.fecha,
+      folio: venta.folio,
+      referencia: venta.referencia,
+      fecha_envio: venta.fecha_envio,
+      terminos_pago: venta.terminos_pago,
+      metodo_entrega: venta.metodo_entrega,
+      vendedor: venta.vendedor,
+      almacen: venta.almacen,
+      descuento: venta.descuento,
+      notas_cliente: venta.notas_cliente,
+      terminos_condiciones: venta.terminos_condiciones,
+      total: venta.total,
+      observaciones: venta.observaciones,
+      articulos: articulosLimpios
+    });
+
     const ventasActualizadas = await getVentas();
     const ultimaVenta = ventasActualizadas[ventasActualizadas.length - 1];
     const detalle = await getDetalleVenta(ultimaVenta.id);
@@ -337,7 +423,6 @@ async function guardarVentaConLoading() {
     });
 
     ventaRegistrada.value = true;
-    // Llama a la función para generar el PDF
     await generarNotaVentaPDF({
       venta: ultimaVenta,
       cliente: clientePDF.value,
@@ -360,7 +445,7 @@ function cerrarDialogoVenta() {
 
 const esServicio = (articulo_id) => {
   const art = articulosDisponibles.value.find(a => a.id === articulo_id);
-  return art && art.tipo && art.tipo.toLowerCase() === 'servicio';
+  return art && String(art.tipo).toLocaleLowerCase() === 'servicio';
 };
 
 const subtotalVenta = computed(() =>
@@ -375,12 +460,10 @@ const totalVenta = computed(() =>
 
 function articulosConStockUbicacion(row = null) {
   if (!venta.ubicacion_id) return [];
-  // Para cada artículo, verifica si hay al menos un IMEI disponible en la ubicación seleccionada
   return articulosDisponibles.value.filter(art => {
     if (art.tipo && art.tipo.toLowerCase() === 'servicio') return true;
-    // Busca si hay al menos un IMEI disponible para este artículo en la ubicación seleccionada
     return imeis.value.some(i =>
-      i.articulo_nombre === art.nombre &&
+      i.articulo_id === art.id &&
       i.ubicacion_id === venta.ubicacion_id &&
       (i.status === 'Disponible' || i.status === 'Devuelto')
     );
