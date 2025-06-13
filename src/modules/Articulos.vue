@@ -104,288 +104,195 @@ const saveArticulo = async () => {
   try {
     const articuloPayload = {
       ...form.value,
-      codigo: form.value.codigo ?? '',
-      pagina: form.value.pagina ?? ''
+      precioVenta: Number(form.value.precioVenta) || 0,
+      precioCompra: Number(form.value.precioCompra) || 0,
+      stock: Number(form.value.stock) || 0,
+      ubicacion_id: Number(form.value.ubicacion_id) || null,
+      unidadSat: String(form.value.unidadSat || ''),
+      // Elimina campos no necesarios
     };
     if (form.value.id) {
-      await updateArticulo(articuloPayload);
-      toast.add({ severity: 'success', summary: 'Artículo actualizado', detail: 'El artículo se actualizó correctamente.', life: 3000 });
+      await updateArticulo(form.value.id, articuloPayload);
+      toast.add({ severity: 'success', summary: 'Artículo actualizado', life: 3000 });
     } else {
       await addArticulo(articuloPayload);
-      toast.add({ severity: 'success', summary: 'Artículo agregado', detail: 'El artículo se agregó correctamente.', life: 3000 });
+      toast.add({ severity: 'success', summary: 'Artículo agregado', life: 3000 });
     }
-    showModal.value = false;
-    await loadArticulos();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar el artículo.', life: 4000 });
-    errorMessage.value = 'Error al guardar el artículo.';
-    showErrorDialog.value = true;
+    closeModal();
+    loadArticulos();
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error al guardar artículo', detail: error.message, life: 5000 });
   }
 };
 
-const editArticulo = (articulo) => {
-  form.value = { ...articulo };
-  showModal.value = true;
-};
-
-const confirmDeleteArticulo = (id) => {
-  articuloToDelete.value = id;
-  showConfirmDelete.value = true;
-};
-
-const deleteArticulo = async (id) => {
+const deleteArticulo = async () => {
+  if (!articuloToDelete.value) return;
   try {
-    await deleteArticuloService(id);
-    await loadArticulos();
+    await deleteArticuloService(articuloToDelete.value.id);
+    toast.add({ severity: 'success', summary: 'Artículo eliminado', life: 3000 });
+    loadArticulos();
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error al eliminar artículo', detail: error.message, life: 5000 });
+  } finally {
     showConfirmDelete.value = false;
-    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Artículo eliminado correctamente.', life: 3000 });
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al eliminar el artículo.', life: 4000 });
-    errorMessage.value = 'Error al eliminar el artículo.';
-    showErrorDialog.value = true;
   }
 };
 
-const exportarArticulos = () => {
-  const mxn = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-  const data = resumenArticulos.value.map(art => ({
-    'Artículo': art.nombre,
-    'SKU': art.sku,
-    'Tipo': art.tipo,
-    'Unidad': art.unidad,
-    'Precio de venta': mxn.format(art.precioVenta),
-    'Existencias en mano': art.existencias,
-    'Vendidos': art.vendidos,
-    'Total inventario': mxn.format(art.precioVenta * art.existencias),
-    'Total vendidos (MXN)': mxn.format(art.totalVendido),
-    'Descripción': art.descripcion,
-    'Impuesto': art.impuesto,
-  }));
-  const ws = XLSX.utils.json_to_sheet(data);
+// Exportar a Excel
+const exportToExcel = () => {
+  const ws = XLSX.utils.json_to_sheet(resumenArticulos.value);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Artículos');
-  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'articulos.xlsx');
+  XLSX.utils.book_append_sheet(wb, ws, 'Articulos');
+  const fileName = `reporte_articulos_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  XLSX.writeFile(wb, fileName);
 };
+
+// Carga inicial de ubicaciones
+const ubicaciones = ref([]);
+const loadUbicaciones = async () => {
+  try {
+    const data = await getUbicaciones();
+    ubicaciones.value = data;
+  } catch (error) {
+    console.error('Error al cargar ubicaciones:', error);
+  }
+};
+onMounted(() => {
+  loadArticulos();
+  loadUbicaciones();
+});
 </script>
 
 <template>
-  <div class="articulos">
-    <h2>Artículos</h2>
-    <div class="actions">
-      <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" />
-      <InputText v-model="search" placeholder="Buscar..." class="ml-2" />
-    </div>
-    <div class="articulos-card">
-      <DataTable
-        :value="filteredArticulos"
-        :sortField="sortField"
-        :sortOrder="sortOrder"
-        responsiveLayout="scroll"
-        :loading="loadingArticulos"
-        :paginator="true"
-        :rows="10"
-        :rowsPerPageOptions="[10, 20, 50]"
-        :globalFilterFields="['nombre', 'sku', 'descripcion']"
-        :emptyMessage="'No se encontraron artículos'"
-        :header="`Artículos (${filteredArticulos.length})`"
-        :scrollable="true"
-        :scrollHeight="'400px'"
-        @sort="(e) => { sortField.value = e.sortField; sortOrder.value = e.sortOrder; }"
-        class="articulos-table"
-      >
-        <Column field="sku" header="SKU" sortable />
-        <!-- <Column field="nombre" header="Nombre" sortable /> -->
-        <Column field="tipo" header="Tipo" sortable />
-        <Column field="precioVenta" header="Precio de venta">
-          <template #body="slotProps">
-            {{ formatoMoneda(slotProps.data.precioVenta) }}
-          </template>
-        </Column>
-        <Column header="Existencias en mano">
-          <template #body="slotProps">
-            <span v-if="slotProps.data.tipo && slotProps.data.tipo.toLowerCase() === 'servicio'">NA</span>
-            <span v-else>{{ slotProps.data.existencias }}</span>
-          </template>
-        </Column>
-        <Column field="precioCompra" header="Precio de compra">
-          <template #body="slotProps">
-            {{ formatoMoneda(slotProps.data.precioCompra) }}
-          </template>
-        </Column>
-        <Column field="codigoSat" header="Código SAT" sortable />
-        <Column field="codigoUnidadSat" header="Código unidad SAT" sortable />
-        <Column header="Acciones">
-          <template #body="slotProps">
-            <Button icon="pi pi-pencil" class="p-button-text" @click="editArticulo(slotProps.data)" />
-            <Button icon="pi pi-trash" class="p-button-text p-button-danger" @click="confirmDeleteArticulo(slotProps.data.id)" />
-          </template>
-        </Column>
-      </DataTable>
-    </div>
+  <div>
+    <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" class="mb-3" />
+    <Button label="Exportar a Excel" icon="pi pi-file-excel" @click="exportToExcel" class="mb-3" />
+    <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive">
+      <Column field="nombre" header="Nombre" :sortable="true" />
+      <Column field="sku" header="SKU" :sortable="true" />
+      <Column field="descripcion" header="Descripción" :sortable="true" />
+      <Column field="tipo" header="Tipo" :sortable="true" />
+      <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />
+      <Column field="unidad" header="Unidad" :sortable="true" />
+      <Column field="impuesto" header="Impuesto" :sortable="true" />
+      <Column field="precioCompra" header="Precio Compra" :sortable="true" :body="formatoMoneda" />
+      <Column field="codigoSat" header="Código SAT" :sortable="true" />
+      <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
+      <Column header="Acciones">
+        <template #body="{ data }">
+          <Button icon="pi pi-pencil" class="mr-2" @click="() => { form.value = { ...data }; showModal.value = true; }" />
+          <Button icon="pi pi-trash" @click="() => { articuloToDelete.value = data; showConfirmDelete.value = true; }" />
+        </template>
+      </Column>
+    </DataTable>
 
-    <Dialog v-model:visible="showModal" :header="form.id ? 'Editar Artículo' : 'Nuevo Artículo'" :modal="true" :closable="true" class="custom-modal">
-      <div class="modal-content">
-        <h3 class="modal-title">{{ form.id ? 'Editar Artículo' : 'Nuevo Artículo' }}</h3>
-        <div class="form-grid">
-          <div class="form-row">
-            <div class="form-col">
-              <div class="form-group">
-                <label for="tipo">Tipo:</label>
-                <Dropdown id="tipo" v-model="form.tipo" :options="['Bienes', 'Servicio']" placeholder="Selecciona tipo" class="w-full" />
-              </div>
-              <div class="form-group">
-                <label for="nombre">Nombre:</label>
-                <InputText id="nombre" v-model="form.nombre" placeholder="Nombre del artículo" class="w-full" />
-                <small v-if="!form.nombre" class="error-text">Obligatorio.</small>
-              </div>
-              <div class="form-group">
-                <label for="sku">SKU:</label>
-                <InputText id="sku" v-model="form.sku" placeholder="SKU o código interno" class="w-full" />
-                <small v-if="!form.sku" class="error-text">Obligatorio.</small>
-              </div>
-              <div class="form-group">
-                <label for="unidad">Unidad:</label>
-                <Dropdown id="unidad" v-model="form.unidad" :options="['pieza', 'servicio', 'kg', 'litro']" placeholder="Selecciona unidad" class="w-full" />
-              </div>
-              <div class="form-group">
-                <label for="precioVenta">Precio de venta (MXN):</label>
-                <InputText id="precioVenta" v-model="form.precioVenta" placeholder="Precio de venta" class="w-full" />
-              </div>
-            </div>
-            <div class="form-col">
-              <div class="form-group">
-                <label for="impuesto">Impuesto:</label>
-                <Dropdown id="impuesto" v-model="form.impuesto" :options="['IVA 16%', 'IVA 0%', 'Exento']" placeholder="Selecciona impuesto" class="w-full" />
-              </div>
-              <div class="form-group">
-                <label for="descripcion">Descripción:</label>
-                <InputText id="descripcion" v-model="form.descripcion" placeholder="Descripción (opcional)" class="w-full" />
-              </div>
-              <div class="form-group">
-                <label for="precioCompra">Precio de compra (MXN):</label>
-                <InputText id="precioCompra" v-model="form.precioCompra" placeholder="Precio de compra" class="w-full" />
-              </div>
-              <div class="form-group">
-                <label for="codigoSat">Código artículo SAT:</label>
-                <InputText id="codigoSat" v-model="form.codigoSat" placeholder="Código SAT" class="w-full" />
-              </div>
-              <div class="form-group">
-                <label for="codigoUnidadSat">Código unidad SAT:</label>
-                <InputText id="codigoUnidadSat" v-model="form.codigoUnidadSat" placeholder="Código unidad SAT" class="w-full" />
-              </div>
-            </div>
+    <Dialog header="Artículo" v-model:visible="showModal" :modal="true" :closeOnEscape="true" :dismissableMask="true">
+      <div class="p-fluid">
+        <div class="formgrid grid">
+          <div class="field col-12 md:col-6">
+            <label for="nombre">Nombre:</label>
+            <InputText id="nombre" v-model="form.nombre" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="sku">SKU:</label>
+            <InputText id="sku" v-model="form.sku" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="descripcion">Descripción:</label>
+            <InputText id="descripcion" v-model="form.descripcion" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="tipo">Tipo:</label>
+            <InputText id="tipo" v-model="form.tipo" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="precioVenta">Precio Venta:</label>
+            <InputText id="precioVenta" v-model.number="form.precioVenta" type="number" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="unidad">Unidad:</label>
+            <InputText id="unidad" v-model="form.unidad" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="impuesto">Impuesto:</label>
+            <InputText id="impuesto" v-model="form.impuesto" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="precioCompra">Precio Compra:</label>
+            <InputText id="precioCompra" v-model.number="form.precioCompra" type="number" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="codigoSat">Código SAT:</label>
+            <InputText id="codigoSat" v-model="form.codigoSat" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="codigoUnidadSat">Código Unidad SAT:</label>
+            <InputText id="codigoUnidadSat" v-model="form.codigoUnidadSat" class="w-full" />
           </div>
         </div>
-        <div class="modal-actions">
-          <Button label="Guardar" icon="pi pi-save" @click="saveArticulo" />
-          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="closeModal" />
+        <div class="form-group">
+          <label for="stock">Stock inicial:</label>
+          <InputText id="stock" v-model.number="form.stock" type="number" min="0" class="w-full" />
+        </div>
+        <div class="form-group">
+          <label for="ubicacion_id">Ubicación:</label>
+          <Dropdown id="ubicacion_id" v-model="form.ubicacion_id" :options="ubicaciones" optionLabel="nombre" optionValue="id" placeholder="Selecciona ubicación" class="w-full" />
+        </div>
+        <div class="form-group">
+          <label for="unidadSat">Unidad SAT:</label>
+          <InputText id="unidadSat" v-model="form.unidadSat" placeholder="Clave unidad SAT" class="w-full" />
         </div>
       </div>
+      <template #footer>
+        <Button label="Cancelar" icon="pi pi-times" @click="closeModal" class="p-button-text" />
+        <Button label="Guardar" icon="pi pi-check" @click="saveArticulo" />
+      </template>
     </Dialog>
 
-    <Dialog v-model:visible="showErrorDialog" header="Error" :modal="true" :closable="false">
-      <div class="dialog-content">
+    <Dialog header="Confirmar eliminación" v-model:visible="showConfirmDelete" :modal="true" :closeOnEscape="true" :dismissableMask="true">
+      <div>
+        <p>¿Estás seguro de que deseas eliminar este artículo?</p>
+      </div>
+      <template #footer>
+        <Button label="Cancelar" icon="pi pi-times" @click="() => showConfirmDelete.value = false" class="p-button-text" />
+        <Button label="Eliminar" icon="pi pi-check" @click="deleteArticulo" />
+      </template>
+    </Dialog>
+
+    <Dialog header="Error" v-model:visible="showErrorDialog" :modal="true" :closeOnEscape="true" :dismissableMask="true">
+      <div>
         <p>{{ errorMessage }}</p>
-        <div class="modal-actions">
-          <Button label="Aceptar" icon="pi pi-check" @click="showErrorDialog = false" />
-        </div>
       </div>
-    </Dialog>
-
-    <Dialog v-model:visible="showConfirmDelete" header="Confirmar Eliminación" :modal="true" :closable="false">
-      <div class="dialog-content">
-        <p>¿Eliminar este artículo?</p>
-        <div class="modal-actions">
-          <Button label="Eliminar" icon="pi pi-trash" class="p-button-danger" @click="deleteArticulo(articuloToDelete)" />
-          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showConfirmDelete = false" />
-        </div>
-      </div>
+      <template #footer>
+        <Button label="Cerrar" icon="pi pi-times" @click="() => showErrorDialog.value = false" class="p-button-text" />
+      </template>
     </Dialog>
   </div>
 </template>
 
 <style scoped>
-.articulos {
-  /* max-width: 900px; */
-  padding: 2rem;
-  margin: 0 auto;
-  text-align: center;
-  background: var(--color-bg);
-  color: var(--color-text);
+.datatable-responsive {
+  font-size: 0.875rem;
 }
-.actions {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  margin-bottom: 1rem;
-  gap: 1rem;
-}
-.articulos-card {
-  background: var(--color-card);
-  color: var(--color-text);
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  margin-bottom: 2rem;
-  border: 1px solid var(--color-border);
-}
-:deep(.p-dialog.custom-modal .p-dialog-header) {
-  background: var(--color-bg);
-  border-bottom: 2px solid #1976d2;
-}
-:deep(.p-dialog.custom-modal .p-dialog-content) {
-  background: var(--color-card);
-}
-.modal-content {
-  padding: 1rem 0.5rem;
-  text-align: left;
-}
-.modal-title {
-  color: var(--color-title);
-  text-align: center;
-  margin-bottom: 1.5rem;
-  font-weight: bold;
-  font-size: 1.3rem;
-  letter-spacing: 1px;
-}
-.form-grid {
-  display: flex;
-  gap: 2rem;
-  flex-wrap: wrap;
-}
-.form-row {
-  display: flex;
-  gap: 2rem;
-  flex-wrap: wrap;
-}
-.form-col {
-  flex: 1 1 0;
-  min-width: 250px;
-}
+
 .form-group {
-  margin-bottom: 1rem;
+  padding-bottom: 1rem;
 }
-label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: bold;
+
+.form-row,
+.form-section {
+  padding: 0.5rem 0;
 }
-.error-text {
-  color: #d32f2f;
-  font-size: 0.85rem;
-  margin-top: 0.25rem;
+
+.p-dialog .p-dialog-content,
+.p-dialog .p-dialog-footer {
+  padding: 1.5rem !important;
 }
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-@media (max-width: 700px) {
-  .form-grid {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
+
+.reporte-servicio-container,
+.articulos-imeis-card,
+.clientes-card,
+.ventas-card {
+  padding: 2rem 1.5rem;
 }
 </style>
