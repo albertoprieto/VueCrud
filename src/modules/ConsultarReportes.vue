@@ -43,12 +43,22 @@
           {{ formatearFecha(slotProps.data.fecha) }}
         </template>
       </Column>
-      <Column field="subtotal" header="Subtotal">
+      <Column field="nombre_instalador" header="Técnico" />
+      <Column field="monto_tecnico" header="Monto Técnico">
         <template #body="slotProps">
-          {{ slotProps.data.subtotal ? '$' + Number(slotProps.data.subtotal).toFixed(2) : '-' }}
+          {{ slotProps.data.monto_tecnico ? '$' + Number(slotProps.data.monto_tecnico).toFixed(2) : '-' }}
         </template>
       </Column>
-      <Column field="forma_pago" header="Forma de pago" />
+      <Column field="viaticos" header="Viáticos">
+        <template #body="slotProps">
+          {{ slotProps.data.viaticos ? '$' + Number(slotProps.data.viaticos).toFixed(2) : '-' }}
+        </template>
+      </Column>
+      <Column field="total" header="Total Cobrado">
+        <template #body="slotProps">
+          {{ slotProps.data.total ? '$' + Number(slotProps.data.total).toFixed(2) : '-' }}
+        </template>
+      </Column>
       <Column field="pagado" header="¿Pagado?">
         <template #body="slotProps">
           <span :style="{ color: slotProps.data.pagado ? '#28a745' : '#d32f2f', fontWeight: 'bold' }">

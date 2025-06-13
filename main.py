@@ -1230,6 +1230,8 @@ class ReporteServicio(BaseModel):
     firma_cliente: str = ""
     nombre_instalador: str = ""
     firma_instalador: str = ""
+    monto_tecnico: float = 0
+    viaticos: float = 0
 
 @app.post("/reportes-servicio")
 def add_reporte_servicio(reporte: ReporteServicio):
@@ -1241,7 +1243,7 @@ def add_reporte_servicio(reporte: ReporteServicio):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO reportes_servicio (asignacion_id, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico, equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria, ignicion, corte, ubicacion_corte, observaciones, plataforma, usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        "INSERT INTO reportes_servicio (asignacion_id, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico, equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria, ignicion, corte, ubicacion_corte, observaciones, plataforma, usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador, monto_tecnico, viaticos) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (
             reporte.asignacion_id, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
             reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
@@ -1249,7 +1251,8 @@ def add_reporte_servicio(reporte: ReporteServicio):
             reporte.sim_instalador, reporte.sim_telefono, reporte.bateria, reporte.ignicion, reporte.corte,
             reporte.ubicacion_corte, reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
             reporte.forma_pago, int(reporte.pagado), reporte.nombre_cliente, reporte.firma_cliente,
-            reporte.nombre_instalador, reporte.firma_instalador
+            reporte.nombre_instalador, reporte.firma_instalador, reporte.monto_tecnico,
+            reporte.viaticos
         )
     )
     db.commit()

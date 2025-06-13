@@ -114,6 +114,14 @@
                 <Textarea v-model="form.observaciones" rows="2" class="w-full" />
                 <small>Si el total difiere del subtotal, explica aquí el motivo.</small>
               </div>
+              <div class="form-group">
+                <label>Monto cobrado por el técnico</label>
+                <InputText v-model="form.monto_tecnico" type="number" class="w-full mb-2" />
+              </div>
+              <div class="form-group">
+                <label>Viáticos</label>
+                <InputText v-model="form.viaticos" type="number" class="w-full mb-2" />
+              </div>
             </div>
           </div>
           <div class="modal-actions">
@@ -189,7 +197,9 @@ const form = ref({
   firma_cliente: '',
   nombre_instalador: '',
   firma_instalador: '',
-  asignacion_id: props.asignacionId
+  asignacion_id: props.asignacionId,
+  monto_tecnico: 0,
+  viaticos: 0
 });
 
 const loading = ref(false);
