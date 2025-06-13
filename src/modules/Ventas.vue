@@ -20,9 +20,10 @@
 
       <div class="ventas-form-header">
         <div class="ventas-form-col">
-          <label>N.º de referencia</label>
+          <label>N.º de cotización</label>
           <InputText v-model="venta.referencia" class="w-full" />
         </div>
+        <!--
         <div class="ventas-form-col">
           <label>Fecha de envío esperada</label>
           <InputText v-model="venta.fecha_envio" type="date" class="w-full" />
@@ -42,6 +43,7 @@
           <label>Método de entrega</label>
           <InputText v-model="venta.metodo_entrega" class="w-full" />
         </div>
+        -->
       </div>
 
       <div class="ventas-form-header">
@@ -208,9 +210,9 @@
 El tiempo de traslado en el envió de los paquetes depende de la paquetería.</small>
       </div>
 
-      <Dialog v-model:visible="showDialog" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
-        <p>La orden de venta se registró correctamente.</p>
-        <Button label="Aceptar" icon="pi pi-file-pdf" @click="cerrarDialogoVenta" autofocus />
+      <Dialog v-model:visible="ventaRegistrada" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
+        <p>{{ mensajeExito }}</p>
+        <Button label="Aceptar" icon="pi pi-check" @click="cerrarDialogoVenta" autofocus />
       </Dialog>
     </div>
   </div>
@@ -236,8 +238,10 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { getArticulosStockPorUbicacion } from '@/services/articulosService';
 import { getImeisPorUbicacion } from '@/services/ubicacionesService';
+import { useRouter } from 'vue-router';
 
 const toast = useToast();
+const router = useRouter();
 
 const {
   today,
@@ -264,6 +268,7 @@ const {
 } = useVentas();
 
 const ventaRegistrada = ref(false);
+const mensajeExito = ref('La orden de venta se registró correctamente.');
 const detalleVentaPDF = ref([]);
 const clientePDF = ref({});
 const articulosPDF = ref([]);
@@ -311,7 +316,19 @@ watch(
     if (nuevaUbicacion !== anteriorUbicacion) {
       venta.articulos = [];
       if (nuevaUbicacion) {
-        articulosDisponibles.value = await getArticulosStockPorUbicacion(nuevaUbicacion);
+        // Trae los artículos de la ubicación
+        const articulosUbicacion = await getArticulosStockPorUbicacion(nuevaUbicacion);
+        // Trae todos los artículos
+        const todos = await getTodosArticulos();
+        // Filtra solo los servicios
+        const servicios = todos.filter(a => a.tipo && a.tipo.toLowerCase() === 'servicio');
+        // Agrega los servicios al array de la ubicación (sin duplicar)
+        servicios.forEach(serv => {
+          if (!articulosUbicacion.some(a => a.id === serv.id)) {
+            articulosUbicacion.push(serv);
+          }
+        });
+        articulosDisponibles.value = articulosUbicacion;
         // Carga los IMEIs solo de esa ubicación
         imeis.value = await getImeisPorUbicacion(nuevaUbicacion);
       } else {
@@ -329,10 +346,11 @@ async function guardarVentaConLoading() {
     venta.folio = generarFolioConsecutivo(ventas);
 
     venta.fecha = venta.fecha || new Date().toISOString().slice(0, 10);
-    venta.referencia = venta.referencia || '';
-    venta.fecha_envio = venta.fecha_envio || '';
-    venta.terminos_pago = venta.terminos_pago || '';
-    venta.metodo_entrega = venta.metodo_entrega || '';
+    venta.referencia = venta.referencia || null;
+    venta.fecha_envio = venta.fecha_envio || null;
+    venta.terminos_pago = venta.terminos_pago || null;
+    venta.metodo_entrega = venta.metodo_entrega || null;
+    venta.referencia = venta.referencia || null;
     venta.vendedor = venta.vendedor || '';
     venta.almacen = venta.ubicacion_id || '';
     venta.descuento = venta.descuento || 0;
@@ -422,15 +440,16 @@ async function guardarVentaConLoading() {
       };
     });
 
-    ventaRegistrada.value = true;
     await generarNotaVentaPDF({
       venta: ultimaVenta,
       cliente: clientePDF.value,
       articulos: articulosPDF.value,
       empresa: { nombre: 'GPSubicacion.com', direccion: 'Guadalajara', rfc: 'RFC123456' }
     });
-
-    toast.add({ severity: 'success', summary: 'Orden de Venta registrada', detail: 'La orden de venta se registró correctamente.', life: 3000 });
+    // Mostrar modal de éxito después de abrir el PDF
+    ventaRegistrada.value = true;
+    mensajeExito.value = 'La orden de venta se registró correctamente.';
+    toast.add({ severity: 'success', summary: 'Orden de Venta registrada', detail: mensajeExito.value, life: 3000 });
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la orden.', life: 4000 });
   } finally {
@@ -439,8 +458,8 @@ async function guardarVentaConLoading() {
 }
 
 function cerrarDialogoVenta() {
-  showDialog.value = false;
   ventaRegistrada.value = false;
+  router.push('/dashboard');
 }
 
 const esServicio = (articulo_id) => {
