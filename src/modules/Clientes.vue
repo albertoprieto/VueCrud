@@ -39,12 +39,14 @@
         <Column field="telefono" header="Teléfonos">
           <template #body="slotProps">
             <ul class="list-inline">
-              <li v-for="(tel, idx) in slotProps.data.telefonos" :key="idx">{{ tel }}</li>
+              <li v-for="(tel, idx) in slotProps.data.telefonos" :key="idx">
+                <span class="chip chip-telefono">{{ tel }}</span>
+              </li>
             </ul>
           </template>
         </Column>
         <Column field="correo" header="Correo" />
-        <Column field="direccion" header="Dirección" />
+        <Column field="direccion" header="Ciudad" />
         <Column header="Usuarios">
           <template #body="slotProps">
             <ul class="list-inline">
@@ -90,7 +92,7 @@
         <InputText id="correo" v-model="form.correo" class="w-full" />
       </div>
       <div class="form-group">
-        <label for="direccion">Dirección:</label>
+        <label for="direccion">Ciudad:</label>
         <InputText id="direccion" v-model="form.direccion" class="w-full" />
       </div>
       <div class="form-group">
@@ -351,6 +353,15 @@ watch(filtroPlataforma, (val) => {
 .chip-plataforma {
   background: #ffe082;
   color: #795548;
+}
+.chip-telefono {
+  background: #e1bee7;
+  color: #4a148c;
+  font-weight: 500;
+  border-radius: 12px;
+  padding: 0.2em 0.7em;
+  margin-right: 0.2em;
+  display: inline-block;
 }
 .acciones-col {
   min-width: 120px;

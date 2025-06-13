@@ -402,16 +402,24 @@ def login_usuario(login: LoginRequest):
 
 # MODELO ARTICULO
 class Articulo(BaseModel):
+    id: Optional[int]
     codigo: str
     nombre: str
     pagina: str
-    tipo: str | None = None
-    sku: str | None = None
-    unidad: str | None = None
-    precioVenta: float | None = None
-    codigoSat: str | None = None
-    unidadSat: str | None = None
-    codigoUnidadSat: str | None = None
+    tipo: Optional[str]
+    sku: Optional[str]
+    unidad: Optional[str]
+    precioVenta: Optional[float]
+    impuesto: Optional[str]   # <-- AGREGA ESTA LÍNEA
+    descripcion: Optional[str]
+    stock: Optional[int]
+    ubicacion_id: Optional[int]
+    precioCompra: Optional[float]
+    codigoSat: Optional[str]
+    unidadSat: Optional[str]
+    codigoUnidadSat: Optional[str]
+    codigo: Optional[str] = ""
+    pagina: Optional[str] = ""
 
 @app.get("/articulos")
 def get_articulos():
@@ -611,11 +619,11 @@ def get_stock_articulo_nombre(articulo_nombre: str):
 # MODELO CLIENTE
 class Cliente(BaseModel):
     nombre: str
-    correos: Optional[List[str]] = []
-    direccion: Optional[str] = None
-    telefonos: Optional[List[str]] = []
-    usuarios: Optional[List[str]] = []
-    plataformas: Optional[List[str]] = []
+    correo: Optional[str] = ""
+    direccion: Optional[str] = ""
+    telefonos: Optional[list[str]] = []
+    usuarios: Optional[list[str]] = []
+    plataformas: Optional[list[str]] = []
 
 @app.get("/clientes")
 def get_clientes():
@@ -629,13 +637,15 @@ def get_clientes():
     cursor.execute("SELECT * FROM clientes")
     clientes = cursor.fetchall()
     for cliente in clientes:
-        cliente_id = cliente["id"]
-        cursor.execute("SELECT telefono FROM telefonos_cliente WHERE cliente_id=%s", (cliente_id,))
-        cliente["telefonos"] = [row["telefono"] for row in cursor.fetchall()]
-        cursor.execute("SELECT usuario FROM usuarios_cliente WHERE cliente_id=%s", (cliente_id,))
-        cliente["usuarios"] = [row["usuario"] for row in cursor.fetchall()]
-        cursor.execute("SELECT plataforma FROM plataformas_cliente WHERE cliente_id=%s", (cliente_id,))
-        cliente["plataformas"] = [row["plataforma"] for row in cursor.fetchall()]
+        # Obtener teléfonos
+        cursor.execute("SELECT telefono FROM telefonos_cliente WHERE cliente_id=%s", (cliente["id"],))
+        cliente["telefonos"] = [t["telefono"] for t in cursor.fetchall()]
+        # Obtener usuarios
+        cursor.execute("SELECT usuario FROM usuarios_cliente WHERE cliente_id=%s", (cliente["id"],))
+        cliente["usuarios"] = [u["usuario"] for u in cursor.fetchall()]
+        # Obtener plataformas
+        cursor.execute("SELECT plataforma FROM plataformas_cliente WHERE cliente_id=%s", (cliente["id"],))
+        cliente["plataformas"] = [p["plataforma"] for p in cursor.fetchall()]
     cursor.close()
     db.close()
     return clientes
@@ -651,7 +661,7 @@ def add_cliente(cliente: Cliente):
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO clientes (nombre, correo, direccion) VALUES (%s, %s, %s)",
-        (cliente.nombre, ",".join(cliente.correos or []), cliente.direccion)
+        (cliente.nombre, cliente.correo, cliente.direccion)
     )
     cliente_id = cursor.lastrowid
     for tel in cliente.telefonos or []:
@@ -676,7 +686,7 @@ def update_cliente(cliente_id: int, cliente: Cliente):
     cursor = db.cursor()
     cursor.execute(
         "UPDATE clientes SET nombre=%s, correo=%s, direccion=%s WHERE id=%s",
-        (cliente.nombre, ",".join(cliente.correos or []), cliente.direccion, cliente_id)
+        (cliente.nombre, cliente.correo, cliente.direccion, cliente_id)
     )
     cursor.execute("DELETE FROM telefonos_cliente WHERE cliente_id=%s", (cliente_id,))
     for tel in cliente.telefonos or []:
