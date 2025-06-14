@@ -25,6 +25,7 @@ import CalendarioAsignaciones from '@/modules/CalendarioAsignaciones.vue';
 import DetalleAsignacion from '@/modules/DetalleAsignacion.vue';
 import ReporteServicio from '@/modules/ReporteServicio.vue';
 import TransferirImeis from '@/modules/TransferirImeis.vue';
+import Cotizador from '@/modules/Cotizador.vue';
 
 const routes = [
   { path: '/', name: 'home', component: Informacion },
@@ -53,7 +54,8 @@ const routes = [
   { path: '/calendario-asignaciones', name: 'calendario-asignaciones', component: CalendarioAsignaciones },
   { path: '/asignacion/:id', name: 'detalle-asignacion', component: DetalleAsignacion },
   { path: '/reporte-servicio/:asignacionId', name: 'reporte-servicio', component: ReporteServicio },
-  { path: '/transferir-imeis', name: 'transferir-imeis', component: TransferirImeis }
+  { path: '/transferir-imeis', name: 'transferir-imeis', component: TransferirImeis },
+  { path: '/cotizador', name: 'cotizador', component: Cotizador }
 ];
 
 const router = createRouter({

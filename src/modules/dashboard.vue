@@ -173,6 +173,11 @@ const items = computed(() => [
     ]
   },
   {
+    label: 'Cotizador',
+    icon: 'pi pi-fw pi-file-edit',
+    route: '/cotizador'
+  },
+  {
     label: 'Cerrar Sesión',
     icon: 'pi pi-fw pi-sign-out',
     command: handleLogout
