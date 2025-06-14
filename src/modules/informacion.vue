@@ -65,6 +65,13 @@ const groupedItems = [
       { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones', icon: 'pi pi-fw pi-calendar', desc: 'Ver calendario de asignaciones' },
       { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' }
     ]
+  },
+  {
+    title: 'Cotizaciones',
+    items: [
+      { label: 'Cotizador', route: '/cotizador', icon: 'pi pi-fw pi-file-edit', desc: 'Generar cotizaciones' },
+      { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', desc: 'Histórico de cotizaciones' }
+    ]
   }
 ];
 </script>

@@ -131,16 +131,18 @@ def update_imei(imei_value: str, imei: dict):
 
 # MODELO COTIZACION
 class Cotizacion(BaseModel):
-    cliente: str
-    telefono: str
-    correo: str
-    descripcion: str
-    modelo: str
-    tipo: str
-    monto: float
-    observaciones: str = ""
+    id: Optional[int]
+    cliente_id: int
     fecha: str
-    status: str
+    descripcion: Optional[str] = ""
+    monto: float
+    status: Optional[str] = "Pendiente"
+    usuario_id: Optional[int] = None
+    observaciones: Optional[str] = ""
+    articulos: Optional[dict] = None
+    autorizada: Optional[bool] = False
+    fecha_autorizacion: Optional[str] = None
+    venta_id: Optional[int] = None
 
 @app.get("/cotizaciones")
 def get_cotizaciones():
@@ -157,6 +159,23 @@ def get_cotizaciones():
     db.close()
     return cotizaciones
 
+@app.get("/cotizaciones/{cotizacion_id}")
+def get_cotizacion(cotizacion_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM cotizaciones WHERE id=%s", (cotizacion_id,))
+    cotizacion = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    return cotizacion
+
 @app.post("/cotizaciones")
 def add_cotizacion(cotizacion: Cotizacion):
     db = mysql.connector.connect(
@@ -167,18 +186,19 @@ def add_cotizacion(cotizacion: Cotizacion):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO cotizaciones (cliente, telefono, correo, descripcion, modelo, tipo, monto, observaciones, fecha, status) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        "INSERT INTO cotizaciones (cliente_id, fecha, descripcion, monto, status, usuario_id, observaciones, articulos, autorizada, fecha_autorizacion, venta_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (
-            cotizacion.cliente,
-            cotizacion.telefono,
-            cotizacion.correo,
-            cotizacion.descripcion,
-            cotizacion.modelo,
-            cotizacion.tipo,
-            cotizacion.monto,
-            cotizacion.observaciones,
+            cotizacion.cliente_id,
             cotizacion.fecha,
-            cotizacion.status
+            cotizacion.descripcion,
+            cotizacion.monto,
+            cotizacion.status,
+            cotizacion.usuario_id,
+            cotizacion.observaciones,
+            json.dumps(cotizacion.articulos) if cotizacion.articulos else None,
+            cotizacion.autorizada,
+            cotizacion.fecha_autorizacion,
+            cotizacion.venta_id
         )
     )
     db.commit()
@@ -187,7 +207,7 @@ def add_cotizacion(cotizacion: Cotizacion):
     return {"message": "Cotización registrada exitosamente"}
 
 @app.put("/cotizaciones/{cotizacion_id}")
-def update_cotizacion(cotizacion_id: int, cotizacion: dict):
+def update_cotizacion(cotizacion_id: int, cotizacion: Cotizacion):
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -196,18 +216,19 @@ def update_cotizacion(cotizacion_id: int, cotizacion: dict):
     )
     cursor = db.cursor()
     cursor.execute(
-        "UPDATE cotizaciones SET cliente=%s, telefono=%s, correo=%s, descripcion=%s, modelo=%s, tipo=%s, monto=%s, observaciones=%s, fecha=%s, status=%s WHERE id=%s",
+        "UPDATE cotizaciones SET cliente_id=%s, fecha=%s, descripcion=%s, monto=%s, status=%s, usuario_id=%s, observaciones=%s, articulos=%s, autorizada=%s, fecha_autorizacion=%s, venta_id=%s WHERE id=%s",
         (
-            cotizacion.get("cliente"),
-            cotizacion.get("telefono"),
-            cotizacion.get("correo"),
-            cotizacion.get("descripcion"),
-            cotizacion.get("modelo"),
-            cotizacion.get("tipo"),
-            cotizacion.get("monto"),
-            cotizacion.get("observaciones"),
-            cotizacion.get("fecha"),
-            cotizacion.get("status"),
+            cotizacion.cliente_id,
+            cotizacion.fecha,
+            cotizacion.descripcion,
+            cotizacion.monto,
+            cotizacion.status,
+            cotizacion.usuario_id,
+            cotizacion.observaciones,
+            json.dumps(cotizacion.articulos) if cotizacion.articulos else None,
+            cotizacion.autorizada,
+            cotizacion.fecha_autorizacion,
+            cotizacion.venta_id,
             cotizacion_id
         )
     )
@@ -215,6 +236,21 @@ def update_cotizacion(cotizacion_id: int, cotizacion: dict):
     cursor.close()
     db.close()
     return {"message": "Cotización actualizada exitosamente"}
+
+@app.delete("/cotizaciones/{cotizacion_id}")
+def delete_cotizacion(cotizacion_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM cotizaciones WHERE id=%s", (cotizacion_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Cotización eliminada"}
 
 # MODELO EVENTO (imei eliminado)
 class Evento(BaseModel):
