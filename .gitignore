@@ -31,3 +31,6 @@ coverage
 TODO.md
 *TODO.md
 DataAPI.js
+
+.env
+.env.production
