@@ -231,6 +231,7 @@ onMounted(() => {
           </div>
         </div>
         <div class="form-group">
+      
           <label for="stock">Stock inicial:</label>
           <InputText id="stock" v-model.number="form.stock" type="number" min="0" class="w-full" />
         </div>
