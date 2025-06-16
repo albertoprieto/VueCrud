@@ -1,28 +1,23 @@
-class GodaddyMailConfig {
-  constructor() {
-    this.server = 'smtpout.secureserver.net';
-    this.port = 465;
-    this.secure = true;
-    this.user = 'TU_CORREO@tudominio.com';
-    this.pass = 'TU_PASSWORD';
-  }
-}
+import axios from 'axios';
 
-class CotizacionMailService extends GodaddyMailConfig {
+class CotizacionMailService {
   static async enviarCotizacion(cotizacion) {
-    // Aquí puedes construir el cuerpo del correo y llamar a enviarCorreo
     const asunto = `Cotización #${cotizacion.folio || cotizacion.id || ''}`;
     const cuerpo = `Estimado cliente, adjuntamos su cotización.\n\nGracias.`;
-    // Aquí deberías adjuntar el PDF si lo tienes generado
     return this.enviarCorreo(cotizacion.cliente_email, asunto, cuerpo);
   }
 
   static async enviarCorreo(destinatario, asunto, cuerpo) {
-    // Aquí deberías implementar la lógica real de envío (por ejemplo, usando un backend o API)
-    // Este es solo un placeholder
-    console.log('Enviando correo a:', destinatario, asunto, cuerpo);
-    // Simula éxito
-    return Promise.resolve(true);
+    try {
+      const res = await axios.post(`${import.meta.env.VITE_API_URL}/enviar-cotizacion`, {
+        destinatario,
+        asunto,
+        cuerpo
+      });
+      return res.data;
+    } catch (e) {
+      throw new Error('No se pudo enviar el correo');
+    }
   }
 }
 

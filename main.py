@@ -10,6 +10,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import json
+import smtplib
+from email.mime.text import MIMEText
 
 
 app = FastAPI()
@@ -1459,3 +1461,28 @@ def get_articulos_stock_por_ubicacion(ubicacion_id: int):
     cursor.close()
     db.close()
     return articulos
+
+class EmailRequest(BaseModel):
+    destinatario: str
+    asunto: str
+    cuerpo: str
+
+@app.post("/enviar-cotizacion")
+def enviar_cotizacion(req: EmailRequest):
+    smtp_server = "smtpout.secureserver.net"
+    smtp_port = 465
+    smtp_user = "pepe@gpsubicacionapi.com"
+    smtp_pass = ""
+
+    msg = MIMEText(req.cuerpo)
+    msg["Subject"] = req.asunto
+    msg["From"] = smtp_user
+    msg["To"] = req.destinatario
+
+    try:
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [req.destinatario], msg.as_string())
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
