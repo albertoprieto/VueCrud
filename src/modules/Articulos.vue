@@ -29,7 +29,9 @@ const form = ref({
   impuesto: '',
   precioCompra: '',
   codigoSat: '',
-  codigoUnidadSat: ''
+  codigoUnidadSat: '',
+  stock: '',
+  unidadSat: ''
 });
 const search = ref('');
 const sortField = ref('nombre');
@@ -85,7 +87,7 @@ const filteredArticulos = computed(() => {
 });
 
 const openModal = () => {
-  form.value = { id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '' };
+  form.value = { id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '', stock: '', unidadSat: '' };
   showModal.value = true;
 };
 
@@ -95,7 +97,6 @@ const closeModal = () => {
 
 const saveArticulo = async () => {
   if (!form.value.nombre || !form.value.sku) {
-    // toast en vez de dialog de error
     toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Por favor, complete los campos obligatorios.', life: 4000 });
     errorMessage.value = 'Por favor, complete los campos obligatorios.';
     showErrorDialog.value = true;
@@ -104,12 +105,12 @@ const saveArticulo = async () => {
   try {
     const articuloPayload = {
       ...form.value,
+      impuesto: '16%', // Siempre enviar 16%
       precioVenta: Number(form.value.precioVenta) || 0,
       precioCompra: Number(form.value.precioCompra) || 0,
       stock: Number(form.value.stock) || 0,
-      ubicacion_id: Number(form.value.ubicacion_id) || null,
+      ubicacion_id: '', // Mandar vacío
       unidadSat: String(form.value.unidadSat || ''),
-      // Elimina campos no necesarios
     };
     if (form.value.id) {
       await updateArticulo(form.value.id, articuloPayload);
@@ -147,20 +148,11 @@ const exportToExcel = () => {
   XLSX.writeFile(wb, fileName);
 };
 
-// Carga inicial de ubicaciones
-const ubicaciones = ref([]);
-const loadUbicaciones = async () => {
-  try {
-    const data = await getUbicaciones();
-    ubicaciones.value = data;
-  } catch (error) {
-    console.error('Error al cargar ubicaciones:', error);
-  }
-};
-onMounted(() => {
-  loadArticulos();
-  loadUbicaciones();
-});
+// Elimina todo lo relacionado con ubicaciones
+// const ubicaciones = ref([]);
+// const loadUbicaciones = async () => { ... };
+// onMounted(() => { loadArticulos(); loadUbicaciones(); });
+
 </script>
 
 <template>
@@ -174,7 +166,6 @@ onMounted(() => {
       <Column field="tipo" header="Tipo" :sortable="true" />
       <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />
       <Column field="unidad" header="Unidad" :sortable="true" />
-      <Column field="impuesto" header="Impuesto" :sortable="true" />
       <Column field="precioCompra" header="Precio Compra" :sortable="true" :body="formatoMoneda" />
       <Column field="codigoSat" header="Código SAT" :sortable="true" />
       <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
@@ -214,10 +205,6 @@ onMounted(() => {
             <InputText id="unidad" v-model="form.unidad" class="w-full" />
           </div>
           <div class="field col-12 md:col-6">
-            <label for="impuesto">Impuesto:</label>
-            <InputText id="impuesto" v-model="form.impuesto" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
             <label for="precioCompra">Precio Compra:</label>
             <InputText id="precioCompra" v-model.number="form.precioCompra" type="number" class="w-full" />
           </div>
@@ -231,14 +218,16 @@ onMounted(() => {
           </div>
         </div>
         <div class="form-group">
-      
           <label for="stock">Stock inicial:</label>
           <InputText id="stock" v-model.number="form.stock" type="number" min="0" class="w-full" />
         </div>
+        <!-- Ubicación eliminada -->
+        <!--
         <div class="form-group">
           <label for="ubicacion_id">Ubicación:</label>
           <Dropdown id="ubicacion_id" v-model="form.ubicacion_id" :options="ubicaciones" optionLabel="nombre" optionValue="id" placeholder="Selecciona ubicación" class="w-full" />
         </div>
+        -->
         <div class="form-group">
           <label for="unidadSat">Unidad SAT:</label>
           <InputText id="unidadSat" v-model="form.unidadSat" placeholder="Clave unidad SAT" class="w-full" />
