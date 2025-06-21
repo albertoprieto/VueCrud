@@ -161,7 +161,7 @@ const props = defineProps({ asignacionId: Number, ventaDetalle: Object, cliente:
 const emit = defineEmits(['close', 'saved']);
 
 const tiposServicio = ['Instalación', 'Reinstalación', 'Revisión', 'Desinstalación', 'Búsqueda'];
-const formasPago = ['Efectivo', 'Transferencia', 'Depósito'];
+const formasPago = ['Efectivo Entregado al tecnico', 'Transferencia', 'Depósito', ];
 
 const tecnicoNombre = ref('');
 const tecnicoTelefono = ref('');

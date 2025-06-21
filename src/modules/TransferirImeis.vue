@@ -98,6 +98,7 @@ import { getUbicaciones } from '@/services/ubicacionesService';
 import { getIMEIs } from '@/services/imeiService';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
+import { registrarMovimiento } from '@/services/inventarioService';
 
 const ubicaciones = ref([]);
 const ubicacionOrigen = ref(null);
@@ -189,6 +190,18 @@ const transferirImeis = async () => {
       imeis: imeis.value,
       destino_id: ubicacionDestino.value.id
     });
+    for (const imei of imeis.value) {
+      await registrarMovimiento({
+        usuario: 'sistema',
+        evento: 'transferencia',
+        articulo_id: null,
+        articulo_nombre: getArticuloNombre(imei),
+        imei,
+        ubicacion_origen: ubicacionOrigen.value?.nombre || null,
+        ubicacion_destino: ubicacionDestino.value?.nombre || null,
+        motivo: 'Transferencia de IMEI'
+      });
+    }
     mensaje.value = `${imeis.value.length} IMEIs transferidos correctamente a "${ubicacionDestino.value.nombre}".`;
     imeis.value = [];
     await cargarImeisOrigen();

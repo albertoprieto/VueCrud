@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import json
 import smtplib
 from email.mime.text import MIMEText
+from fastapi import APIRouter
 
 
 app = FastAPI()
@@ -1125,18 +1126,32 @@ def buscar_imei(digitos: str):
     return resultados
 
 @app.post("/imeis/{imei}/devolver")
-def devolver_imei(imei: str):
+def devolver_imei(imei: str, data: dict = Body(...)):
+    motivo = data.get("motivo")
+    usuario = data.get("usuario", "sistema")
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
         password="tu_password_segura",
         database="nombre_de_tu_db"
     )
-    cursor = db.cursor()
-    cursor.execute("UPDATE imeis SET status='Devuelto' WHERE imei=%s", (imei,))
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT articulo_id FROM imeis WHERE imei=%s", (imei,))
+    row = cursor.fetchone()
+    articulo_id = row["articulo_id"] if row else None
+    articulo_nombre = ""
+    if articulo_id:
+        cursor.execute("SELECT nombre FROM articulos WHERE id=%s", (articulo_id,))
+        art = cursor.fetchone()
+        articulo_nombre = art["nombre"] if art else ""
+    cursor.execute(
+        "UPDATE imeis SET status='Devuelto', motivo_devolucion=%s WHERE imei=%s",
+        (motivo, imei)
+    )
     db.commit()
     cursor.close()
     db.close()
+    registrar_movimiento(usuario, "devolucion", articulo_id, articulo_nombre, imei, None, None, motivo)
     return {"message": "IMEI marcado como devuelto"}
 
 @app.post("/articulos/sincronizar-stock-imeis")
@@ -1509,3 +1524,48 @@ def enviar_cotizacion_al_cliente(data: dict = Body(...)):
     cursor.close()
     db.close()
     return {"message": "Cotización enviada y registrada"}
+
+@app.get("/imeis/{imei}")
+def get_imei(imei: str):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("SELECT motivo_devolucion FROM imeis WHERE imei=%s", (imei,))
+    row = cursor.fetchone()
+    return {"motivo_devolucion": row[0] if row else ""}
+
+def registrar_movimiento(usuario, evento, articulo_id, articulo_nombre, imei, ubicacion_origen, ubicacion_destino, motivo):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("""
+        INSERT INTO movimientos_inventario
+        (usuario, evento, articulo_id, articulo_nombre, imei, ubicacion_origen, ubicacion_destino, motivo)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (usuario, evento, articulo_id, articulo_nombre, imei, ubicacion_origen, ubicacion_destino, motivo))
+    db.commit()
+    cursor.close()
+    db.close()
+
+@app.get("/movimientos-inventario")
+def get_movimientos_inventario():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM movimientos_inventario ORDER BY fecha DESC")
+    movimientos = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return movimientos

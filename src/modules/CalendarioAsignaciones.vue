@@ -65,6 +65,12 @@
             @click="descargarNota(slotProps.data)"
             v-if="slotProps.data.venta_id"
           />
+          <Button
+            label="Modificar Orden"
+            icon="pi pi-pencil"
+            class="p-button-warning ml-2"
+            @click="modificarOrden(slotProps.data)"
+          />
         </template>
       </Column>
     </DataTable>
@@ -193,6 +199,10 @@ async function descargarNota(asignacion) {
       rfc: 'RFC123456'
     }
   });
+}
+
+function modificarOrden(asignacion) {
+  console.log('Modificar orden de servicio:', asignacion);
 }
 </script>
 

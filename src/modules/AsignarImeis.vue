@@ -94,6 +94,7 @@ import Column from 'primevue/column';
 import { getTodosArticulos } from '@/services/articulosService';
 import { registrarYAsignarIMEIsPorNombre, getIMEIs } from '@/services/imeiService';
 import { getUbicaciones, asignarImeisUbicacion } from '@/services/ubicacionesService';
+import { registrarMovimiento } from '@/services/inventarioService';
 import { useToast } from 'primevue/usetoast';
 
 const articulos = ref([]);
@@ -166,6 +167,21 @@ const registrarYAsignar = async () => {
   try {
     await registrarYAsignarIMEIsPorNombre(selectedArticulo.value.nombre, imeis.value);
     await asignarImeisUbicacion(ubicacionDestino.value.id, imeis.value);
+
+    // Registrar movimiento en inventario
+    for (const imei of imeis.value) {
+      await registrarMovimiento({
+        usuario: 'sistema',
+        evento: 'asignacion',
+        articulo_id: selectedArticulo.value.id,
+        articulo_nombre: selectedArticulo.value.nombre,
+        imei: imei, // para cada imei asignado
+        ubicacion_origen: null,
+        ubicacion_destino: ubicacionDestino.value?.nombre || null,
+        motivo: 'Asignación de IMEI a artículo'
+      });
+    }
+
     mensaje.value = `Asignaste ${imeis.value.length}, SKU: ${selectedArticulo.value.sku} a bodega ${ubicacionDestino.value.nombre}`;
     imeis.value = [];
     imeisExistentes.value = [];

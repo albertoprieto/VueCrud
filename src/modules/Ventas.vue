@@ -239,6 +239,7 @@ import { useToast } from 'primevue/usetoast';
 import { getArticulosStockPorUbicacion } from '@/services/articulosService';
 import { getImeisPorUbicacion } from '@/services/ubicacionesService';
 import { useRouter } from 'vue-router';
+import { registrarMovimiento } from '@/services/inventarioService';
 
 const toast = useToast();
 const router = useRouter();
@@ -450,6 +451,22 @@ async function guardarVentaConLoading() {
     ventaRegistrada.value = true;
     mensajeExito.value = 'La orden de venta se registró correctamente.';
     toast.add({ severity: 'success', summary: 'Orden de Venta registrada', detail: mensajeExito.value, life: 3000 });
+
+    // Registrar movimientos de inventario por cada artículo con IMEI
+    for (const art of venta.articulos) {
+      if (art.imei) {
+        await registrarMovimiento({
+          usuario: 'sistema',
+          evento: 'venta',
+          articulo_id: art.articulo_id,
+          articulo_nombre: getArticuloNombre(art.imei),
+          imei: art.imei,
+          ubicacion_origen: venta.almacen,
+          ubicacion_destino: null,
+          motivo: 'Venta de IMEI'
+        });
+      }
+    }
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la orden.', life: 4000 });
   } finally {
