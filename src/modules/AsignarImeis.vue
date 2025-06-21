@@ -166,7 +166,7 @@ const registrarYAsignar = async () => {
   try {
     await registrarYAsignarIMEIsPorNombre(selectedArticulo.value.nombre, imeis.value);
     await asignarImeisUbicacion(ubicacionDestino.value.id, imeis.value);
-    mensaje.value = `${imeis.value.length} IMEIs asignados al artículo "${selectedArticulo.value.nombre}" y a la ubicación "${ubicacionDestino.value.nombre}" correctamente.`;
+    mensaje.value = `Asignaste ${imeis.value.length}, SKU: ${selectedArticulo.value.sku} a bodega ${ubicacionDestino.value.nombre}`;
     imeis.value = [];
     imeisExistentes.value = [];
     toast.add({ severity: 'success', summary: 'Éxito', detail: mensaje.value, life: 4000 });
