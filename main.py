@@ -309,9 +309,8 @@ def add_evento(evento: Evento):
         "INSERT INTO eventos (title, descripcion, cliente, technician, start, status) VALUES (%s, %s, %s, %s, %s, %s)",
         (evento.title, evento.descripcion, evento.cliente, evento.technician, evento.start, evento.status)
     )
-    db.commit()data
+    db.commit()
     cursor.close()
-    db.close()
     return {"message": "Evento creado exitosamente"}
 
 class Reporte(BaseModel):
@@ -1113,9 +1112,10 @@ def buscar_imei(digitos: str):
     )
     cursor = db.cursor(dictionary=True)
     query = """
-        SELECT i.imei, i.articulo_nombre, i.status, u.nombre as ubicacion
+        SELECT i.imei, i.articulo_nombre, a.sku, i.status, u.nombre as ubicacion
         FROM imeis i
         LEFT JOIN ubicaciones u ON i.ubicacion_id = u.id
+        LEFT JOIN articulos a ON i.articulo_nombre = a.nombre
         WHERE i.imei LIKE %s
     """
     cursor.execute(query, ('%' + digitos,))

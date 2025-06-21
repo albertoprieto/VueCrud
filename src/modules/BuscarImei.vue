@@ -21,7 +21,7 @@
       emptyMessage="No se encontraron IMEIs."
     >
       <Column field="imei" header="IMEI" sortable />
-      <Column field="articulo_nombre" header="Artículo" sortable />
+      <!-- <Column field="articulo_nombre" header="Artículo" sortable /> -->
       <Column field="sku" header="SKU" sortable />
       <Column field="ubicacion" header="Ubicación" sortable />
       <Column field="status" header="Estado">
@@ -122,6 +122,8 @@ const cargarImeis = async () => {
   cargando.value = true;
   const res = await axios.get('https://api.gpsubicacionapi.com/buscar-imei?digitos=');
   imeis.value = res.data;
+  console.log(imeis.value);
+  
   cargando.value = false;
 };
 
@@ -136,10 +138,12 @@ onMounted(async () => {
 
 const imeisFiltrados = computed(() => {
   if (!filtro.value) return imeis.value;
+  console.log(imeis.value)
   const f = filtro.value.toLowerCase();
   return imeis.value.filter(i =>
     i.imei?.toLowerCase().includes(f) ||
     i.imei?.slice(-5).includes(f) ||
+    i.sku?.toLowerCase().includes(f) ||
     i.articulo_nombre?.toLowerCase().includes(f) ||
     i.ubicacion?.toLowerCase().includes(f)
   );
