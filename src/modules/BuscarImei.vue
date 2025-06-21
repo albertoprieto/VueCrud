@@ -22,6 +22,7 @@
     >
       <Column field="imei" header="IMEI" sortable />
       <Column field="articulo_nombre" header="Artículo" sortable />
+      <Column field="sku" header="SKU" sortable />
       <Column field="ubicacion" header="Ubicación" sortable />
       <Column field="status" header="Estado">
         <template #body="slotProps">

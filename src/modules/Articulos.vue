@@ -1,48 +1,33 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { getArticulos, getTodosArticulos, addArticulo, updateArticulo, deleteArticulo as deleteArticuloService } from '@/services/articulosService';
-import { getIMEIs } from '@/services/imeiService';
+import { getTodosArticulos, addArticulo, updateArticulo, deleteArticulo as deleteArticuloService } from '@/services/articulosService';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
-import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
 import { useToast } from 'primevue/usetoast';
 
 const toast = useToast();
 
 const articulos = ref([]);
-const imeis = ref([]);
 const loadingArticulos = ref(true);
 const showModal = ref(false);
 const form = ref({
   id: null,
   sku: '',
   nombre: '',
-  bien: '',
   tipo: '',
   precioVenta: '',
   precioCompra: '',
   codigoSat: '',
   codigoUnidadSat: '',
-  impuesto: '16%', // Fijo, no editable
-  // El resto no se muestra ni se pregunta, pero se envía en blanco
-  unidad: '',
-  stock: '',
-  unidadSat: '',
-  descripcion: '',
+  impuesto: '16%',
 });
 const search = ref('');
-const sortField = ref('nombre');
-const sortOrder = ref(1);
-
-const showErrorDialog = ref(false);
-const errorMessage = ref('');
 const showConfirmDelete = ref(false);
-const articuloToDelete = ref({});
+const articuloToDelete = ref(null);
 
 const tipoOptions = [
   { label: 'Bien', value: 'Bien' },
@@ -53,48 +38,47 @@ const loadArticulos = async () => {
   loadingArticulos.value = true;
   try {
     articulos.value = await getTodosArticulos();
-    imeis.value = await getIMEIs();
   } finally {
     loadingArticulos.value = false;
   }
 };
 onMounted(loadArticulos);
 
-// Agrupa los imeis por artículo y calcula vendidos y total vendido
-const resumenArticulos = computed(() => {
-  const grupos = {};
-  imeis.value.forEach(i => {
-    if (!grupos[i.articulo_nombre]) grupos[i.articulo_nombre] = [];
-    grupos[i.articulo_nombre].push(i);
-  });
-  return articulos.value.map(art => {
-    const imeisArr = grupos[art.nombre] || [];
-    const existencias = imeisArr.filter(i => i.status === 'Disponible').length;
-    const precio = Number(art.precioVenta) || 0;
-    return {
-      ...art,
-      existencias,
-      // Elimina vendidos y totalVendido
-    };
-  });
-});
-
-// Formato moneda MXN
-const formatoMoneda = (valor) => {
-  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor) || 0);
-};
-
 const filteredArticulos = computed(() => {
-  if (!search.value) return resumenArticulos.value;
-  return resumenArticulos.value.filter(a =>
+  if (!search.value) return articulos.value;
+  return articulos.value.filter(a =>
     a.nombre?.toLowerCase().includes(search.value.toLowerCase()) ||
     a.sku?.toLowerCase().includes(search.value.toLowerCase()) ||
     a.descripcion?.toLowerCase().includes(search.value.toLowerCase())
   );
 });
 
-const openModal = () => {
-  form.value = { id: null, sku: '', nombre: '', bien: '', tipo: '', precioVenta: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '', impuesto: '16%', unidad: '', stock: '', unidadSat: '', descripcion: '' };
+const openModal = (articulo = null) => {
+  if (articulo) {
+    form.value = {
+      id: articulo.id,
+      sku: articulo.sku,
+      nombre: articulo.nombre,
+      tipo: articulo.tipo,
+      precioVenta: articulo.precioVenta,
+      precioCompra: articulo.precioCompra,
+      codigoSat: articulo.codigoSat,
+      codigoUnidadSat: articulo.codigoUnidadSat,
+      impuesto: articulo.impuesto || '16%',
+    };
+  } else {
+    form.value = {
+      id: null,
+      sku: '',
+      nombre: '',
+      tipo: '',
+      precioVenta: '',
+      precioCompra: '',
+      codigoSat: '',
+      codigoUnidadSat: '',
+      impuesto: '16%',
+    };
+  }
   showModal.value = true;
 };
 
@@ -105,41 +89,39 @@ const closeModal = () => {
 const saveArticulo = async () => {
   if (!form.value.nombre || !form.value.sku) {
     toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Por favor, complete los campos obligatorios.', life: 4000 });
-    errorMessage.value = 'Por favor, complete los campos obligatorios.';
-    showErrorDialog.value = true;
     return;
   }
   try {
     const articuloPayload = {
-      id: form.value.id,
       sku: form.value.sku,
       nombre: form.value.nombre,
-      bien: '',
       tipo: form.value.tipo,
       precioVenta: Number(form.value.precioVenta) || 0,
       precioCompra: Number(form.value.precioCompra) || 0,
       codigoSat: form.value.codigoSat,
       codigoUnidadSat: form.value.codigoUnidadSat,
-      impuesto: '16%', // Siempre enviar 16%
-      // El resto en blanco o null según tipo
-      unidad: '',
-      stock: null, // <-- Cambia "" por null
-      unidadSat: '',
-      descripcion: '',
-      ubicacion_id: null, // <-- Cambia "" por null
+      impuesto: form.value.impuesto || '16%',
     };
     if (form.value.id) {
-      await updateArticulo(form.value.id, articuloPayload);
+      await updateArticulo({
+        id: form.value.id,
+        ...articuloPayload
+      });
       toast.add({ severity: 'success', summary: 'Artículo actualizado', life: 3000 });
     } else {
       await addArticulo(articuloPayload);
       toast.add({ severity: 'success', summary: 'Artículo agregado', life: 3000 });
     }
     closeModal();
-    loadArticulos();
+    await loadArticulos();
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error al guardar artículo', detail: error.message, life: 5000 });
   }
+};
+
+const confirmDelete = (articulo) => {
+  articuloToDelete.value = articulo;
+  showConfirmDelete.value = true;
 };
 
 const deleteArticulo = async () => {
@@ -147,79 +129,36 @@ const deleteArticulo = async () => {
   try {
     await deleteArticuloService(articuloToDelete.value.id);
     toast.add({ severity: 'success', summary: 'Artículo eliminado', life: 3000 });
-    loadArticulos();
+    await loadArticulos();
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error al eliminar artículo', detail: error.message, life: 5000 });
   } finally {
     showConfirmDelete.value = false;
   }
 };
-
-// Exportar a Excel
-const exportToExcel = () => {
-  const ws = XLSX.utils.json_to_sheet(resumenArticulos.value);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Articulos');
-  const fileName = `reporte_articulos_${new Date().toISOString().slice(0, 10)}.xlsx`;
-  XLSX.writeFile(wb, fileName);
-};
-
-// Elimina todo lo relacionado con ubicaciones
-// const ubicaciones = ref([]);
-// const loadUbicaciones = async () => { ... };
-// onMounted(() => { loadArticulos(); loadUbicaciones(); });
-
 </script>
 
 <template>
   <div>
-    <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" class="mb-3" />
-    <Button label="Exportar a Excel" icon="pi pi-file-excel" @click="exportToExcel" class="mb-3" />
-    <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive">
-      <!-- <Column field="nombre" header="Nombre" :sortable="true" /> -->
+    <Button label="Agregar Artículo" icon="pi pi-plus" @click="() => openModal()" class="mb-3" />
+    <InputText v-model="search" placeholder="Buscar artículo..." class="mb-3" />
+    <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" class="datatable-responsive">
       <Column field="sku" header="SKU" :sortable="true" />
-      <!-- <Column field="descripcion" header="Descripción" :sortable="true" /> -->
+      <Column field="nombre" header="Nombre" :sortable="true" />
       <Column field="tipo" header="Tipo" :sortable="true" />
-      <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />
-      <!-- <Column field="unidad" header="Unidad" :sortable="true" /> -->
-      <Column field="precioCompra" header="Precio Compra" :sortable="true" :body="formatoMoneda" />
+      <Column field="precioVenta" header="Precio Venta" :sortable="true" />
+      <Column field="precioCompra" header="Precio Compra" :sortable="true" />
       <Column field="codigoSat" header="Código SAT" :sortable="true" />
       <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
       <Column header="Acciones">
         <template #body="{ data }">
-          <Button
-            icon="pi pi-pencil"
-            class="mr-2"
-            @click="() => { 
-              // Mapea solo los campos necesarios para el formulario
-              form.value = { 
-                id: data.id,
-                sku: data.sku,
-                nombre: data.nombre,
-                bien: data.bien || '',
-                tipo: data.tipo,
-                precioVenta: data.precioVenta,
-                precioCompra: data.precioCompra,
-                codigoSat: data.codigoSat,
-                codigoUnidadSat: data.codigoUnidadSat,
-                impuesto: data.impuesto || '16%',
-                unidad: data.unidad || '',
-                stock: data.stock ?? '',
-                unidadSat: data.unidadSat || '',
-                descripcion: data.descripcion || ''
-              }; 
-              showModal.value = true; 
-            }"
-          />
-          <Button
-            icon="pi pi-trash"
-            @click="() => { articuloToDelete.value = { ...data }; showConfirmDelete = true; }"
-          />
+          <Button icon="pi pi-pencil" class="mr-2" @click="() => openModal(data)" />
+          <Button icon="pi pi-trash" @click="() => confirmDelete(data)" />
         </template>
       </Column>
     </DataTable>
 
-    <Dialog header="Artículo" v-model:visible="showModal" :modal="true" :closeOnEscape="true" :dismissableMask="true">
+    <Dialog header="Artículo" v-model:visible="showModal" :modal="true">
       <div class="p-fluid">
         <div class="formgrid grid">
           <div class="field col-12 md:col-6">
@@ -230,10 +169,6 @@ const exportToExcel = () => {
             <label for="nombre">Nombre:</label>
             <InputText id="nombre" v-model="form.nombre" class="w-full" />
           </div>
-          <!-- <div class="field col-12 md:col-6">
-            <label for="bien">Bien:</label>
-            <InputText id="bien" v-model="form.bien" class="w-full" />
-          </div> -->
           <div class="field col-12 md:col-6">
             <label for="tipo">Tipo:</label>
             <Dropdown id="tipo" v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecciona tipo" class="w-full" />
@@ -266,22 +201,13 @@ const exportToExcel = () => {
       </template>
     </Dialog>
 
-    <Dialog header="Confirmar eliminación" v-model:visible="showConfirmDelete" :modal="true" :closeOnEscape="true" :dismissableMask="true">
+    <Dialog header="Confirmar eliminación" v-model:visible="showConfirmDelete" :modal="true">
       <div>
         <p>¿Estás seguro de que deseas eliminar este artículo?</p>
       </div>
       <template #footer>
-        <Button label="Cancelar" icon="pi pi-times" @click="showConfirmDelete = false" class="p-button-text" />
+        <Button label="Cancelar" icon="pi pi-times" @click="() => showConfirmDelete = false" class="p-button-text" />
         <Button label="Eliminar" icon="pi pi-check" @click="deleteArticulo" />
-      </template>
-    </Dialog>
-
-    <Dialog header="Error" v-model:visible="showErrorDialog" :modal="true" :closeOnEscape="true" :dismissableMask="true">
-      <div>
-        <p>{{ errorMessage }}</p>
-      </div>
-      <template #footer>
-        <Button label="Cerrar" icon="pi pi-times" @click="() => showErrorDialog.value = false" class="p-button-text" />
       </template>
     </Dialog>
   </div>
@@ -290,26 +216,5 @@ const exportToExcel = () => {
 <style scoped>
 .datatable-responsive {
   font-size: 0.875rem;
-}
-
-.form-group {
-  padding-bottom: 1rem;
-}
-
-.form-row,
-.form-section {
-  padding: 0.5rem 0;
-}
-
-.p-dialog .p-dialog-content,
-.p-dialog .p-dialog-footer {
-  padding: 1.5rem !important;
-}
-
-.reporte-servicio-container,
-.articulos-imeis-card,
-.clientes-card,
-.ventas-card {
-  padding: 2rem 1.5rem;
 }
 </style>
