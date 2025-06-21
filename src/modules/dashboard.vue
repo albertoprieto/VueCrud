@@ -155,6 +155,8 @@ const items = computed(() => [
     icon: 'pi pi-fw pi-briefcase',
     items: [
       { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users' },
+      { label: 'Cotizador',icon: 'pi pi-fw pi-file-edit',route: '/cotizador'},
+      { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', badge: cotizacionesPendientes.value || undefined },
       { label: 'Crear Orden de Venta', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
       { label: 'Consultar Orden de Venta', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
     ]
@@ -171,11 +173,6 @@ const items = computed(() => [
       { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones', icon: 'pi pi-fw pi-calendar' },
       { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
     ]
-  },
-  {
-    label: 'Cotizador',
-    icon: 'pi pi-fw pi-file-edit',
-    route: '/cotizador'
   },
   {
     label: 'Cerrar Sesión',

@@ -27,13 +27,13 @@
               class="p-button-text"
               @click="openAssignDialog(slotProps.data)"
             />
-            <Button
+            <!-- <Button
               v-else
               label="Asignar Técnico"
               icon="pi pi-calendar"
               class="p-button-text"
               @click="openAssignDialog(slotProps.data)"
-            />
+            /> -->
           </template>
         </Column>
       </DataTable>

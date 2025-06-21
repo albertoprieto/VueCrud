@@ -9,6 +9,8 @@ export const addQuotation = async (quotationData) => {
 
 export const getQuotations = async () => {
   const response = await axios.get(API_URL);
+  console.log('Quotations fetched:', response.data);
+  
   return response.data;
 };
 
@@ -24,3 +26,13 @@ export async function getCotizacionesPendientes() {
     ? res.data.filter(c => c.status === 'Pendiente').length
     : 0;
 }
+
+export const enviarCotizacionAlCliente = async ({ cotizacion_id, cliente_id, email_destino }) => {
+  const res = await axios.post(`${import.meta.env.VITE_API_URL}/cotizaciones/enviar`, {
+    cotizacion_id,
+    cliente_id,
+    email_destino,
+    status: 'Sin aprobar'
+  });
+  return res.data;
+};

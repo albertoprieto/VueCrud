@@ -309,7 +309,7 @@ def add_evento(evento: Evento):
         "INSERT INTO eventos (title, descripcion, cliente, technician, start, status) VALUES (%s, %s, %s, %s, %s, %s)",
         (evento.title, evento.descripcion, evento.cliente, evento.technician, evento.start, evento.status)
     )
-    db.commit()
+    db.commit()data
     cursor.close()
     db.close()
     return {"message": "Evento creado exitosamente"}
@@ -1486,3 +1486,26 @@ def enviar_cotizacion(req: EmailRequest):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/cotizaciones/enviar")
+def enviar_cotizacion_al_cliente(data: dict = Body(...)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO cotizaciones_enviadas (cotizacion_id, cliente_id, fecha_envio, status, email_destino) VALUES (%s, %s, NOW(), %s, %s)",
+        (
+            data["cotizacion_id"],
+            data["cliente_id"],
+            data.get("status", "Sin aprobar"),
+            data.get("email_destino", "")
+        )
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Cotización enviada y registrada"}
