@@ -13,8 +13,8 @@
           <span v-else>-</span>
         </template>
       </Column>
-      <Column field="correo" header="Correo" />
-      <Column field="direccion" header="Dirección" />
+      <!-- <Column field="correo" header="Correo" /> -->
+      <!-- <Column field="direccion" header="Dirección" />
       <Column field="capacidad_maxima" header="Capacidad Máxima" />
       <Column field="estado" header="Estado">
         <template #body="slotProps">
@@ -22,7 +22,7 @@
             {{ slotProps.data.estado === 'inactiva' ? 'Inactiva' : 'Activa' }}
           </span>
         </template>
-      </Column>
+      </Column> -->
       <Column header="IMEIs asignados">
         <template #body="slotProps">
           <span
@@ -66,9 +66,9 @@
         </div>
         <InputText v-model="form.correo" placeholder="Correo" class="mb-2 w-full" />
         <InputText v-model="form.direccion" placeholder="Dirección" class="mb-2 w-full" />
-        <InputText v-model="form.capacidad_maxima" type="number" min="1" placeholder="Capacidad máxima" class="mb-2 w-full" />
+        <!-- <InputText v-model="form.capacidad_maxima" type="number" min="1" placeholder="Capacidad máxima" class="mb-2 w-full" />
         <Dropdown v-model="form.estado" :options="estados" optionLabel="value" placeholder="Estado" class="mb-2 w-full" />
-        <Textarea v-model="form.descripcion" placeholder="Descripción" class="w-full" />
+        <Textarea v-model="form.descripcion" placeholder="Descripción" class="w-full" /> -->
       </div>
       <template #footer>
         <Button label="Cancelar" @click="showModal = false" />

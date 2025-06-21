@@ -34,6 +34,7 @@ import Dialog from 'primevue/dialog';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { addIMEI, getIMEIs } from '@/services/imeiService';
+import { registrarMovimiento } from '@/services/inventarioService';
 
 const imei = ref('');
 const imeis = ref([]);
@@ -45,6 +46,17 @@ const registerIMEI = async () => {
     name: 'IMEI',
     imei: imei.value,
     // otros campos...
+  });
+  // REGISTRO DE MOVIMIENTO
+  await registrarMovimiento({
+    usuario: 'sistema', // o el usuario actual si tienes auth
+    evento: 'alta',
+    articulo_id: null,
+    articulo_nombre: null,
+    imei: imei.value,
+    ubicacion_origen: null,
+    ubicacion_destino: null,
+    motivo: 'Registro de IMEI'
   });
   imei.value = '';
   await loadIMEIs();

@@ -92,6 +92,18 @@
             label="Reporte de servicio"
             @click="descargarReporteServicio(slotProps.data)"
           />
+          <Button
+            icon="pi pi-upload"
+            class="p-button-sm p-button-help ml-2"
+            label="Subir comprobante"
+            @click="subirComprobante(slotProps.data)"
+          />
+          <Button
+            icon="pi pi-info-circle"
+            class="p-button-sm p-button-secondary ml-2"
+            label="¿Dónde pagó?"
+            @click="verCuentaPago(slotProps.data)"
+          />
         </template>
       </Column>
     </DataTable>
@@ -472,6 +484,16 @@ onMounted(async () => {
     return { ...r, vendedor };
   });
 });
+
+function subirComprobante(reporte) {
+  console.log('Subir comprobante para reporte:', reporte);
+  // Aquí puedes abrir un diálogo o modal para subir el archivo
+}
+
+function verCuentaPago(reporte) {
+  console.log('Ver cuenta donde pagó para reporte:', reporte);
+  // Aquí puedes mostrar la información de la cuenta destino
+}
 </script>
 
 <style scoped>

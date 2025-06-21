@@ -55,8 +55,8 @@ export const getStockByArticuloNombre = async (articuloNombre) => {
   return response.data.stock;
 };
 
-export const devolverIMEI = async (imei) => {
-  const res = await axios.post(`${API_URL}/${imei}/devolver`);
+export const devolverIMEI = async (imei, motivo) => {
+  const res = await axios.post(`${API_URL}/${imei}/devolver`, { motivo });
   return res.data;
 };
 
