@@ -22,16 +22,18 @@ const form = ref({
   id: null,
   sku: '',
   nombre: '',
-  descripcion: '',
+  bien: '',
   tipo: '',
   precioVenta: '',
-  unidad: '',
-  impuesto: '',
   precioCompra: '',
   codigoSat: '',
   codigoUnidadSat: '',
+  impuesto: '16%', // Fijo, no editable
+  // El resto no se muestra ni se pregunta, pero se envía en blanco
+  unidad: '',
   stock: '',
-  unidadSat: ''
+  unidadSat: '',
+  descripcion: '',
 });
 const search = ref('');
 const sortField = ref('nombre');
@@ -40,7 +42,12 @@ const sortOrder = ref(1);
 const showErrorDialog = ref(false);
 const errorMessage = ref('');
 const showConfirmDelete = ref(false);
-const articuloToDelete = ref(null);
+const articuloToDelete = ref({});
+
+const tipoOptions = [
+  { label: 'Bien', value: 'Bien' },
+  { label: 'Servicio', value: 'Servicio' }
+];
 
 const loadArticulos = async () => {
   loadingArticulos.value = true;
@@ -87,7 +94,7 @@ const filteredArticulos = computed(() => {
 });
 
 const openModal = () => {
-  form.value = { id: null, sku: '', nombre: '', descripcion: '', tipo: '', precioVenta: '', unidad: '', impuesto: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '', stock: '', unidadSat: '' };
+  form.value = { id: null, sku: '', nombre: '', bien: '', tipo: '', precioVenta: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '', impuesto: '16%', unidad: '', stock: '', unidadSat: '', descripcion: '' };
   showModal.value = true;
 };
 
@@ -104,13 +111,22 @@ const saveArticulo = async () => {
   }
   try {
     const articuloPayload = {
-      ...form.value,
-      impuesto: '16%', // Siempre enviar 16%
+      id: form.value.id,
+      sku: form.value.sku,
+      nombre: form.value.nombre,
+      bien: '',
+      tipo: form.value.tipo,
       precioVenta: Number(form.value.precioVenta) || 0,
       precioCompra: Number(form.value.precioCompra) || 0,
-      stock: Number(form.value.stock) || 0,
-      ubicacion_id: '', // Mandar vacío
-      unidadSat: String(form.value.unidadSat || ''),
+      codigoSat: form.value.codigoSat,
+      codigoUnidadSat: form.value.codigoUnidadSat,
+      impuesto: '16%', // Siempre enviar 16%
+      // El resto en blanco o null según tipo
+      unidad: '',
+      stock: null, // <-- Cambia "" por null
+      unidadSat: '',
+      descripcion: '',
+      ubicacion_id: null, // <-- Cambia "" por null
     };
     if (form.value.id) {
       await updateArticulo(form.value.id, articuloPayload);
@@ -127,7 +143,7 @@ const saveArticulo = async () => {
 };
 
 const deleteArticulo = async () => {
-  if (!articuloToDelete.value) return;
+  if (!articuloToDelete.value || !articuloToDelete.value.id) return;
   try {
     await deleteArticuloService(articuloToDelete.value.id);
     toast.add({ severity: 'success', summary: 'Artículo eliminado', life: 3000 });
@@ -160,19 +176,45 @@ const exportToExcel = () => {
     <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" class="mb-3" />
     <Button label="Exportar a Excel" icon="pi pi-file-excel" @click="exportToExcel" class="mb-3" />
     <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive">
-      <Column field="nombre" header="Nombre" :sortable="true" />
+      <!-- <Column field="nombre" header="Nombre" :sortable="true" /> -->
       <Column field="sku" header="SKU" :sortable="true" />
-      <Column field="descripcion" header="Descripción" :sortable="true" />
+      <!-- <Column field="descripcion" header="Descripción" :sortable="true" /> -->
       <Column field="tipo" header="Tipo" :sortable="true" />
       <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />
-      <Column field="unidad" header="Unidad" :sortable="true" />
+      <!-- <Column field="unidad" header="Unidad" :sortable="true" /> -->
       <Column field="precioCompra" header="Precio Compra" :sortable="true" :body="formatoMoneda" />
       <Column field="codigoSat" header="Código SAT" :sortable="true" />
       <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
       <Column header="Acciones">
         <template #body="{ data }">
-          <Button icon="pi pi-pencil" class="mr-2" @click="() => { form.value = { ...data }; showModal.value = true; }" />
-          <Button icon="pi pi-trash" @click="() => { articuloToDelete.value = data; showConfirmDelete.value = true; }" />
+          <Button
+            icon="pi pi-pencil"
+            class="mr-2"
+            @click="() => { 
+              // Mapea solo los campos necesarios para el formulario
+              form.value = { 
+                id: data.id,
+                sku: data.sku,
+                nombre: data.nombre,
+                bien: data.bien || '',
+                tipo: data.tipo,
+                precioVenta: data.precioVenta,
+                precioCompra: data.precioCompra,
+                codigoSat: data.codigoSat,
+                codigoUnidadSat: data.codigoUnidadSat,
+                impuesto: data.impuesto || '16%',
+                unidad: data.unidad || '',
+                stock: data.stock ?? '',
+                unidadSat: data.unidadSat || '',
+                descripcion: data.descripcion || ''
+              }; 
+              showModal.value = true; 
+            }"
+          />
+          <Button
+            icon="pi pi-trash"
+            @click="() => { articuloToDelete.value = { ...data }; showConfirmDelete = true; }"
+          />
         </template>
       </Column>
     </DataTable>
@@ -181,28 +223,24 @@ const exportToExcel = () => {
       <div class="p-fluid">
         <div class="formgrid grid">
           <div class="field col-12 md:col-6">
-            <label for="nombre">Nombre:</label>
-            <InputText id="nombre" v-model="form.nombre" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
             <label for="sku">SKU:</label>
             <InputText id="sku" v-model="form.sku" class="w-full" />
           </div>
           <div class="field col-12 md:col-6">
-            <label for="descripcion">Descripción:</label>
-            <InputText id="descripcion" v-model="form.descripcion" class="w-full" />
+            <label for="nombre">Nombre:</label>
+            <InputText id="nombre" v-model="form.nombre" class="w-full" />
           </div>
+          <!-- <div class="field col-12 md:col-6">
+            <label for="bien">Bien:</label>
+            <InputText id="bien" v-model="form.bien" class="w-full" />
+          </div> -->
           <div class="field col-12 md:col-6">
             <label for="tipo">Tipo:</label>
-            <InputText id="tipo" v-model="form.tipo" class="w-full" />
+            <Dropdown id="tipo" v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecciona tipo" class="w-full" />
           </div>
           <div class="field col-12 md:col-6">
             <label for="precioVenta">Precio Venta:</label>
             <InputText id="precioVenta" v-model.number="form.precioVenta" type="number" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
-            <label for="unidad">Unidad:</label>
-            <InputText id="unidad" v-model="form.unidad" class="w-full" />
           </div>
           <div class="field col-12 md:col-6">
             <label for="precioCompra">Precio Compra:</label>
@@ -216,21 +254,10 @@ const exportToExcel = () => {
             <label for="codigoUnidadSat">Código Unidad SAT:</label>
             <InputText id="codigoUnidadSat" v-model="form.codigoUnidadSat" class="w-full" />
           </div>
-        </div>
-        <div class="form-group">
-          <label for="stock">Stock inicial:</label>
-          <InputText id="stock" v-model.number="form.stock" type="number" min="0" class="w-full" />
-        </div>
-        <!-- Ubicación eliminada -->
-        <!--
-        <div class="form-group">
-          <label for="ubicacion_id">Ubicación:</label>
-          <Dropdown id="ubicacion_id" v-model="form.ubicacion_id" :options="ubicaciones" optionLabel="nombre" optionValue="id" placeholder="Selecciona ubicación" class="w-full" />
-        </div>
-        -->
-        <div class="form-group">
-          <label for="unidadSat">Unidad SAT:</label>
-          <InputText id="unidadSat" v-model="form.unidadSat" placeholder="Clave unidad SAT" class="w-full" />
+          <div class="field col-12 md:col-6">
+            <label for="impuesto">IVA:</label>
+            <InputText id="impuesto" v-model="form.impuesto" class="w-full" disabled />
+          </div>
         </div>
       </div>
       <template #footer>
@@ -244,7 +271,7 @@ const exportToExcel = () => {
         <p>¿Estás seguro de que deseas eliminar este artículo?</p>
       </div>
       <template #footer>
-        <Button label="Cancelar" icon="pi pi-times" @click="() => showConfirmDelete.value = false" class="p-button-text" />
+        <Button label="Cancelar" icon="pi pi-times" @click="showConfirmDelete = false" class="p-button-text" />
         <Button label="Eliminar" icon="pi pi-check" @click="deleteArticulo" />
       </template>
     </Dialog>
