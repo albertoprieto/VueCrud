@@ -12,8 +12,6 @@ import { useToast } from 'primevue/usetoast';
 import { useRouter } from 'vue-router';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getUsuarios } from '@/services/usuariosService';
-import { NotaVentaPdfService } from '@/components/GeneraPDF.js';
-import { CotizacionMailService } from '@/services/cotizacionMailService.js';
 
 const toast = useToast();
 const showDialog = ref(false);
@@ -23,8 +21,9 @@ const showConfirmSendDialog = ref(false);
 const cotizacionGeneradaNumero = ref(null);
 const router = useRouter();
 const cotizacion = ref({
-  id: null, // <-- Agrega esto
+  id: null,
   cliente_id: null,
+  cliente: '', // <-- este campo es el que se usa en la tabla y filtros
   fecha: new Date().toISOString().slice(0, 10),
   vendedor: null,
   descuento: 0,
@@ -91,13 +90,6 @@ const total = computed(() =>
   subtotal.value - descuentoMonto.value
 );
 
-const articulosConSubtotal = computed(() =>
-  cotizacion.value.articulos.map(a => ({
-    ...a,
-    subtotal: (Number(a.cantidad) || 0) * (Number(a.precio_unitario) || 0)
-  }))
-);
-
 watch(
   () => [cotizacion.value.articulos, cotizacion.value.descuento],
   () => {
@@ -117,9 +109,10 @@ const guardarCotizacion = async () => {
     cotizacion.value.articulos.forEach((a, idx) => {
       articulosObj[idx] = a;
     });
-
+    const clienteObj = clientes.value.find(c => c.id === cotizacion.value.cliente_id);
     await addQuotation({
       ...cotizacion.value,
+      cliente: clienteObj ? clienteObj.nombre : '', // <-- este campo es el que se usa en la tabla
       articulos: articulosObj, // <-- Usa el objeto aquí
       descripcion: cotizacion.value.descripcion || '',
       status: 'Pendiente'
@@ -128,6 +121,7 @@ const guardarCotizacion = async () => {
     cotizacion.value = {
       id: null, // <-- Asegúrate de reiniciar el id
       cliente_id: null,
+      cliente: '',
       fecha: new Date().toISOString().slice(0, 10),
       vendedor: null,
       descuento: 0,

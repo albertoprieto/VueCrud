@@ -146,6 +146,8 @@ class Cotizacion(BaseModel):
     autorizada: Optional[bool] = False
     fecha_autorizacion: Optional[str] = None
     venta_id: Optional[int] = None
+    vendedor: Optional[str] = None         # <-- AGREGAR
+    descuento: Optional[float] = 0         # <-- AGREGAR
 
 @app.get("/cotizaciones")
 def get_cotizaciones():
@@ -189,7 +191,7 @@ def add_cotizacion(cotizacion: Cotizacion):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO cotizaciones (cliente_id, fecha, descripcion, monto, status, usuario_id, observaciones, articulos, autorizada, fecha_autorizacion, venta_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        "INSERT INTO cotizaciones (cliente_id, fecha, descripcion, monto, status, usuario_id, observaciones, articulos, autorizada, fecha_autorizacion, venta_id, vendedor, descuento) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (
             cotizacion.cliente_id,
             cotizacion.fecha,
@@ -201,7 +203,9 @@ def add_cotizacion(cotizacion: Cotizacion):
             json.dumps(cotizacion.articulos) if cotizacion.articulos else None,
             cotizacion.autorizada,
             cotizacion.fecha_autorizacion,
-            cotizacion.venta_id
+            cotizacion.venta_id,
+            cotizacion.vendedor,           # <-- AGREGAR
+            cotizacion.descuento           # <-- AGREGAR
         )
     )
     db.commit()
@@ -219,7 +223,7 @@ def update_cotizacion(cotizacion_id: int, cotizacion: Cotizacion):
     )
     cursor = db.cursor()
     cursor.execute(
-        "UPDATE cotizaciones SET cliente_id=%s, fecha=%s, descripcion=%s, monto=%s, status=%s, usuario_id=%s, observaciones=%s, articulos=%s, autorizada=%s, fecha_autorizacion=%s, venta_id=%s WHERE id=%s",
+        "UPDATE cotizaciones SET cliente_id=%s, fecha=%s, descripcion=%s, monto=%s, status=%s, usuario_id=%s, observaciones=%s, articulos=%s, autorizada=%s, fecha_autorizacion=%s, venta_id=%s, vendedor=%s, descuento=%s WHERE id=%s",
         (
             cotizacion.cliente_id,
             cotizacion.fecha,
@@ -232,6 +236,8 @@ def update_cotizacion(cotizacion_id: int, cotizacion: Cotizacion):
             cotizacion.autorizada,
             cotizacion.fecha_autorizacion,
             cotizacion.venta_id,
+            cotizacion.vendedor,           # <-- AGREGAR
+            cotizacion.descuento,          # <-- AGREGAR
             cotizacion_id
         )
     )
