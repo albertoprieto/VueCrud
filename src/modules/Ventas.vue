@@ -2,62 +2,47 @@
   <div class="ventas-container">
     <h2 class="ventas-title">Registrar Orden de Venta</h2>
     <div class="ventas-card">
-      <!-- Encabezado: Cliente, Folio, Fecha -->
+      <!-- Fila 1: Cliente, Cotización, Folio, Fecha -->
       <div class="ventas-form-header">
         <div class="ventas-form-col">
-          <label class="mb-2">Cliente</label>
+          <label>Cliente</label>
           <Dropdown v-model="venta.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id" placeholder="Selecciona un cliente" class="w-full" />
         </div>
-
-        <Dropdown
-          v-model="cotizacionSeleccionada"
-          :options="cotizacionesCliente"
-          optionLabel="descripcion"
-          optionValue="id"
-          placeholder="Selecciona cotización"
-          class="w-full"
-          @change="cargarCotizacionEnVenta(cotizacionesCliente.find(c => c.id === cotizacionSeleccionada))"
-        />
-
+        <div class="ventas-form-col">
+          <label>Cotización</label>
+          <Dropdown
+            v-model="cotizacionSeleccionada"
+            :options="cotizacionesCliente"
+            optionLabel="descripcion"
+            optionValue="id"
+            placeholder="Selecciona cotización"
+            class="w-full"
+            @change="cargarCotizacionEnVenta(cotizacionesCliente.find(c => c.id === cotizacionSeleccionada))"
+          />
+          <Button
+            v-if="cotizacionSeleccionada"
+            label="Editar Cotización"
+            icon="pi pi-pencil"
+            class="p-button-secondary ml-2"
+            @click="irAEditarCotizacion"
+          />
+        </div>
         <div class="ventas-form-col">
           <label>Orden de venta nº</label>
           <InputText :value="folioPropuesto" disabled class="w-full" />
         </div>
         <div class="ventas-form-col">
-          <label>Fecha de orden de venta</label>
+          <label>Fecha</label>
           <Calendar v-model="venta.fecha" dateFormat="yy-mm-dd" class="w-full" />
         </div>
       </div>
 
+      <!-- Fila 2: Referencia, Vendedor, Descuento -->
       <div class="ventas-form-header">
         <div class="ventas-form-col">
           <label>N.º de cotización</label>
           <InputText v-model="venta.referencia" class="w-full" />
         </div>
-        <!--
-        <div class="ventas-form-col">
-          <label>Fecha de envío esperada</label>
-          <InputText v-model="venta.fecha_envio" type="date" class="w-full" />
-        </div>
-        <div class="ventas-form-col">
-          <label>Términos de pago</label>
-          <Dropdown
-            v-model="venta.terminos_pago"
-            :options="terminosPagoOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Selecciona términos de pago"
-            class="w-full"
-          />
-        </div>
-        <div class="ventas-form-col">
-          <label>Método de entrega</label>
-          <InputText v-model="venta.metodo_entrega" class="w-full" />
-        </div>
-        -->
-      </div>
-
-      <div class="ventas-form-header">
         <div class="ventas-form-col">
           <label>Vendedor</label>
           <Dropdown
@@ -71,12 +56,11 @@
         </div>
         <div class="ventas-form-col">
           <label>Descuento (%)</label>
-          <InputText v-model.number="venta.descuento" type="number" min="0" max="100" class="w-full" />
+          <InputText v-model.number="venta.descuento" type="number" min="0" max="100" class="w-full" :disabled="esVentaDeCotizacion" />
         </div>
       </div>
 
-      <h3>Artículos</h3>
-      <!-- Selector de ubicación -->
+      <!-- Fila 3: Ubicación -->
       <div class="ventas-form-header">
         <div class="ventas-form-col">
           <label>Ubicación</label>
@@ -91,7 +75,8 @@
         </div>
       </div>
 
-      <!-- Selector de artículos por ubicación -->
+      <!-- Artículos -->
+      <h3>Artículos</h3>
       <div class="mb-2">
         <Button
           label="Agregar Artículo"
@@ -107,7 +92,7 @@
         :value="venta.articulos"
         responsiveLayout="scroll"
         class="venta-articulos-table"
-        :disabled="!venta.ubicacion_id"
+        :disabled="esVentaDeCotizacion"
       >
         <Column header="Artículo">
           <template #body="slotProps">
@@ -207,7 +192,7 @@
           label="Guardar Venta"
           class="mb-2"
           @click="guardarVentaConLoading"
-          :disabled="!venta.cliente_id || venta.articulos.length === 0 || loadingGuardar"
+          :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar"
         />
       </div>
 
@@ -288,6 +273,13 @@ const ubicaciones = ref([]);
 const vendedores = ref([]);
 const cotizacionesCliente = ref([]);
 const cotizacionSeleccionada = ref(null);
+const esVentaDeCotizacion = computed(() => !!cotizacionSeleccionada.value);
+
+function irAEditarCotizacion() {
+  if (cotizacionSeleccionada.value) {
+    router.push(`/cotizaciones/editar/${cotizacionSeleccionada.value}`);
+  }
+}
 
 const terminosPagoOptions = [
   { label: 'Neto 15', value: 'Neto 15' },
@@ -308,7 +300,16 @@ function generarFolioConsecutivo(ventas) {
   return `SO-${siguiente.toString().padStart(5, '0')}`;
 }
 
+const clientes = ref([]); // <-- AGREGA ESTA LÍNEA
+const articulosDisponibles = ref([]); // <-- AGREGA ESTA LÍNEA
+const imeis = ref([]); // <-- Si no existe, también agrégala
+
 onMounted(async () => {
+  // 1. Cargar clientes primero y loguear
+  clientes.value = await getClientes();
+  console.log('Clientes cargados:', clientes.value);
+
+  // 2. Luego cargar ubicaciones, ventas, usuarios
   ubicaciones.value = await getUbicaciones();
   const ventas = await getVentas();
   folioPropuesto.value = generarFolioConsecutivo(ventas);
@@ -527,11 +528,41 @@ function articulosConStockUbicacion(row = null) {
 
 function cargarCotizacionEnVenta(cotizacion) {
   if (!cotizacion) return;
+  console.log('Cotización seleccionada:', cotizacion);
+
+  // Parsear articulos si es string
+  let articulos = [];
+  if (typeof cotizacion.articulos === 'string') {
+    try {
+      const parsed = JSON.parse(cotizacion.articulos);
+      articulos = Object.values(parsed);
+    } catch (e) {
+      articulos = [];
+    }
+  } else if (Array.isArray(cotizacion.articulos)) {
+    articulos = cotizacion.articulos;
+  } else if (typeof cotizacion.articulos === 'object') {
+    articulos = Object.values(cotizacion.articulos);
+  }
+
   venta.referencia = cotizacion.id;
   venta.descuento = cotizacion.descuento || 0;
   venta.observaciones = cotizacion.observaciones || '';
-  venta.articulos = Object.values(cotizacion.articulos || {});
-  // Puedes copiar otros campos si lo necesitas
+  venta.articulos = articulos;
+  venta.fecha = cotizacion.fecha || venta.fecha;
+  venta.vendedor = cotizacion.vendedor || '';
+  venta.ubicacion_id = cotizacion.ubicacion_id || null;
+  venta.notas_cliente = cotizacion.notas_cliente || '';
+  venta.terminos_condiciones = cotizacion.terminos_condiciones || '';
+}
+
+// Agrega esta función para evitar el error en la tabla
+function getStockDisponible(articulo_id, row) {
+  // Devuelve un número de stock simulado o real según tu lógica
+  const articulo = articulosDisponibles.value.find(a => a.id === articulo_id);
+  if (!articulo) return 0;
+  // Si tienes stock en el objeto, usa eso, si no, retorna un valor por defecto
+  return articulo.stock ?? 0;
 }
 </script>
 

@@ -13,6 +13,7 @@ import json
 import smtplib
 from email.mime.text import MIMEText
 from fastapi import APIRouter
+from twilio.rest import Client
 
 
 app = FastAPI()
@@ -1530,6 +1531,7 @@ def enviar_cotizacion_al_cliente(data: dict = Body(...)):
     cursor.close()
     db.close()
     return {"message": "Cotización enviada y registrada"}
+
 
 @app.get("/imeis/{imei}")
 def get_imei(imei: str):

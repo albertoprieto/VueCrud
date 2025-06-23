@@ -7,7 +7,7 @@ import Dropdown from 'primevue/dropdown';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { useVentas } from '@/composables/useVentas.js';
-import { addQuotation } from '@/services/quotationService';
+import { addQuotation, enviarCotizacionWhatsapp } from '@/services/quotationService';
 import { useToast } from 'primevue/usetoast';
 import { useRouter } from 'vue-router';
 import { getTodosArticulos } from '@/services/articulosService';
@@ -149,6 +149,19 @@ watch(
   () => cotizacion.value.cliente_id,
   () => {
     cotizacionEmail.value = clienteEmails.value || '';
+  }
+);
+
+// --- Teléfonos de cliente ---
+const cotizacionTelefono = ref('');
+const clienteTelefonos = computed(() => {
+  const cliente = clientes.value.find(c => c.id === cotizacion.value.cliente_id);
+  return cliente && cliente.telefonos ? cliente.telefonos : [];
+});
+watch(
+  () => cotizacion.value.cliente_id,
+  () => {
+    cotizacionTelefono.value = clienteTelefonos.value[0] || '';
   }
 );
 
@@ -305,20 +318,43 @@ const generarPDFCotizacion = async () => {
   showSendDialog.value = true;
 };
 
+const sendingWhatsapp = ref(false);
+
 const enviarCotizacionAlCliente = async () => {
+  sendingWhatsapp.value = true;
   try {
-    // await enviarCotizacionAlCliente({
-    //   cotizacion_id: cotizacion.value.id,
-    //   cliente_id: cotizacion.value.cliente_id,
-    //   email_destino: cotizacionEmail.value
-    // });
-    toast.add({ severity: 'success', summary: 'Cotización enviada', detail: 'La cotización fue registrada como enviada.', life: 4000 });
+    const clienteObj = clientes.value.find(c => c.id === cotizacion.value.cliente_id) || {};
+    const articulosTexto = cotizacion.value.articulos.map((a, idx) => {
+      const art = articulos.value.find(x => x.id === a.articulo_id) || {};
+      return `${idx + 1}. ${art.nombre || ''} (${art.sku || ''}) x${a.cantidad} - $${Number(a.precio_unitario).toFixed(2)}`;
+    }).join('\n');
+
+    const mensaje = 
+      `*Cotización #${cotizacionGeneradaNumero.value}*\n` +
+      `Cliente: ${clienteObj.nombre}\n` +
+      `Fecha: ${cotizacion.value.fecha}\n` +
+      `Vendedor: ${cotizacion.value.vendedor || ''}\n\n` +
+      `*Artículos:*\n${articulosTexto}\n\n` +
+      `Subtotal: $${subtotal.value.toFixed(2)}\n` +
+      `Descuento: ${cotizacion.value.descuento || 0}% ($${descuentoMonto.value.toFixed(2)})\n` +
+      `Total: $${total.value.toFixed(2)}\n\n` +
+      `Observaciones: ${cotizacion.value.observaciones || '-'}`;
+
+    await enviarCotizacionWhatsapp({
+      cotizacion_id: cotizacion.value.id,
+      cliente_id: cotizacion.value.cliente_id,
+      telefono: cotizacionTelefono.value,
+      mensaje
+    });
+
+    toast.add({ severity: 'success', summary: 'Cotización enviada', detail: 'La cotización fue registrada como enviada por WhatsApp.', life: 4000 });
     showSendDialog.value = false;
     showConfirmSendDialog.value = true;
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar el envío de la cotización.', life: 4000 });
     showSendDialog.value = false;
-    // router.push('/dashboard');
+  } finally {
+    sendingWhatsapp.value = false;
   }
 };
 
@@ -464,12 +500,17 @@ const irAClientes = () => {
       </Dialog>
       <Dialog v-model:visible="showSendDialog" header="Enviar Cotización" :closable="false" :modal="true">
         <p>La cotización con folio <strong>{{ cotizacionGeneradaNumero }}</strong> ha sido generada.</p>
-        <p>¿Deseas enviar esta cotización al cliente por correo electrónico?</p>
-        <p><strong>Email:</strong> {{ cotizacionEmail }}</p>
+        <p>¿Deseas enviar esta cotización al cliente por WhatsApp?</p>
+        <p><strong>WhatsApp:</strong> {{ cotizacionTelefono }}</p>
         <template #footer>
           <Button label="Cancelar" @click="() => { showSendDialog = false; router.push('/dashboard'); }" />
-          <Button label="Enviar" class="p-button-success" @click="enviarCotizacionAlCliente" />
+          <Button label="Enviar WhatsApp" class="p-button-success" @click="enviarCotizacionAlCliente" :loading="sendingWhatsapp" />
         </template>
+      </Dialog>
+      <Dialog v-model:visible="sendingWhatsapp" header="Enviando WhatsApp" :modal="true" :closable="false">
+        <div style="padding:1.5rem; text-align:center;">
+          <span>Enviando cotización por WhatsApp...</span>
+        </div>
       </Dialog>
       <Dialog v-model:visible="showConfirmSendDialog" header="Envío exitoso" :closable="false" :modal="true">
         <p>La cotización fue enviada correctamente al cliente.</p>
