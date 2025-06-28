@@ -13,19 +13,19 @@
           <Dropdown
             v-model="cotizacionSeleccionada"
             :options="cotizacionesCliente"
-            optionLabel="descripcion"
+            optionLabel="id"
             optionValue="id"
             placeholder="Selecciona cotización"
             class="w-full"
             @change="cargarCotizacionEnVenta(cotizacionesCliente.find(c => c.id === cotizacionSeleccionada))"
           />
-          <Button
+          <!-- <Button
             v-if="cotizacionSeleccionada"
             label="Editar Cotización"
             icon="pi pi-pencil"
             class="p-button-secondary ml-2"
             @click="irAEditarCotizacion"
-          />
+          /> -->
         </div>
         <div class="ventas-form-col">
           <label>Orden de venta nº</label>
@@ -96,16 +96,27 @@
       >
         <Column header="Artículo">
           <template #body="slotProps">
-            <Dropdown
-              v-model="slotProps.data.articulo_id"
-              :options="articulosConStockUbicacion(slotProps.data)"
-              optionLabel="nombre"
-              optionValue="id"
-              placeholder="Selecciona artículo"
-              class="w-full"
-              @change="onArticuloChange(slotProps.data.articulo_id, slotProps.data)"
-              :disabled="articulosConStockUbicacion(slotProps.data).length === 0"
-            />
+            <template v-if="!slotProps.data.articulo_id">
+              <Dropdown
+                v-model="slotProps.data.articulo_id"
+                :options="articulosConStockUbicacion(slotProps.data)"
+                optionLabel="sku"
+                optionValue="id"
+                placeholder="Selecciona artículo"
+                class="w-full"
+                @change="onArticuloChange(slotProps.data.articulo_id, slotProps.data)"
+                :disabled="articulosConStockUbicacion(slotProps.data).length === 0"
+              />
+            </template>
+            <template v-else>
+              <span>
+                {{
+                  getArticuloSku(slotProps.data.articulo_id) ||
+                  getArticuloNombre(slotProps.data.articulo_id) ||
+                  slotProps.data.articulo_id
+                }}
+              </span>
+            </template>
           </template>
         </Column>
         <Column header="Stock">
@@ -274,7 +285,7 @@ const vendedores = ref([]);
 const cotizacionesCliente = ref([]);
 const cotizacionSeleccionada = ref(null);
 const esVentaDeCotizacion = computed(() => !!cotizacionSeleccionada.value);
-
+const articulosDisponibles = ref([]);
 function irAEditarCotizacion() {
   if (cotizacionSeleccionada.value) {
     router.push(`/cotizaciones/editar/${cotizacionSeleccionada.value}`);
@@ -300,16 +311,25 @@ function generarFolioConsecutivo(ventas) {
   return `SO-${siguiente.toString().padStart(5, '0')}`;
 }
 
-const clientes = ref([]); // <-- AGREGA ESTA LÍNEA
-const articulosDisponibles = ref([]); // <-- AGREGA ESTA LÍNEA
-const imeis = ref([]); // <-- Si no existe, también agrégala
+const clientes = ref([]);
+const todasCotizaciones = ref([]); // Guarda todas las cotizaciones para filtrar clientes
 
 onMounted(async () => {
-  // 1. Cargar clientes primero y loguear
-  clientes.value = await getClientes();
-  console.log('Clientes cargados:', clientes.value);
+  // 1. Cargar todas las cotizaciones
+  todasCotizaciones.value = await getQuotations();
 
-  // 2. Luego cargar ubicaciones, ventas, usuarios
+  // 2. Cargar todos los clientes
+  const todosClientes = await getClientes();
+
+  // 3. Filtrar solo los clientes con cotizaciones pendientes
+  const clientesConPendientes = todosClientes.filter(cliente =>
+    todasCotizaciones.value.some(
+      c => String(c.cliente_id) === String(cliente.id) && c.status === 'Pendiente'
+    )
+  );
+  clientes.value = clientesConPendientes;
+
+  // 4. Cargar ubicaciones, ventas, usuarios
   ubicaciones.value = await getUbicaciones();
   const ventas = await getVentas();
   folioPropuesto.value = generarFolioConsecutivo(ventas);
@@ -322,7 +342,6 @@ watch(
   () => venta.ubicacion_id,
   async (nuevaUbicacion, anteriorUbicacion) => {
     if (nuevaUbicacion !== anteriorUbicacion) {
-      venta.articulos = [];
       if (nuevaUbicacion) {
         const articulosUbicacion = await getArticulosStockPorUbicacion(nuevaUbicacion);
         const todos = await getTodosArticulos();
@@ -334,6 +353,14 @@ watch(
         });
         articulosDisponibles.value = articulosUbicacion;
         imeis.value = await getImeisPorUbicacion(nuevaUbicacion);
+
+        // Valida stock de los artículos ya cargados
+        venta.articulos.forEach(a => {
+          const stock = articulosUbicacion.find(art => art.id === a.articulo_id)?.stock ?? 0;
+          if (!esServicio(a.articulo_id) && a.cantidad > stock) {
+            a.cantidad = stock; // Ajusta cantidad si es mayor al stock
+          }
+        });
       } else {
         articulosDisponibles.value = [];
         imeis.value = [];
@@ -347,9 +374,15 @@ watch(
   async (nuevoClienteId) => {
     if (nuevoClienteId) {
       const todas = await getQuotations();
-      cotizacionesCliente.value = todas.filter(
-        c => String(c.cliente_id) === String(nuevoClienteId) && c.status !== 'Autorizada'
-      );
+      cotizacionesCliente.value = todas
+        .filter(
+          c => String(c.cliente_id) === String(nuevoClienteId) && c.status !== 'Autorizada'
+        )
+        .map(c => ({
+          ...c,
+          label: `#${c.id} ${c.descripcion ? '- ' + c.descripcion : ''}` // <-- Aquí agregas el label
+        }));
+      console.log('Cotizaciones del cliente seleccionado:', cotizacionesCliente.value);
     } else {
       cotizacionesCliente.value = [];
     }
@@ -563,6 +596,23 @@ function getStockDisponible(articulo_id, row) {
   if (!articulo) return 0;
   // Si tienes stock en el objeto, usa eso, si no, retorna un valor por defecto
   return articulo.stock ?? 0;
+}
+
+function mostrarColumnaIMEI(articulo_id) {
+  const art = articulosDisponibles.value.find(a => a.id === articulo_id);
+  // Solo muestra IMEI si el artículo existe y su tipo es "Bien"
+  return art && String(art.tipo).toLowerCase() === 'bien';
+}
+
+function getArticuloSku(articulo_id) {
+  const articulos = Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [];
+  const art = articulos.find(a => a.id === articulo_id);
+  return art ? art.sku : '';
+}
+function getArticuloNombre(articulo_id) {
+  const articulos = Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [];
+  const art = articulos.find(a => a.id === articulo_id);
+  return art ? art.nombre : '';
 }
 </script>
 
