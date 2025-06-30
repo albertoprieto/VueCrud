@@ -110,11 +110,7 @@
             </template>
             <template v-else>
               <span>
-                {{
-                  getArticuloSku(slotProps.data.articulo_id) ||
-                  getArticuloNombre(slotProps.data.articulo_id) ||
-                  slotProps.data.articulo_id
-                }}
+                {{ getArticuloNombreAsync(slotProps.data.articulo_id, slotProps.data) }}
               </span>
             </template>
           </template>
@@ -135,7 +131,7 @@
               :min="1"
               :max="!esServicio(slotProps.data.articulo_id) ? getStockDisponible(slotProps.data.articulo_id, slotProps.data) : null"
               class="w-full"
-              :disabled="!slotProps.data.articulo_id"
+              :disabled="true"
               @input="validateCantidad(slotProps.data)"
             />
             <small v-if="!esServicio(slotProps.data.articulo_id) && slotProps.data.cantidad > getStockDisponible(slotProps.data.articulo_id, slotProps.data)" class="error-text">
@@ -153,11 +149,11 @@
             {{ ((slotProps.data.cantidad ?? 0) * (slotProps.data.precio_unitario ?? 0)).toFixed(2) }}
           </template>
         </Column>
-        <Column header="Acciones">
+        <!-- <Column header="Acciones">
           <template #body="slotProps">
             <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="removeArticulo(slotProps.index)" />
           </template>
-        </Column>
+        </Column> -->
         <Column header="IMEI">
           <template #body="slotProps">
             <div class="imei-cell">
@@ -206,7 +202,6 @@
           :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar"
         />
       </div>
-
 
       <div class="mb-2">
         <label>Si necesita factura el pago sería más IVA.</label>
@@ -604,15 +599,43 @@ function mostrarColumnaIMEI(articulo_id) {
   return art && String(art.tipo).toLowerCase() === 'bien';
 }
 
-function getArticuloSku(articulo_id) {
-  const articulos = Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [];
-  const art = articulos.find(a => a.id === articulo_id);
-  return art ? art.sku : '';
+const articulosNombreCache = {};
+async function fetchArticuloNombre(articulo_id) {
+  if (articulosNombreCache[articulo_id]) return articulosNombreCache[articulo_id];
+  try {
+    const todos = await getTodosArticulos();
+    const art = todos.find(a => a.id === articulo_id);
+    if (art) {
+      articulosNombreCache[articulo_id] = art.nombre;
+      return art.nombre;
+    }
+  } catch (e) {}
+  return articulo_id;
 }
+
+
 function getArticuloNombre(articulo_id) {
   const articulos = Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [];
   const art = articulos.find(a => a.id === articulo_id);
   return art ? art.nombre : '';
+}
+
+function getArticuloNombreAsync(articulo_id, row) {
+  // Si ya está en la lista, mostrarlo
+  const nombre = getArticuloNombre(articulo_id);
+  if (nombre) return nombre;
+  // Si ya está en cache, mostrarlo
+  if (articulosNombreCache[articulo_id]) return articulosNombreCache[articulo_id];
+  // Si no, buscarlo y actualizar el row
+  fetchArticuloNombre(articulo_id).then(nombre => {
+    if (row && nombre && nombre !== articulo_id) {
+      row._articulo_nombre = nombre;
+    }
+  });
+  // Si ya se guardó en el row, mostrarlo
+  if (row && row._articulo_nombre) return row._articulo_nombre;
+  // Mientras, mostrar el id
+  return articulo_id;
 }
 </script>
 
