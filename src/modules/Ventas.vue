@@ -69,7 +69,7 @@
       </div>
 
       <!-- Artículos -->
-      <h3>Artículos</h3>
+      <!-- <h3>Artículos</h3>
       <div class="mb-2">
         <Button
           label="Agregar Artículo"
@@ -78,7 +78,7 @@
           @click="addArticulo"
           :disabled="!venta.ubicacion_id"
         />
-      </div>
+      </div> -->
 
       <!-- Tabla de artículos -->
       <DataTable
@@ -136,7 +136,7 @@
             </small>
           </template>
         </Column>
-        <Column field="precio_unitario" header="Tarifa">
+        <Column field="precio_unitario" header="C/U">
           <template #body="slotProps">
             <span>{{ (slotProps.data.precio_unitario ?? 0).toFixed(2) }}</span>
           </template>
@@ -368,39 +368,26 @@ async function guardarVentaConLoading() {
     const ventas = await getVentas();
     venta.folio = generarFolioConsecutivo(ventas);
 
-    venta.fecha = venta.fecha || new Date().toISOString().slice(0, 10);
-    venta.referencia = venta.referencia || null;
-    venta.fecha_envio = venta.fecha_envio || null;
-    venta.terminos_pago = venta.terminos_pago || null;
-    venta.metodo_entrega = venta.metodo_entrega || null;
-    venta.vendedor = venta.vendedor || '';
-    venta.almacen = venta.ubicacion_id || '';
-    venta.descuento = venta.descuento || 0;
-    venta.notas_cliente = venta.notas_cliente || '';
-    venta.terminos_condiciones = venta.terminos_condiciones || '';
-    venta.total = totalVenta.value;
-    venta.observaciones = venta.observaciones || '';
-
+    // Prepara los datos de la venta
     const { addVenta } = await import('@/services/ventasService');
     const ubicacionObj = ubicaciones.value.find(u => u.id === venta.ubicacion_id);
     venta.almacen = ubicacionObj ? ubicacionObj.nombre : '';
 
-    // IMEIS eliminados de la lógica de artículos
-    const articulosLimpios = venta.articulos.map(a => {
-      const articulo = articulosDisponibles.value.find(art => art.id === a.articulo_id);
-      return {
-        articulo_id: a.articulo_id,
-        cantidad: a.cantidad,
-        precio_unitario: a.precio_unitario
-      };
-    });
+    // Prepara los artículos SIN imeis
+    const articulosLimpios = venta.articulos.map(a => ({
+      articulo_id: a.articulo_id,
+      cantidad: a.cantidad,
+      precio_unitario: a.precio_unitario,
+        imeis: []
+    }));
 
+    // Guarda la venta
     await addVenta({
       cliente_id: venta.cliente_id,
       fecha: venta.fecha,
       folio: venta.folio,
-      referencia: venta.referencia,
-      fecha_envio: venta.fecha_envio,
+      referencia: venta.referencia ? String(venta.referencia) : '', // <-- aquí
+      fecha_envio: venta.fecha_envio ? venta.fecha_envio : null,
       terminos_pago: venta.terminos_pago,
       metodo_entrega: venta.metodo_entrega,
       vendedor: venta.vendedor,
@@ -408,7 +395,7 @@ async function guardarVentaConLoading() {
       descuento: venta.descuento,
       notas_cliente: venta.notas_cliente,
       terminos_condiciones: venta.terminos_condiciones,
-      total: venta.total,
+      total: totalVenta.value,
       observaciones: venta.observaciones,
       articulos: articulosLimpios
     });
@@ -417,15 +404,31 @@ async function guardarVentaConLoading() {
     if (cotizacionSeleccionada.value) {
       const cotizacion = cotizacionesCliente.value.find(c => c.id === cotizacionSeleccionada.value);
       if (cotizacion) {
+        // Convierte el array de artículos a objeto si es necesario
+        let articulosObj = {};
+        if (Array.isArray(venta.articulos)) {
+          venta.articulos.forEach((a, idx) => {
+            articulosObj[idx] = {
+              cantidad: a.cantidad,
+              articulo_id: a.articulo_id,
+              precio_unitario: a.precio_unitario
+            };
+          });
+        } else {
+          articulosObj = venta.articulos;
+        }
+
         await updateQuotation(cotizacion.id, {
           ...cotizacion,
           status: 'Autorizada',
           autorizada: true,
-          fecha_autorizacion: new Date().toISOString().slice(0, 10)
+          fecha_autorizacion: new Date().toISOString().slice(0, 10),
+          articulos: articulosObj // <-- Aquí va como objeto, NO como string
         });
       }
     }
 
+    // Genera PDF y muestra éxito
     const ventasActualizadas = await getVentas();
     const ultimaVenta = ventasActualizadas[ventasActualizadas.length - 1];
     const detalle = await getDetalleVenta(ultimaVenta.id);
@@ -450,11 +453,10 @@ async function guardarVentaConLoading() {
       articulos: articulosPDF.value,
       empresa: { nombre: 'GPSubicacion.com', direccion: 'Guadalajara', rfc: 'RFC123456' }
     });
+
     ventaRegistrada.value = true;
     mensajeExito.value = 'La orden de venta se registró correctamente.';
     toast.add({ severity: 'success', summary: 'Orden de Venta registrada', detail: mensajeExito.value, life: 3000 });
-
-    // IMEI: lógica eliminada
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la orden.', life: 4000 });
   } finally {
