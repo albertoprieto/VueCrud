@@ -833,28 +833,7 @@ def crear_venta(venta: Venta):
         if tipo == "servicio":
             continue
 
-        # Descontar inventario solo si NO es servicio
-        if getattr(item, "imei", None):
-            # Actualiza el status del IMEI
-            cursor.execute(
-                "UPDATE imeis SET status='Vendido' WHERE imei=%s AND status IN ('Disponible', 'Devuelto')",
-                (item.imei,)
-            )
-            # Descuenta stock del artículo también
-            cursor.execute(
-                "UPDATE articulos SET stock = stock - 1 WHERE id = %s AND stock >= 1",
-                (item.articulo_id,)
-            )
-        else:
-            cursor.execute(
-                "UPDATE articulos SET stock = stock - %s WHERE id = %s AND stock >= %s",
-                (item.cantidad, item.articulo_id, item.cantidad)
-            )
-            if cursor.rowcount == 0:
-                db.rollback()
-                cursor.close()
-                db.close()
-                raise HTTPException(status_code=400, detail=f"Stock insuficiente para el artículo {item.articulo_id}")
+
 
     db.commit()
     cursor.close()
