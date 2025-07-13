@@ -170,7 +170,8 @@ const items = computed(() => [
     label: 'Técnicos',
     icon: 'pi pi-fw pi-user-cog',
     items: [
-      { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones', icon: 'pi pi-fw pi-calendar' },
+      // { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones', icon: 'pi pi-fw pi-calendar' },
+      { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
       { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
     ]
   },

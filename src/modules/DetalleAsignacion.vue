@@ -116,7 +116,7 @@ async function onReporteGuardado() {
 }
 
 function irAReporte() {
-  router.push({ name: 'reporte-servicio', params: { asignacionId: asignacion.value.id } });
+  showReporteDialog.value = true;
 }
 
 onMounted(async () => {
