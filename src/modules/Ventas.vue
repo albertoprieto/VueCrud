@@ -1,6 +1,6 @@
 <template>
   <div class="ventas-container">
-    <h2 class="ventas-title">Registrar Orden de Venta</h2>
+    <h2 class="ventas-title">Registrar Orden de Servicio</h2>
     <div class="ventas-card">
       <!-- Fila 1: Cliente, Cotización, Folio, Fecha -->
       <div class="ventas-form-header">
@@ -19,13 +19,6 @@
             class="w-full"
             @change="cargarCotizacionEnVenta(cotizacionesCliente.find(c => c.id === cotizacionSeleccionada))"
           />
-          <!-- <Button
-            v-if="cotizacionSeleccionada"
-            label="Editar Cotización"
-            icon="pi pi-pencil"
-            class="p-button-secondary ml-2"
-            @click="irAEditarCotizacion"
-          /> -->
         </div>
         <div class="ventas-form-col">
           <label>Orden de venta nº</label>
@@ -119,7 +112,11 @@
           <template #body="slotProps">
             <span v-if="esServicio(slotProps.data.articulo_id)">NA</span>
             <span v-else>
-              {{ getStockDisponible(slotProps.data.articulo_id, slotProps.data) }}
+              <Chip
+                :label="getStockDisponible(slotProps.data.articulo_id, slotProps.data)"
+                class="stock-chip"
+                style="background:#bdbdbd;color:#222;"
+              />
             </span>
           </template>
         </Column>
@@ -149,44 +146,17 @@
             {{ ((slotProps.data.cantidad ?? 0) * (slotProps.data.precio_unitario ?? 0)).toFixed(2) }}
           </template>
         </Column>
-        <!-- <Column header="Acciones">
-          <template #body="slotProps">
-            <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="removeArticulo(slotProps.index)" />
-          </template>
-        </Column> -->
-        <Column header="IMEI">
-          <template #body="slotProps">
-            <div class="imei-cell">
-              <template v-if="esServicio(slotProps.data.articulo_id)">
-                <span>NA</span>
-              </template>
-              <template v-else-if="mostrarColumnaIMEI(slotProps.data.articulo_id)">
-                <div v-for="idx in slotProps.data.cantidad" :key="idx" style="margin-bottom: 0.2em;">
-                  <Dropdown
-                    v-model="slotProps.data.imeis[idx - 1]"
-                    :options="imeisDisponiblesPorArticulo(slotProps.data.articulo_id, slotProps.data, idx - 1)"
-                    optionLabel="imei"
-                    optionValue="imei"
-                    placeholder="Selecciona IMEI"
-                    class="w-full imei-dropdown"
-                    :disabled="!slotProps.data.articulo_id"
-                    filter
-                  />
-                </div>
-                <div v-if="slotProps.data.imeis && slotProps.data.imeis.length">
-                  <span v-for="(imei, idx) in slotProps.data.imeis" :key="imei" class="imei-seleccionado" v-if="imei">
-                    IMEI {{ idx + 1 }}: <span class="imei-value">{{ imei }}</span>
-                  </span>
-                </div>
-              </template>
-            </div>
-          </template>
-        </Column>
       </DataTable>
+      <!-- IMEI eliminado completamente -->
 
       <div class="mb-2">
         <label>Observaciones</label>
         <InputText v-model="venta.observaciones" class="w-full" />
+      </div>
+
+      <!-- Mensaje de advertencia si falta stock -->
+      <div v-if="stockInsuficiente" class="error-text mb-2">
+        No hay suficiente stock para uno o más artículos en la ubicación seleccionada.
       </div>
 
       <div class="mb-2 acciones-footer">
@@ -196,10 +166,10 @@
           <div><strong>Total (MXN):</strong> ${{ totalVenta.toFixed(2) }}</div>
         </div>
         <Button
-          label="Guardar Venta"
+          label="Generar orden"
           class="mb-2"
           @click="guardarVentaConLoading"
-          :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar"
+          :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar || stockInsuficiente"
         />
       </div>
 
@@ -238,10 +208,11 @@ import Calendar from 'primevue/calendar';
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { getArticulosStockPorUbicacion } from '@/services/articulosService';
-import { getImeisPorUbicacion } from '@/services/ubicacionesService';
 import { useRouter } from 'vue-router';
 import { registrarMovimiento } from '@/services/inventarioService';
 import { getQuotations, updateQuotation } from '@/services/quotationService';
+import Chip from 'primevue/chip';
+
 const venta = reactive({
   cliente_id: null,
   folio: '',
@@ -281,6 +252,7 @@ const cotizacionesCliente = ref([]);
 const cotizacionSeleccionada = ref(null);
 const esVentaDeCotizacion = computed(() => !!cotizacionSeleccionada.value);
 const articulosDisponibles = ref([]);
+
 function irAEditarCotizacion() {
   if (cotizacionSeleccionada.value) {
     router.push(`/cotizaciones/editar/${cotizacionSeleccionada.value}`);
@@ -347,7 +319,13 @@ watch(
           }
         });
         articulosDisponibles.value = articulosUbicacion;
-        imeis.value = await getImeisPorUbicacion(nuevaUbicacion);
+
+        // Imprime el stock de los artículos disponibles en consola
+        console.log('Stock en ubicación seleccionada:', articulosUbicacion.map(a => ({
+          id: a.id,
+          nombre: a.nombre,
+          stock: a.stock
+        })));
 
         // Valida stock de los artículos ya cargados
         venta.articulos.forEach(a => {
@@ -358,7 +336,6 @@ watch(
         });
       } else {
         articulosDisponibles.value = [];
-        imeis.value = [];
       }
     }
   }
@@ -375,7 +352,7 @@ watch(
         )
         .map(c => ({
           ...c,
-          label: `#${c.id} ${c.descripcion ? '- ' + c.descripcion : ''}` // <-- Aquí agregas el label
+          label: `#${c.id} ${c.descripcion ? '- ' + c.descripcion : ''}`
         }));
       console.log('Cotizaciones del cliente seleccionado:', cotizacionesCliente.value);
     } else {
@@ -384,8 +361,6 @@ watch(
     cotizacionSeleccionada.value = null;
   }
 );
-
-
 
 async function guardarVentaConLoading() {
   loadingGuardar.value = true;
@@ -410,38 +385,14 @@ async function guardarVentaConLoading() {
     const ubicacionObj = ubicaciones.value.find(u => u.id === venta.ubicacion_id);
     venta.almacen = ubicacionObj ? ubicacionObj.nombre : '';
 
-    const articulosLimpios = venta.articulos.flatMap(a => {
+    // IMEIS eliminados de la lógica de artículos
+    const articulosLimpios = venta.articulos.map(a => {
       const articulo = articulosDisponibles.value.find(art => art.id === a.articulo_id);
-      if (articulo && articulo.tipo && articulo.tipo.toLowerCase() === 'servicio') {
-        return [{
-          articulo_id: a.articulo_id,
-          cantidad: a.cantidad,
-          precio_unitario: a.precio_unitario
-        }];
-      }
-      if (Array.isArray(a.imeis) && a.imeis.length > 0) {
-        return a.imeis
-          .filter(imei => imei)
-          .map(imei => ({
-            articulo_id: a.articulo_id,
-            cantidad: 1,
-            precio_unitario: a.precio_unitario,
-            imei
-          }));
-      }
-      if (a.imei) {
-        return [{
-          articulo_id: a.articulo_id,
-          cantidad: 1,
-          precio_unitario: a.precio_unitario,
-          imei: a.imei
-        }];
-      }
-      return [{
+      return {
         articulo_id: a.articulo_id,
         cantidad: a.cantidad,
         precio_unitario: a.precio_unitario
-      }];
+      };
     });
 
     await addVenta({
@@ -503,18 +454,7 @@ async function guardarVentaConLoading() {
     mensajeExito.value = 'La orden de venta se registró correctamente.';
     toast.add({ severity: 'success', summary: 'Orden de Venta registrada', detail: mensajeExito.value, life: 3000 });
 
-    for (const art of venta.articulos) {
-      if (art.imei) {
-        await registrarMovimiento({
-          articulo_id: art.articulo_id,
-          articulo_nombre: getArticuloNombre(art.imei),
-          imei: art.imei,
-          ubicacion_origen: venta.almacen,
-          ubicacion_destino: null,
-          motivo: 'Venta de IMEI'
-        });
-      }
-    }
+    // IMEI: lógica eliminada
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la orden.', life: 4000 });
   } finally {
@@ -542,15 +482,23 @@ const totalVenta = computed(() =>
   subtotalVenta.value - descuentoMonto.value
 );
 
+// Computed para validar stock insuficiente por ubicación
+const stockInsuficiente = computed(() => {
+  if (!venta.ubicacion_id) return false;
+  return venta.articulos.some(a => {
+    // No valida servicios
+    if (esServicio(a.articulo_id)) return false;
+    const stock = getStockDisponible(a.articulo_id, a);
+    return a.cantidad > stock;
+  });
+});
+
 function articulosConStockUbicacion(row = null) {
   if (!venta.ubicacion_id) return [];
+  // Solo muestra artículos con stock > 0 o servicios
   return articulosDisponibles.value.filter(art => {
     if (art.tipo && art.tipo.toLowerCase() === 'servicio') return true;
-    return imeis.value.some(i =>
-      i.articulo_id === art.id &&
-      i.ubicacion_id === venta.ubicacion_id &&
-      (i.status === 'Disponible' || i.status === 'Devuelto')
-    );
+    return art.stock > 0;
   });
 }
 
@@ -594,9 +542,8 @@ function getStockDisponible(articulo_id, row) {
 }
 
 function mostrarColumnaIMEI(articulo_id) {
-  const art = articulosDisponibles.value.find(a => a.id === articulo_id);
-  // Solo muestra IMEI si el artículo existe y su tipo es "Bien"
-  return art && String(art.tipo).toLowerCase() === 'bien';
+  // Eliminada la lógica de IMEI
+  return false;
 }
 
 const articulosNombreCache = {};
@@ -612,7 +559,6 @@ async function fetchArticuloNombre(articulo_id) {
   } catch (e) {}
   return articulo_id;
 }
-
 
 function getArticuloNombre(articulo_id) {
   const articulos = Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [];
@@ -775,6 +721,16 @@ function getArticuloNombreAsync(articulo_id, row) {
 }
 .acciones-footer strong {
   font-size: 1.1em;
+}
+.stock-chips {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+}
+.stock-chip, .requerido-chip {
+  font-size: 0.95em;
+  font-weight: bold;
+  border-radius: 8px;
 }
 @media (max-width: 700px) {
   .ventas-container {

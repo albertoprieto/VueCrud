@@ -157,8 +157,8 @@ const items = computed(() => [
       { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users' },
       { label: 'Cotizador',icon: 'pi pi-fw pi-file-edit',route: '/cotizador'},
       { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', badge: cotizacionesPendientes.value || undefined },
-      { label: 'Crear Orden de Venta', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
-      { label: 'Consultar Orden de Venta', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
+      { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
+      { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
     ]
   },
   {
