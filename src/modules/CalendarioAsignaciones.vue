@@ -46,12 +46,12 @@
       <Column field="cliente" header="Cliente" sortable />
       <Column header="Acciones">
         <template #body="slotProps">
-          <Button
+          <!-- <Button
             label="Ver Detalle"
             icon="pi pi-search"
             class="mr-2"
             @click="irDetalleDirecto(slotProps.data)"
-          />
+          /> -->
           <Button
             label="Agregar Reporte"
             icon="pi pi-plus"
@@ -65,12 +65,12 @@
             @click="descargarNota(slotProps.data)"
             v-if="slotProps.data.venta_id"
           />
-          <Button
+          <!-- <Button
             label="Modificar Orden"
             icon="pi pi-pencil"
             class="p-button-warning ml-2"
             @click="modificarOrden(slotProps.data)"
-          />
+          /> -->
         </template>
       </Column>
     </DataTable>

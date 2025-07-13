@@ -1,7 +1,14 @@
 <template>
   <div class="reporte-servicio-container">
     <h2 class="reporte-title">Reporte de Servicio</h2>
-    <form class="reporte-form" @submit.prevent="guardar">
+    <div v-if="!asignacionIdValido">
+      <div class="alert-existente" style="background:#d32f2f; color:#fff;">
+        Error: No se recibió un ID de asignación válido.<br>
+        Verifica la navegación desde la pantalla anterior.<br>
+        Consulta consola para más detalles.
+      </div>
+    </div>
+    <form v-else class="reporte-form" @submit.prevent="guardar">
       <div v-if="loading" class="loader-overlay">
         <Loader />
       </div>
@@ -24,8 +31,8 @@
               <div class="form-group">
                 <InputText v-model="form.marca" placeholder="Marca" class="w-full mb-2" />
                 <InputText v-model="form.submarca" placeholder="Submarca" class="w-full mb-2" />
-                <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" />
-                <InputText v-model="form.placas" placeholder="Placas" class="w-full mb-2" />
+                <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" :disabled="!!form.modelo" />
+                <InputText v-model="form.placas" placeholder="Placas" class="w-full mb-2" :disabled="!!form.placas" />
                 <InputText v-model="form.color" placeholder="Color" class="w-full mb-2" />
                 <InputText v-model="form.numero_economico" placeholder="Número económico" class="w-full mb-2" />
               </div>
@@ -79,7 +86,7 @@
                   placeholder="Selecciona plataforma"
                   class="w-full mb-2"
                   optionLabel="label"
-
+                  :disabled="true"
                 />
               </div>
               <div class="form-group">
@@ -90,6 +97,7 @@
                   placeholder="Selecciona usuario"
                   class="w-full mb-2"
                   optionLabel="label"
+                  :disabled="true"
                 />
               </div>
               <h4 class="section-title">Venta y pago</h4>
@@ -149,15 +157,32 @@ import Button from 'primevue/button';
 import Checkbox from 'primevue/checkbox';
 import Dialog from 'primevue/dialog';
 import { addReporteServicio, getReportePorAsignacion } from '@/services/reportesServicio';
+import { getDetalleVenta } from '@/services/ventasService';
 import { useRoute } from 'vue-router';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getUsuarios } from '@/services/usuariosService';
 import { getVentas } from '@/services/ventasService';
 
 const route = useRoute();
-const asignacionId = Number(route.params.asignacionId);
 
-const props = defineProps({ asignacionId: Number, ventaDetalle: Object, cliente: Object });
+const props = defineProps({
+  asignacionId: {
+    type: [Number, String],
+    required: true
+  },
+  ventaDetalle: Object,
+  cliente: Object
+});
+
+const asignacionIdCentral = computed(() => {
+  // Solo usa el prop, nunca la ruta
+  if (props.asignacionId && !isNaN(Number(props.asignacionId))) return Number(props.asignacionId);
+  return undefined;
+});
+const asignacionIdValido = computed(() => {
+  return asignacionIdCentral.value && !isNaN(Number(asignacionIdCentral.value)) && Number(asignacionIdCentral.value) > 0;
+});
+
 const emit = defineEmits(['close', 'saved']);
 
 const tiposServicio = ['Instalación', 'Reinstalación', 'Revisión', 'Desinstalación', 'Búsqueda'];
@@ -197,7 +222,7 @@ const form = ref({
   firma_cliente: '',
   nombre_instalador: '',
   firma_instalador: '',
-  asignacion_id: props.asignacionId,
+  asignacion_id: undefined, // Se setea en onMounted
   monto_tecnico: 0,
   viaticos: 0
 });
@@ -231,8 +256,7 @@ const clientePlataformasOptions = ref([]);
 
 async function cargarDatosTecnico() {
   let asignaciones = await getAsignacionesTecnicos();
-  console.log('Asignaciones:', asignaciones, 'Buscando id:', props.asignacionId || asignacionId);
-  let asignacion = asignaciones.find(a => a.id == (props.asignacionId || asignacionId));
+  let asignacion = asignaciones.find(a => a.id == asignacionIdCentral.value);
   console.log('Asignacion encontrada:', asignacion);
   if (asignacion && asignacion.tecnico) {
     let usuarios = await getUsuarios();
@@ -263,7 +287,7 @@ async function cargarDatosTecnico() {
 
 async function cargarDatosCliente() {
   let asignaciones = await getAsignacionesTecnicos();
-  const asignacion = asignaciones.find(a => a.id == (props.asignacionId || asignacionId));
+  const asignacion = asignaciones.find(a => a.id == asignacionIdCentral.value);
   if (asignacion && asignacion.cliente_id) {
     const { getClientes } = await import('@/services/clientesService');
     const clientes = await getClientes();
@@ -281,27 +305,56 @@ async function cargarDatosCliente() {
     }
   }
 
-  // Buscar la venta por venta_id de la asignación y mostrar el total
+  // Buscar la venta por venta_id de la asignación y mostrar el total y datos de artículos
   if (asignacion && asignacion.venta_id) {
     const ventas = await getVentas();
     const venta = ventas.find(v => v.id == asignacion.venta_id);
-    console.log('Venta encontrada por venta_id:', venta);
     if (venta) {
       form.value.subtotal = venta.total || '';
       form.value.total = venta.total || '';
       form.value.forma_pago = venta.forma_pago || '';
+      // Precargar datos del vehículo/equipo desde el detalle de la venta
+      try {
+        const detalle = await getDetalleVenta(venta.id);
+        if (Array.isArray(detalle) && detalle.length > 0) {
+          // Toma el primer artículo tipo GPS/servicio/instalación
+          const art = detalle[0];
+          form.value.modelo = art.modelo || art.modelo_gps || '';
+          form.value.imei = art.imei || '';
+          form.value.serie = art.serie || '';
+          form.value.equipo_plan = art.nombre || art.articulo_nombre || '';
+          form.value.placas = art.placas || '';
+          form.value.color = art.color || '';
+          form.value.numero_economico = art.numero_economico || '';
+          form.value.accesorios = art.accesorios || '';
+        }
+      } catch (e) {
+        // Si falla, no autollenar
+      }
     }
   }
 }
 
 async function checkReporteExistente() {
-  const reporte = await getReportePorAsignacion(props.asignacionId || asignacionId);
+  if (!asignacionIdValido.value) {
+    reporteExistente.value = false;
+    return;
+  }
+  const reporte = await getReportePorAsignacion(Number(asignacionIdCentral.value));
   console.log('Reporte existente:', reporte);
   
   reporteExistente.value = !!reporte;
 }
 
+
 onMounted(async () => {
+  console.log('[ReporteServicio] props:', props);
+  console.log('[ReporteServicio] route:', route);
+  console.log('[ReporteServicio] props.asignacionId:', props.asignacionId);
+  console.log('[ReporteServicio] route.params.asignacionId:', route.params.asignacionId);
+  console.log('[ReporteServicio] asignacionIdCentral.value (onMounted):', asignacionIdCentral.value);
+  if (!asignacionIdValido.value) return;
+  form.value.asignacion_id = asignacionIdCentral.value;
   await checkReporteExistente();
   await cargarDatosTecnico();
   await cargarDatosCliente();
@@ -312,17 +365,28 @@ function cerrar() {
 }
 
 async function guardar() {
+  if (!asignacionIdValido.value) {
+    resultMessage.value = 'ID de asignación inválido. No se puede guardar el reporte.';
+    showResultDialog.value = true;
+    return;
+  }
   loading.value = true;
   try {
-    // Asegura que plataforma, usuario y subtotal sean string
+    let asignaciones = await getAsignacionesTecnicos();
+    const asignacion = asignaciones.find(a => a.id == asignacionIdCentral.value);
+    if (!asignacion || !asignacion.venta_id) {
+      resultMessage.value = 'No se puede guardar el reporte: falta asignación o venta asociada.';
+      loading.value = false;
+      showResultDialog.value = true;
+      return;
+    }
     const payload = {
       ...form.value,
       plataforma: typeof form.value.plataforma === 'object' ? form.value.plataforma.value : form.value.plataforma,
       usuario: typeof form.value.usuario === 'object' ? form.value.usuario.value : form.value.usuario,
-      subtotal: String(form.value.subtotal ?? '')
+      subtotal: String(form.value.subtotal ?? ''),
+      asignacion_id: Number(asignacionIdCentral.value)
     };
-    payload.asignacion_id = props.asignacionId || Number(route.params.asignacionId);
-
     await addReporteServicio(payload);
     resultMessage.value = 'Reporte de servicio guardado correctamente.';
     emit('saved');

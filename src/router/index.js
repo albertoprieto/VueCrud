@@ -26,6 +26,7 @@ import DetalleAsignacion from '@/modules/DetalleAsignacion.vue';
 import ReporteServicio from '@/modules/ReporteServicio.vue';
 import TransferirImeis from '@/modules/TransferirImeis.vue';
 import Cotizador from '@/modules/Cotizador.vue';
+import CalendarioTecnicosTablaDual from '@/components/CalendarioTecnicosTablaDual.vue';
 
 const routes = [
   { path: '/', name: 'home', component: Informacion },
@@ -55,7 +56,8 @@ const routes = [
   { path: '/asignacion/:id', name: 'detalle-asignacion', component: DetalleAsignacion },
   { path: '/reporte-servicio/:asignacionId', name: 'reporte-servicio', component: ReporteServicio },
   { path: '/transferir-imeis', name: 'transferir-imeis', component: TransferirImeis },
-  { path: '/cotizador', name: 'cotizador', component: Cotizador }
+  { path: '/cotizador', name: 'cotizador', component: Cotizador },
+  { path: '/calendario-tecnicos', name: 'calendario-tecnicos', component: CalendarioTecnicosTablaDual }
 ];
 
 const router = createRouter({
