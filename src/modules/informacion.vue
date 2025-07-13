@@ -51,8 +51,8 @@ const groupedItems = [
       { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users', desc: 'Gestión de clientes' },
       { label: 'Cotizador', route: '/cotizador', icon: 'pi pi-fw pi-file-edit', desc: 'Generar cotizaciones' },
       { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', desc: 'Histórico de cotizaciones' },
-      { label: 'Crear Orden de Venta', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar' },
-      { label: 'Consultar Orden de Venta', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' }
+      { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar' },
+      { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' }
     ]
   },
   {
