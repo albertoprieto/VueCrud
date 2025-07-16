@@ -147,7 +147,7 @@ const items = computed(() => [
       },
       { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
       { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
-      { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
+      // { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
     ]
   },
   {
