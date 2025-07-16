@@ -9,6 +9,69 @@
       </div>
     </div>
     <form v-else class="reporte-form" @submit.prevent="guardar">
+      <div class="abonos-section" v-if="form.total">
+        <h4 class="section-title">Pagos y abonos</h4>
+        <div v-if="pagos.length === 0" class="abonos-vacio">No hay pagos registrados para este servicio.</div>
+        <div v-else>
+          <table class="abonos-table">
+            <thead>
+              <tr><th>Fecha</th><th>Monto</th><th>Referencia</th><th>Concepto</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in pagos" :key="p.id">
+                <td>{{ formatearFecha(p.fecha) }}</td>
+                <td>{{ formatoMoneda(p.monto) }}</td>
+                <td>{{ p.referencia }}</td>
+                <td>{{ p.concepto }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="abonos-resumen">
+          <span><b>Total servicio:</b> {{ formatoMoneda(Number(form.total)||0) }}</span>
+          <span><b>Pagado:</b> {{ formatoMoneda(totalPagado) }}</span>
+          <span :style="{color: saldoPendiente > 0 ? '#e53935' : '#43a047'}"><b>Saldo pendiente:</b> {{ formatoMoneda(saldoPendiente) }}</span>
+        </div>
+        <form class="abono-form" @submit.prevent="registrarAbono">
+          <div class="form-group">
+            <label>Nuevo abono</label>
+            <input v-model.number="nuevoAbono" type="number" min="1" step="0.01" placeholder="Monto del abono" class="w-full mb-2" required />
+          </div>
+          <div class="form-group">
+            <input v-model="nuevaReferencia" type="text" placeholder="Referencia (opcional)" class="w-full mb-2" />
+          </div>
+          <button type="submit" class="p-button p-button-success">Registrar abono</button>
+        </form>
+      </div>
+import { getMovimientosDineroPorReferencia, registrarAbonoDinero } from '@/services/dineroService';
+const pagos = ref([]);
+const nuevoAbono = ref("");
+const nuevaReferencia = ref("");
+const totalPagado = computed(() => pagos.value.reduce((acc, p) => acc + Number(p.monto), 0));
+const saldoPendiente = computed(() => (Number(form.value.total)||0) - totalPagado.value);
+
+async function cargarPagos() {
+  if (!form.value || !form.value.referencia) return pagos.value = [];
+  pagos.value = await getMovimientosDineroPorReferencia(form.value.referencia);
+}
+
+async function registrarAbono() {
+  if (!nuevoAbono.value || Number(nuevoAbono.value) <= 0) return;
+  const movimiento = {
+    fecha: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    tipo: 'Ingreso',
+    concepto: `Abono servicio ${form.value.referencia || ''}`,
+    monto: Number(nuevoAbono.value),
+    referencia: nuevaReferencia.value || form.value.referencia || ''
+  };
+  await registrarAbonoDinero(movimiento);
+  nuevoAbono.value = "";
+  nuevaReferencia.value = "";
+  await cargarPagos();
+}
+function formatoMoneda(valor) {
+  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor) || 0);
+}
       <div v-if="loading" class="loader-overlay">
         <Loader />
       </div>
@@ -348,16 +411,12 @@ async function checkReporteExistente() {
 
 
 onMounted(async () => {
-  console.log('[ReporteServicio] props:', props);
-  console.log('[ReporteServicio] route:', route);
-  console.log('[ReporteServicio] props.asignacionId:', props.asignacionId);
-  console.log('[ReporteServicio] route.params.asignacionId:', route.params.asignacionId);
-  console.log('[ReporteServicio] asignacionIdCentral.value (onMounted):', asignacionIdCentral.value);
   if (!asignacionIdValido.value) return;
   form.value.asignacion_id = asignacionIdCentral.value;
   await checkReporteExistente();
   await cargarDatosTecnico();
   await cargarDatosCliente();
+  await cargarPagos();
 });
 
 function cerrar() {

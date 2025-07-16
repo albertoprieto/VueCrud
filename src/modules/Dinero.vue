@@ -35,21 +35,15 @@ import axios from 'axios';
 const movimientos = ref([]);
 const cargando = ref(false);
 
+
 const cargarMovimientos = async () => {
   cargando.value = true;
   try {
-    // Simulación: reemplaza por tu endpoint real
-    const res = await axios.get('https://api.gpsubicacionapi.com/movimientos-dinero');
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    const res = await axios.get(`${apiUrl}/movimientos-dinero`);
     movimientos.value = res.data;
   } catch (e) {
-    // Datos simulados si el endpoint falla
-    movimientos.value = [
-      { fecha: '2025-07-01', tipo: 'Ingreso', concepto: 'Venta 001', monto: 5000, referencia: 'Venta #001' },
-      { fecha: '2025-07-02', tipo: 'Egreso', concepto: 'Compra insumos', monto: 1200, referencia: 'Factura #A123' },
-      { fecha: '2025-07-03', tipo: 'Ingreso', concepto: 'Venta 002', monto: 3500, referencia: 'Venta #002' },
-      { fecha: '2025-07-04', tipo: 'Egreso', concepto: 'Pago renta', monto: 2000, referencia: 'Renta Julio' },
-      { fecha: '2025-07-05', tipo: 'Ingreso', concepto: 'Abono cliente', monto: 1500, referencia: 'Abono #C456' },
-    ];
+    movimientos.value = [];
   }
   cargando.value = false;
 };
