@@ -20,14 +20,15 @@ const loadingArticulos = ref(true);
 const showModal = ref(false);
 const form = ref({
   id: null,
-  sku: '',
+  codigo: '',
   nombre: '',
+  sku: '',
   tipo: '',
   precioVenta: '',
   precioCompra: '',
   codigoSat: '',
   codigoUnidadSat: '',
-  // unidad: '', // Elimina este campo del formulario
+  unidadSat: '',
 });
 const tipoOptions = [
   { label: 'Bien', value: 'Bien' },
@@ -87,7 +88,34 @@ const filteredArticulos = computed(() => {
 });
 
 const openModal = () => {
-  form.value = { id: null, sku: '', nombre: '', tipo: '', precioVenta: '', impuesto: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '' /*, unidad: ''*/ };
+  form.value = {
+    id: null,
+    codigo: '',
+    nombre: '',
+    sku: '',
+    tipo: '',
+    precioVenta: '',
+    precioCompra: '',
+    codigoSat: '',
+    codigoUnidadSat: '',
+    unidadSat: '',
+  };
+  showModal.value = true;
+};
+
+const editArticulo = (data) => {
+  form.value = {
+    id: data.id,
+    codigo: data.codigo || '',
+    nombre: data.nombre || '',
+    sku: data.sku || '',
+    tipo: data.tipo || '',
+    precioVenta: data.precioVenta || '',
+    precioCompra: data.precioCompra || '',
+    codigoSat: data.codigoSat || '',
+    codigoUnidadSat: data.codigoUnidadSat || '',
+    unidadSat: data.unidadSat || '',
+  };
   showModal.value = true;
 };
 
@@ -104,17 +132,27 @@ const saveArticulo = async () => {
   }
   try {
     const articuloPayload = {
-      sku: form.value.sku,
-      nombre: form.value.nombre,
-      tipo: form.value.tipo,
+      id: form.value.id ?? null, // requerido por el backend
+      codigo: form.value.codigo || '',
+      nombre: form.value.nombre || '',
+      sku: form.value.sku || '',
+      tipo: form.value.tipo || '',
       precioVenta: Number(form.value.precioVenta) || 0,
-      impuesto: '16%',
       precioCompra: Number(form.value.precioCompra) || 0,
-      codigoSat: form.value.codigoSat,
-      codigoUnidadSat: form.value.codigoUnidadSat,
-      unidad: '', // si el backend lo requiere, si no, elimínalo
-      descripcion: '', // si el backend lo requiere, si no, elimínalo
+      codigoSat: form.value.codigoSat || '',
+      codigoUnidadSat: form.value.codigoUnidadSat || '',
+      unidadSat: form.value.unidadSat || '',
+      stock: 0, // requerido por el backend
+      ubicacion_id: null, // requerido por el backend, null si no hay valor
+      pagina: '',
+      unidad: '',
+      impuesto: '',
+      descripcion: '',
     };
+    
+    console.log('Form ID antes de enviar:', form.value.id);
+    console.log('Payload a enviar:', articuloPayload);
+    
     if (form.value.id) {
       await updateArticulo(form.value.id, articuloPayload);
       toast.add({ severity: 'success', summary: 'Artículo actualizado', life: 3000 });
@@ -125,12 +163,31 @@ const saveArticulo = async () => {
     closeModal();
     loadArticulos();
   } catch (error) {
-    toast.add({ severity: 'error', summary: 'Error al guardar artículo', detail: error.message, life: 5000 });
+    let backendMsg = '';
+    if (error.response && error.response.data) {
+      backendMsg = typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data);
+    } else if (error.message) {
+      backendMsg = error.message;
+    } else {
+      backendMsg = 'Error desconocido';
+    }
+    console.error('Error completo:', error);
+    toast.add({ severity: 'error', summary: 'Error al guardar artículo', detail: backendMsg, life: 8000 });
+    errorMessage.value = backendMsg;
+    showErrorDialog.value = true;
+  }
+};
+
+// Nueva función para manejar el click de eliminar
+const handleDeleteClick = (data) => {
+  if (data) {
+    articuloToDelete.value = data;
+    showConfirmDelete.value = true;
   }
 };
 
 const deleteArticulo = async () => {
-  if (!articuloToDelete.value) return;
+  if (!articuloToDelete.value || !articuloToDelete.value.id) return;
   try {
     await deleteArticuloService(articuloToDelete.value.id);
     toast.add({ severity: 'success', summary: 'Artículo eliminado', life: 3000 });
@@ -139,6 +196,7 @@ const deleteArticulo = async () => {
     toast.add({ severity: 'error', summary: 'Error al eliminar artículo', detail: error.message, life: 5000 });
   } finally {
     showConfirmDelete.value = false;
+    articuloToDelete.value = null;
   }
 };
 
@@ -163,6 +221,7 @@ const exportToExcel = () => {
     <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" class="mb-3" />
     <Button label="Exportar a Excel" icon="pi pi-file-excel" @click="exportToExcel" class="mb-3" />
     <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive">
+      <Column field="codigo" header="Código" :sortable="true" />
       <Column field="nombre" header="Nombre" :sortable="true" />
       <Column field="sku" header="SKU" :sortable="true" />
       <Column field="tipo" header="Tipo" :sortable="true" />
@@ -172,8 +231,8 @@ const exportToExcel = () => {
       <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
       <Column header="Acciones">
         <template #body="{ data }">
-          <Button icon="pi pi-pencil" class="mr-2" @click="() => { form.value = { ...data }; showModal.value = true; }" />
-          <Button icon="pi pi-trash" @click="() => { articuloToDelete.value = data; showConfirmDelete.value = true; }" />
+          <Button icon="pi pi-pencil" class="mr-2" @click="editArticulo(data)" />
+          <Button icon="pi pi-trash" @click="() => handleDeleteClick(data)" />
         </template>
       </Column>
     </DataTable>
@@ -181,6 +240,10 @@ const exportToExcel = () => {
     <Dialog header="Artículo" v-model:visible="showModal" :modal="true" :closeOnEscape="true" :dismissableMask="true">
       <div class="p-fluid">
         <div class="formgrid grid">
+          <div class="field col-12 md:col-6">
+            <label for="codigo">Código:</label>
+            <InputText id="codigo" v-model="form.codigo" class="w-full" />
+          </div>
           <div class="field col-12 md:col-6">
             <label for="nombre">Nombre:</label>
             <InputText id="nombre" v-model="form.nombre" class="w-full" />
@@ -197,13 +260,6 @@ const exportToExcel = () => {
             <label for="precioVenta">Precio Venta:</label>
             <InputText id="precioVenta" v-model.number="form.precioVenta" type="number" class="w-full" />
           </div>
-          <!-- Elimina este bloque -->
-          <!--
-          <div class="field col-12 md:col-6">
-            <label for="unidad">Unidad:</label>
-            <InputText id="unidad" v-model="form.unidad" class="w-full" />
-          </div>
-          -->
           <div class="field col-12 md:col-6">
             <label for="precioCompra">Precio Compra:</label>
             <InputText id="precioCompra" v-model.number="form.precioCompra" type="number" class="w-full" />
@@ -211,6 +267,10 @@ const exportToExcel = () => {
           <div class="field col-12 md:col-6">
             <label for="codigoSat">Código SAT:</label>
             <InputText id="codigoSat" v-model="form.codigoSat" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="unidadSat">Unidad SAT:</label>
+            <InputText id="unidadSat" v-model="form.unidadSat" class="w-full" />
           </div>
           <div class="field col-12 md:col-6">
             <label for="codigoUnidadSat">Código Unidad SAT:</label>
