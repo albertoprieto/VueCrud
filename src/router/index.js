@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import Informacion from '@/modules/informacion.vue';
+import Dinero from '@/modules/Dinero.vue';
 import Login from '@/modules/login.vue';
 import Reporte from '@/modules/Reporte.vue';
 import Registrar from '@/modules/Registrar.vue';
@@ -58,6 +59,7 @@ const routes = [
   { path: '/transferir-imeis', name: 'transferir-imeis', component: TransferirImeis },
   { path: '/cotizador', name: 'cotizador', component: Cotizador },
   { path: '/calendario-tecnicos', name: 'calendario-tecnicos', component: CalendarioTecnicosTablaDual }
+  ,{ path: '/dinero', name: 'dinero', component: Dinero }
 ];
 
 const router = createRouter({
