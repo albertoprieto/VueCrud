@@ -22,8 +22,8 @@ export const addArticulo = async (articulo) => {
   return res.data;
 };
 
-export const updateArticulo = async (articulo) => {
-  const res = await axios.put(`${API_URL}/${articulo.id}`, articulo);
+export const updateArticulo = async (id, articulo) => {
+  const res = await axios.put(`${API_URL}/${id}`, articulo);
   return res.data;
 };
 
