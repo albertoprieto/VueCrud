@@ -52,7 +52,8 @@ const groupedItems = [
       { label: 'Cotizador', route: '/cotizador', icon: 'pi pi-fw pi-file-edit', desc: 'Generar cotizaciones' },
       { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', desc: 'Histórico de cotizaciones' },
       { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar' },
-      { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' }
+      { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' },
+      { label: 'Dinero', route: '/dinero', icon: 'pi pi-fw pi-wallet', desc: 'Ver movimientos y saldo de dinero' }
     ]
   },
   {
