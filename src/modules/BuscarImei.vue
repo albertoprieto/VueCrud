@@ -226,16 +226,6 @@ const eliminarConfirmado = async () => {
   if (!imeiAEliminar.value) return;
   try {
     await deleteIMEI(imeiAEliminar.value);
-    await registrarMovimiento({
-      usuario: 'sistema',
-      evento: 'baja',
-      articulo_id: null,
-      articulo_nombre: null,
-      imei: imeiAEliminar.value,
-      ubicacion_origen: null,
-      ubicacion_destino: null,
-      motivo: 'Eliminación de IMEI'
-    });
     await cargarImeis();
     toast.add({ severity: 'success', summary: 'IMEI eliminado', detail: 'El IMEI fue eliminado correctamente.', life: 3000 });
   } catch (e) {
@@ -255,16 +245,6 @@ const transferirConfirmado = async () => {
   if (!imeiATransferir.value || !ubicacionDestino.value) return;
   try {
     await asignarImeisUbicacion(ubicacionDestino.value.id, [imeiATransferir.value]);
-    await registrarMovimiento({
-      usuario: 'sistema',
-      evento: 'transferencia',
-      articulo_id: null,
-      articulo_nombre: null,
-      imei: imeiATransferir.value,
-      ubicacion_origen: null, // puedes obtener la ubicación origen si la tienes
-      ubicacion_destino: ubicacionDestino.value.nombre,
-      motivo: 'Transferencia de IMEI'
-    });
     await cargarImeis();
     toast.add({ severity: 'success', summary: 'IMEI transferido', detail: 'El IMEI fue transferido correctamente.', life: 3000 });
   } catch (e) {
