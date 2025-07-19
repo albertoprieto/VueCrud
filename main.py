@@ -134,6 +134,53 @@ def update_imei(imei_value: str, imei: dict):
     db.close()
     return {"message": "IMEI actualizado"}
 
+
+
+
+
+class MovimientoDinero(BaseModel):
+    fecha: str
+    tipo: str  # 'Ingreso' o 'Egreso'
+    concepto: str
+    monto: float
+    referencia: str = ""
+
+@app.get("/movimientos-dinero")
+def get_movimientos_dinero():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM movimientos_dinero ORDER BY fecha DESC")
+    movimientos = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return movimientos
+
+@app.post("/movimientos-dinero")
+def add_movimiento_dinero(mov: MovimientoDinero):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia) VALUES (%s, %s, %s, %s, %s)",
+        (mov.fecha, mov.tipo, mov.concepto, mov.monto, mov.referencia)
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Movimiento registrado"}
+
+
+
+
 # MODELO COTIZACION
 class Cotizacion(BaseModel):
     id: Optional[int]
@@ -841,7 +888,22 @@ def crear_venta(venta: Venta):
 
 
 
-    db.commit()
+    # Registrar movimiento de dinero (Ingreso) automáticamente
+    try:
+        cursor = db.cursor()
+        cursor.execute(
+            "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia) VALUES (%s, %s, %s, %s, %s)",
+            (
+                fecha,
+                "Ingreso",
+                f"Venta {venta_id}",
+                venta.total,
+                venta.referencia or f"Venta #{venta_id}"
+            )
+        )
+        db.commit()
+    except Exception as e:
+        print(f"Error al registrar movimiento de dinero: {e}")
     cursor.close()
     db.close()
     return {"message": "Venta registrada exitosamente", "venta_id": venta_id}

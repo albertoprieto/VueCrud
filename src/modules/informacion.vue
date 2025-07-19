@@ -41,7 +41,7 @@ const groupedItems = [
       { label: 'Asignar IMEIs', route: '/asignar-imeis', icon: 'pi pi-fw pi-barcode', desc: 'Asignar IMEIs a artículos' },
       { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker', desc: 'Gestionar ubicaciones' },
       { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search', desc: 'Buscar IMEI por número' },
-      { label: 'Histórico IMEIs', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history', desc: 'Ver histórico de IMEIs' },
+      // { label: 'Histórico IMEIs', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history', desc: 'Ver histórico de IMEIs' },
       { label: 'Transferir IMEIs', route: '/transferir-imeis', icon: 'pi pi-fw pi-share-alt', desc: 'Transferir IMEIs entre ubicaciones' }
     ]
   },
@@ -52,7 +52,8 @@ const groupedItems = [
       { label: 'Cotizador', route: '/cotizador', icon: 'pi pi-fw pi-file-edit', desc: 'Generar cotizaciones' },
       { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', desc: 'Histórico de cotizaciones' },
       { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar' },
-      { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' }
+      { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' },
+      { label: 'Dinero', route: '/dinero', icon: 'pi pi-fw pi-wallet', desc: 'Ver movimientos y saldo de dinero' }
     ]
   },
   {

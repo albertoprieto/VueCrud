@@ -376,94 +376,105 @@ const irAClientes = () => {
         <div class="form-row">
           <div class="form-group">
             <label>Cliente</label>
-            <Dropdown v-model="cotizacion.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id" placeholder="Selecciona un cliente" class="w-full" />
+            <Dropdown v-model="cotizacion.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id" 
+              placeholder="Selecciona un cliente" class="w-full mobile-dropdown" />
           </div>
-          <div class="form-group" style="align-self: end;">
-            <Button label="Nuevo Cliente" icon="pi pi-plus" class="p-button-success" @click="showNuevoClienteDialog = true" />
+          <div class="form-group mobile-button-group">
+            <Button label="Nuevo Cliente" icon="pi pi-plus" class="p-button-success mobile-button" 
+              @click="showNuevoClienteDialog = true" />
           </div>
-          <Dialog v-model:visible="showNuevoClienteDialog" header="Agregar Cliente" :modal="true">
+          <Dialog v-model:visible="showNuevoClienteDialog" header="Agregar Cliente" :modal="true" class="mobile-dialog">
             <p>¿Deseas agregar un nuevo cliente? Serás redirigido a la pantalla de clientes.</p>
             <template #footer>
-              <Button label="Cancelar" @click="showNuevoClienteDialog = false" />
-              <Button label="Aceptar" class="p-button-success" @click="irAClientes" />
+              <Button label="Cancelar" class="mobile-button" @click="showNuevoClienteDialog = false" />
+              <Button label="Aceptar" class="p-button-success mobile-button" @click="irAClientes" />
             </template>
           </Dialog>
           <div class="form-group">
             <label>Email</label>
-            <InputText v-model="cotizacionEmail" class="w-full" disabled />
+            <InputText v-model="cotizacionEmail" class="w-full mobile-input" disabled />
           </div>
           <div class="form-group">
             <label>Fecha</label>
-            <InputText v-model="cotizacion.fecha" type="date" class="w-full" />
+            <InputText v-model="cotizacion.fecha" type="date" class="w-full mobile-input" />
           </div>
         </div>
+        
         <div class="form-row">
           <div class="form-group">
             <label>Vendedor</label>
-            <Dropdown v-model="cotizacion.vendedor" :options="vendedores" optionLabel="username" optionValue="username" placeholder="Selecciona vendedor" class="w-full" />
+            <Dropdown v-model="cotizacion.vendedor" :options="vendedores" optionLabel="username" optionValue="username" 
+              placeholder="Selecciona vendedor" class="w-full mobile-dropdown" />
           </div>
           <div class="form-group">
             <label>Descuento (%)</label>
-            <InputText v-model.number="cotizacion.descuento" type="number" min="0" max="100" class="w-full" />
+            <InputText v-model.number="cotizacion.descuento" type="number" min="0" max="100" 
+              class="w-full mobile-input" />
           </div>
         </div>
-        <h3>Artículos</h3>
-        <DataTable :value="cotizacion.articulos" class="mb-2">
-          <Column field="articulo_id" header="Artículo">
-            <template #body="slotProps">
-              <Dropdown
-                v-model="slotProps.data.articulo_id"
-                :options="articulos"
-                optionLabel="sku"
-                optionValue="id"
-                placeholder="Seleccione SKU"
-                class="w-full"
-                filter
-                showClear
-                @change="handleArticuloChange(slotProps.data.articulo_id, slotProps.data)"
-              />
-            </template>
-          </Column>
-          <Column field="cantidad" header="Cantidad">
-            <template #body="slotProps">
-              <InputText
-                type="number"
-                v-model.number="slotProps.data.cantidad"
-                min="1"
-                class="w-full"
-                :disabled="!slotProps.data.articulo_id"
-                @input="handleCantidadInput(slotProps.data)"
-              />
-            </template>
-          </Column>
-          <Column field="precio_unitario" header="Precio Unitario">
-            <template #body="slotProps">
-              <InputText
-                type="number"
-                v-model.number="slotProps.data.precio_unitario"
-                min="0"
-                step="0.01"
-                class="w-full"
-                :disabled="true"
-              />
-            </template>
-          </Column>
-          <Column header="Subtotal">
-            <template #body="slotProps">
-              <span>
-                {{ ((Number(slotProps.data.cantidad) || 0) * (Number(slotProps.data.precio_unitario) || 0)).toFixed(2) }}
-              </span>
-            </template>
-          </Column>
-          <Column header="Acciones">
-            <template #body="slotProps">
-              <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="removeArticuloCotizacion(slotProps.index)" :disabled="!slotProps.data.articulo_id" />
-            </template>
-          </Column>
-        </DataTable>
-        <Button label="Agregar Artículo" icon="pi pi-plus" class="mb-2" @click="addArticuloCotizacion" />
+        
+        <h3 class="section-title">Artículos</h3>
+        <div class="table-wrapper">
+          <DataTable :value="cotizacion.articulos" class="mb-2 mobile-table" scrollable scrollDirection="horizontal">
+            <Column field="articulo_id" header="Artículo" :style="{ minWidth: '150px' }">
+              <template #body="slotProps">
+                <Dropdown
+                  v-model="slotProps.data.articulo_id"
+                  :options="articulos"
+                  optionLabel="sku"
+                  optionValue="id"
+                  placeholder="Seleccione SKU"
+                  class="w-full mobile-dropdown"
+                  filter
+                  showClear
+                  @change="handleArticuloChange(slotProps.data.articulo_id, slotProps.data)"
+                />
+              </template>
+            </Column>
+            <Column field="cantidad" header="Cantidad" :style="{ minWidth: '100px' }">
+              <template #body="slotProps">
+                <InputText
+                  type="number"
+                  v-model.number="slotProps.data.cantidad"
+                  min="1"
+                  class="w-full mobile-input"
+                  :disabled="!slotProps.data.articulo_id"
+                  @input="handleCantidadInput(slotProps.data)"
+                />
+              </template>
+            </Column>
+            <Column field="precio_unitario" header="P. Unitario" :style="{ minWidth: '120px' }">
+              <template #body="slotProps">
+                <InputText
+                  type="number"
+                  v-model.number="slotProps.data.precio_unitario"
+                  min="0"
+                  step="0.01"
+                  class="w-full mobile-input"
+                  :disabled="true"
+                />
+              </template>
+            </Column>
+            <Column header="Subtotal" :style="{ minWidth: '100px' }">
+              <template #body="slotProps">
+                <span class="mobile-text">
+                  <!-- {{ ((Number(slotProps.data.cantidad) || 0) * (Number(slotProps.data.precio_unitario) || 0).toFixed(2) }} -->
+                </span>
+              </template>
+            </Column>
+            <Column header="Acciones" :style="{ minWidth: '80px' }">
+              <template #body="slotProps">
+                <Button icon="pi pi-trash" class="p-button-danger p-button-sm mobile-icon-button" 
+                  @click="removeArticuloCotizacion(slotProps.index)" :disabled="!slotProps.data.articulo_id" />
+              </template>
+            </Column>
+          </DataTable>
+        </div>
+        
+        <Button label="Agregar Artículo" icon="pi pi-plus" class="mb-2 mobile-button full-width-button" 
+          @click="addArticuloCotizacion" />
 
-        <div class="mb-2 acciones-footer">
+        <div class="mb-2 acciones-footer mobile-summary">
           <div>
             <div><strong>Subtotal:</strong> ${{ subtotal.toFixed(2) }}</div>
             <div><strong>Descuento:</strong> {{ cotizacion.descuento || 0 }}% (${{ descuentoMonto.toFixed(2) }})</div>
@@ -474,48 +485,213 @@ const irAClientes = () => {
         <div class="form-row">
           <div class="form-group">
             <label>Observaciones</label>
-            <InputText v-model="cotizacion.observaciones" class="w-full" />
+            <InputText v-model="cotizacion.observaciones" class="w-full mobile-input" />
           </div>
         </div>
 
-        <div class="actions-right">
+        <div class="actions-right mobile-actions">
           <Button
             label="Guardar Cotización"
             icon="pi pi-save"
-            class="p-button-success"
+            class="p-button-success mobile-button full-width-button"
             type="submit"
           />
-          <Button
+          <!-- <Button
             label="Generar PDF"
+            disabled=true
             icon="pi pi-file-pdf"
-            class="ml-2"
+            class="mobile-button full-width-button"
             :style="{ background: '#f8bbd0', borderColor: '#f8bbd0', color: '#6d214f' }"
             @click="generarPDFCotizacion"
-          />
+          /> -->
         </div>
       </form>
-      <Dialog v-model:visible="showDialog" header="Cotización Guardada" :closable="false" :modal="true">
+      
+      <Dialog v-model:visible="showDialog" header="Cotización Guardada" :modal="true" class="mobile-dialog">
         <p>La cotización ha sido guardada exitosamente.</p>
-        <Button label="Aceptar" icon="pi pi-check" @click="closeDialog" />
+        <Button label="Aceptar" icon="pi pi-check" class="mobile-button" @click="closeDialog" />
       </Dialog>
-      <Dialog v-model:visible="showSendDialog" header="Enviar Cotización" :closable="false" :modal="true">
+      
+      <Dialog v-model:visible="showSendDialog" header="Enviar Cotización" :modal="true" class="mobile-dialog">
         <p>La cotización con folio <strong>{{ cotizacionGeneradaNumero }}</strong> ha sido generada.</p>
         <p>¿Deseas enviar esta cotización al cliente por WhatsApp?</p>
         <p><strong>WhatsApp:</strong> {{ cotizacionTelefono }}</p>
         <template #footer>
-          <Button label="Cancelar" @click="() => { showSendDialog = false; router.push('/dashboard'); }" />
-          <Button label="Enviar WhatsApp" class="p-button-success" @click="enviarCotizacionAlCliente" :loading="sendingWhatsapp" />
+          <Button label="Cancelar" class="mobile-button" 
+            @click="() => { showSendDialog = false; router.push('/dashboard'); }" />
+          <Button label="Enviar WhatsApp" class="p-button-success mobile-button" 
+            @click="enviarCotizacionAlCliente" :loading="sendingWhatsapp" />
         </template>
       </Dialog>
-      <Dialog v-model:visible="sendingWhatsapp" header="Enviando WhatsApp" :modal="true" :closable="false">
-        <div style="padding:1.5rem; text-align:center;">
+      
+      <Dialog v-model:visible="sendingWhatsapp" header="Enviando WhatsApp" :modal="true" :closable="false" 
+        class="mobile-dialog">
+        <div class="dialog-content">
           <span>Enviando cotización por WhatsApp...</span>
         </div>
       </Dialog>
-      <Dialog v-model:visible="showConfirmSendDialog" header="Envío exitoso" :closable="false" :modal="true">
+      
+      <Dialog v-model:visible="showConfirmSendDialog" header="Envío exitoso" :modal="true" class="mobile-dialog">
         <p>La cotización fue enviada correctamente al cliente.</p>
-        <Button label="Aceptar" icon="pi pi-check" @click="closeConfirmSendDialog" />
+        <Button label="Aceptar" icon="pi pi-check" class="mobile-button" @click="closeConfirmSendDialog" />
       </Dialog>
     </div>
   </div>
 </template>
+
+
+<style scoped>
+.cotizador-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cotizador-title {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  /* color: #2c3e50; */
+}
+
+.cotizador-card {
+  /* background: white; */
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.form-group {
+  flex: 1;
+  min-width: 200px;
+}
+
+.section-title {
+  margin: 1.5rem 0 1rem;
+  font-size: 1.2rem;
+  /* color: #2c3e50; */
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+}
+
+.acciones-footer {
+  /* background: #f8f9fa; */
+  padding: 1rem;
+  border-radius: 6px;
+}
+
+.actions-right {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.full-width-button {
+  width: 100%;
+}
+
+/* Estilos para móviles */
+@media (max-width: 768px) {
+  .cotizador-container {
+    padding: 0.5rem;
+  }
+  
+  .cotizador-card {
+    padding: 1rem;
+  }
+  
+  .cotizador-title {
+    font-size: 1.3rem;
+  }
+  
+  .section-title {
+    font-size: 1.1rem;
+  }
+  
+  .form-group {
+    min-width: 100%;
+  }
+  
+  .mobile-dropdown {
+    font-size: 0.9rem;
+  }
+  
+  .mobile-input {
+    font-size: 0.9rem;
+    padding: 0.5rem;
+  }
+  
+  .mobile-button {
+    font-size: 0.9rem;
+    padding: 0.5rem;
+  }
+  
+  .mobile-button-group {
+    align-self: center;
+  }
+  
+  .mobile-icon-button {
+    padding: 0.3rem;
+  }
+  
+  .mobile-text {
+    font-size: 0.9rem;
+  }
+  
+  .mobile-table {
+    font-size: 0.85rem;
+  }
+  
+  .mobile-summary div {
+    font-size: 0.9rem;
+  }
+  
+  .mobile-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .mobile-dialog {
+    width: 95vw;
+    max-width: 95vw;
+  }
+  
+  .dialog-content {
+    padding: 1rem;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .cotizador-title {
+    font-size: 1.2rem;
+  }
+  
+  .section-title {
+    font-size: 1rem;
+  }
+  
+  .mobile-dropdown, 
+  .mobile-input, 
+  .mobile-button, 
+  .mobile-text {
+    font-size: 0.8rem;
+  }
+  
+  .mobile-table {
+    font-size: 0.75rem;
+  }
+}
+</style>

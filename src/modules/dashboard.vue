@@ -178,7 +178,7 @@ const items = computed(() => [
       },
       { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
       { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
-      { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
+      // { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
     ]
   },
   {
@@ -191,6 +191,11 @@ const items = computed(() => [
       { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
       { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
     ]
+  },
+  {
+    label: 'Dinero',
+    icon: 'pi pi-fw pi-wallet',
+    route: '/dinero'
   },
   {
     label: 'Usuarios',

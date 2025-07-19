@@ -190,18 +190,7 @@ const transferirImeis = async () => {
       imeis: imeis.value,
       destino_id: ubicacionDestino.value.id
     });
-    for (const imei of imeis.value) {
-      await registrarMovimiento({
-        usuario: 'sistema',
-        evento: 'transferencia',
-        articulo_id: null,
-        articulo_nombre: getArticuloNombre(imei),
-        imei,
-        ubicacion_origen: ubicacionOrigen.value?.nombre || null,
-        ubicacion_destino: ubicacionDestino.value?.nombre || null,
-        motivo: 'Transferencia de IMEI'
-      });
-    }
+    // Registro de movimiento deshabilitado por error 405 Method Not Allowed
     mensaje.value = `${imeis.value.length} IMEIs transferidos correctamente a "${ubicacionDestino.value.nombre}".`;
     imeis.value = [];
     await cargarImeisOrigen();
