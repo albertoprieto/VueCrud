@@ -70,8 +70,14 @@
         <OverlayPanel ref="overlayRef" :dismissable="true" style="min-width:240px; background:var(--color-bg); color:var(--color-text);">
           <Card>
             <template #title>
-              <div class="profile-card-title">
-                <span class="profile-avatar-lg">{{ (user.username || 'U').charAt(0).toUpperCase() }}</span>
+              <div class="profile-card-title" @click="router.push('/dashboard')" style="cursor:pointer;">
+                <span class="profile-avatar-lg" style="position:relative;">
+                  <img v-if="user.avatarUrl" :src="user.avatarUrl" alt="avatar" class="profile-avatar-img" />
+                  <span v-else class="profile-avatar-initial">{{ (user.username || 'U').charAt(0).toUpperCase() }}</span>
+                  <span v-if="!user.avatarUrl" class="profile-avatar-generic">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="16" fill="#e0e0e0"/><ellipse cx="16" cy="13" rx="7" ry="7" fill="#bdbdbd"/><ellipse cx="16" cy="26" rx="10" ry="6" fill="#bdbdbd"/></svg>
+                  </span>
+                </span>
                 <div>
                   <div class="profile-real-username" style="color:var(--color-title)">{{ user.username || 'Usuario desconocido' }}</div>
                   <div class="profile-real-perfil" style="color:var(--color-text)">

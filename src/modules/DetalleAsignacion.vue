@@ -1,23 +1,23 @@
 <template>
   <div class="detalle-asignacion">
     <h2>Detalle de Asignación</h2>
-    <div v-if="asignacion">
+    <div v-if="asignacion.value">
       <div class="asignacion-info">
         <div>
           <span class="asignacion-label">Técnico:</span>
-          <span class="asignacion-value">{{ asignacion.tecnico }}</span>
+          <span class="asignacion-value">{{ asignacion.value.tecnico }}</span>
         </div>
         <div>
           <span class="asignacion-label">Fecha de servicio:</span>
-          <span class="asignacion-value">{{ asignacion.fecha_servicio }}</span>
+          <span class="asignacion-value">{{ asignacion.value.fecha_servicio }}</span>
         </div>
         <div>
           <span class="asignacion-label">Nota de venta:</span>
-          <span class="asignacion-value">{{ asignacion.venta_id }}</span>
+          <span class="asignacion-value">{{ asignacion.value.venta_id }}</span>
         </div>
         <div>
           <span class="asignacion-label">Cliente:</span>
-          <span class="asignacion-value">{{ clienteNombre || asignacion.cliente_id }}</span>
+          <span class="asignacion-value">{{ clienteNombre || asignacion.value.cliente_id }}</span>
         </div>
       </div>
       <div v-if="ventaDetalle" class="venta-detalle-card">
@@ -65,8 +65,11 @@
         @click="irAReporte"
       />
       <ReporteServicio
-        v-if="showReporteDialog"
-        :asignacionId="asignacion.id"
+        v-if="showReporteDialog && asignacion.value && asignacion.value.id"
+        :asignacionId="asignacion.value.id"
+        :asignacion="asignacion.value"
+        :ventaDetalle="ventaDetalle"
+        :cliente="{ nombre: clienteNombre }"
         :visible="showReporteDialog"
         @update:visible="showReporteDialog = $event"
         @close="showReporteDialog = false"
@@ -116,6 +119,9 @@ async function onReporteGuardado() {
 }
 
 function irAReporte() {
+  console.log('Asignación al abrir reporte:', asignacion.value);
+  // Log justo antes de mostrar el diálogo
+  console.log('*** [DIALOG OPEN] ID de asignación al abrir diálogo de reporte:', asignacion.value?.id, 'Objeto asignación:', asignacion.value);
   showReporteDialog.value = true;
 }
 
