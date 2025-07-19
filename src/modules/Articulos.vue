@@ -28,10 +28,7 @@ const form = ref({
   precioCompra: '',
   codigoSat: '',
   codigoUnidadSat: '',
-<<<<<<< HEAD
-=======
   unidadSat: '',
->>>>>>> df4cf1206b3eaa6b0b4607c9a9784a263d4ff5c4
 });
 const tipoOptions = [
   { label: 'Bien', value: 'Bien' },
@@ -91,19 +88,6 @@ const filteredArticulos = computed(() => {
 });
 
 const openModal = () => {
-<<<<<<< HEAD
-  if (typeof form.value !== 'object' || form.value === null) {
-    form.value = { id: null, sku: '', nombre: '', tipo: '', precioVenta: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '' };
-  }
-  form.value.id = null;
-  form.value.sku = '';
-  form.value.nombre = '';
-  form.value.tipo = '';
-  form.value.precioVenta = '';
-  form.value.precioCompra = '';
-  form.value.codigoSat = '';
-  form.value.codigoUnidadSat = '';
-=======
   form.value = {
     id: null,
     codigo: '',
@@ -132,7 +116,6 @@ const editArticulo = (data) => {
     codigoUnidadSat: data.codigoUnidadSat || '',
     unidadSat: data.unidadSat || '',
   };
->>>>>>> df4cf1206b3eaa6b0b4607c9a9784a263d4ff5c4
   showModal.value = true;
 };
 
@@ -172,14 +155,6 @@ const saveArticulo = async () => {
       tipo: form.value.tipo || '',
       precioVenta: Number(form.value.precioVenta) || 0,
       precioCompra: Number(form.value.precioCompra) || 0,
-<<<<<<< HEAD
-      codigoSat: form.value.codigoSat,
-      codigoUnidadSat: form.value.codigoUnidadSat,
-      unidad: '',
-      descripcion: '',
-    };
-    if (form.value.id && !isNaN(Number(form.value.id))) {
-=======
       codigoSat: form.value.codigoSat || '',
       codigoUnidadSat: form.value.codigoUnidadSat || '',
       unidadSat: form.value.unidadSat || '',
@@ -195,7 +170,6 @@ const saveArticulo = async () => {
     console.log('Payload a enviar:', articuloPayload);
     
     if (form.value.id) {
->>>>>>> df4cf1206b3eaa6b0b4607c9a9784a263d4ff5c4
       await updateArticulo(form.value.id, articuloPayload);
       toast.add({ severity: 'success', summary: 'Artículo actualizado', life: 3000 });
     } else {
@@ -273,13 +247,8 @@ const exportToExcel = () => {
       <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
       <Column header="Acciones">
         <template #body="{ data }">
-<<<<<<< HEAD
           <Button icon="pi pi-pencil" class="mr-2" @click="() => handleEditArticulo(data)" />
           <Button icon="pi pi-trash" @click="() => { articuloToDelete.value = data; showConfirmDelete.value = true; }" />
-=======
-          <Button icon="pi pi-pencil" class="mr-2" @click="editArticulo(data)" />
-          <Button icon="pi pi-trash" @click="() => handleDeleteClick(data)" />
->>>>>>> df4cf1206b3eaa6b0b4607c9a9784a263d4ff5c4
         </template>
       </Column>
     </DataTable>
