@@ -43,18 +43,18 @@ axios.interceptors.request.use(config => {
 });
 
 
-axios.interceptors.response.use(
-  response => response,
-  error => {
-    // Si hay error de autenticación o cualquier otro error
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-      router.push('/login');
-    } else if (!error.response) {
-      // Error de red u otro error inesperado
-      router.push('/login');
-    }
-    return Promise.reject(error);
-  }
-);
+// axios.interceptors.response.use(
+//   response => response,
+//   error => {
+//     // Si hay error de autenticación o cualquier otro error
+//     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+//       router.push('/login');
+//     } else if (!error.response) {
+//       // Error de red u otro error inesperado
+//       router.push('/login');
+//     }
+//     return Promise.reject(error);
+//   }
+// );
 
 app.mount('#app')

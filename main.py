@@ -14,6 +14,7 @@ import smtplib
 from email.mime.text import MIMEText
 from fastapi import APIRouter
 from twilio.rest import Client
+from fastapi import Request
 
 
 app = FastAPI()
@@ -404,6 +405,9 @@ def get_usuarios():
 
 @app.post("/usuarios")
 def add_usuario(usuario: Usuario):
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    hashed_password = pwd_context.hash(usuario.password)
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -413,7 +417,7 @@ def add_usuario(usuario: Usuario):
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO usuarios (username, password, perfil) VALUES (%s, %s, %s)",
-        (usuario.username, usuario.password, usuario.perfil)
+        (usuario.username, hashed_password, usuario.perfil)
     )
     db.commit()
     cursor.close()
@@ -426,6 +430,8 @@ class LoginRequest(BaseModel):
 
 @app.post("/usuarios/login")
 def login_usuario(login: LoginRequest):
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -434,14 +440,14 @@ def login_usuario(login: LoginRequest):
     )
     cursor = db.cursor(dictionary=True)
     cursor.execute(
-        "SELECT username, perfil FROM usuarios WHERE username=%s AND password=%s",
-        (login.username, login.password)
+        "SELECT id, username, password, perfil FROM usuarios WHERE username=%s",
+        (login.username,)
     )
     user = cursor.fetchone()
     cursor.close()
     db.close()
-    if user:
-        return {"success": True, "user": user}
+    if user and pwd_context.verify(login.password, user["password"]):
+        return {"success": True, "user": {"id": user["id"], "username": user["username"], "perfil": user["perfil"]}}
     else:
         return {"success": False}
 
@@ -1423,7 +1429,17 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     access_token = create_access_token(data={"sub": user["username"], "user_id": user["id"]})
-    return {"access_token": access_token, "token_type": "bearer"}
+    # Obtener los datos del usuario para devolverlos junto con el token
+    user_data = {
+        "id": user["id"],
+        "username": user["username"],
+        "perfil": user["perfil"]
+    }
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user_data
+    }
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
@@ -1441,6 +1457,31 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     # Aquí puedes consultar el usuario en la base de datos si lo necesitas
     return {"username": username, "user_id": user_id}
+
+@app.get("/usuarios/me")
+def get_usuario_actual(request: Request, token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        user_id: int = payload.get("user_id")
+        if username is None or user_id is None:
+            raise HTTPException(status_code=401, detail="Token inválido")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return user
 
 @app.get("/ubicaciones/{ubicacion_id}/articulos-stock")
 def get_articulos_stock_por_ubicacion(ubicacion_id: int):
@@ -1556,3 +1597,53 @@ def get_movimientos_inventario():
     cursor.close()
     db.close()
     return movimientos
+
+@app.put("/usuarios/{usuario_id}")
+def update_usuario(usuario_id: int, usuario: dict):
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    campos = []
+    valores = []
+    if "username" in usuario:
+        campos.append("username=%s")
+        valores.append(usuario["username"])
+    if "perfil" in usuario:
+        campos.append("perfil=%s")
+        valores.append(usuario["perfil"])
+    if "password" in usuario and usuario["password"]:
+        hashed_password = pwd_context.hash(usuario["password"])
+        campos.append("password=%s")
+        valores.append(hashed_password)
+    if not campos:
+        cursor.close()
+        db.close()
+        return {"message": "Nada que actualizar"}
+    valores.append(usuario_id)
+    sql = f"UPDATE usuarios SET {', '.join(campos)} WHERE id=%s"
+    cursor.execute(sql, valores)
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Usuario actualizado"}
+
+@app.delete("/usuarios/{usuario_id}")
+def delete_usuario(usuario_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM usuarios WHERE id=%s", (usuario_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Usuario eliminado"}

@@ -50,10 +50,12 @@ const handleSubmit = async () => {
   loading.value = true;
   try {
     const result = await loginUsuario(username.value, password.value);
-    if (result.access_token) {
-      // Guarda el token en localStorage o Pinia
+    console.log('Login result:', result);
+    
+    if (result.access_token && result.user) {
       localStorage.setItem('access_token', result.access_token);
-
+      loginStore.setUser(result.user);
+      localStorage.setItem('currentUser', JSON.stringify(result.user));
       emit('session', true);
       router.push('/dashboard');
     } else {

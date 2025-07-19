@@ -3,33 +3,23 @@ import { defineStore } from 'pinia';
 
 export const useLoginStore = defineStore('user', {
   state: () => ({
-	users: [
-	],
 	currentUser: null,
   }),
   actions: {
-	addUser(username, password) {
-	  this.users.push({ username, password });
-	},
-	authenticate(username, password) {
-	  const user = this.users.find(
-		(user) => user.username === username && user.password === password
-	  );
-	  if (user) {
-		this.setUser(username);
-		return true;
-	  }
-	  return false;
-	},
-	setUser(username) {
-	  this.currentUser = { username };
+	setUser(userObj) {
+	  // userObj debe contener al menos username, perfil, id, etc.
+	  this.currentUser = userObj;
 	},
 	logout() {
 	  this.currentUser = null;
+	  localStorage.removeItem('access_token');
 	},
 	isAuthenticated() {
 	  return !!this.currentUser;
 	},
+  },
+  getters: {
+	user: (state) => state.currentUser,
   },
 });
 

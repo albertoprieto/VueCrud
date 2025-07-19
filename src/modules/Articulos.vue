@@ -27,7 +27,6 @@ const form = ref({
   precioCompra: '',
   codigoSat: '',
   codigoUnidadSat: '',
-  // unidad: '', // Elimina este campo del formulario
 });
 const tipoOptions = [
   { label: 'Bien', value: 'Bien' },
@@ -87,12 +86,38 @@ const filteredArticulos = computed(() => {
 });
 
 const openModal = () => {
-  form.value = { id: null, sku: '', nombre: '', tipo: '', precioVenta: '', impuesto: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '' /*, unidad: ''*/ };
+  if (typeof form.value !== 'object' || form.value === null) {
+    form.value = { id: null, sku: '', nombre: '', tipo: '', precioVenta: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '' };
+  }
+  form.value.id = null;
+  form.value.sku = '';
+  form.value.nombre = '';
+  form.value.tipo = '';
+  form.value.precioVenta = '';
+  form.value.precioCompra = '';
+  form.value.codigoSat = '';
+  form.value.codigoUnidadSat = '';
   showModal.value = true;
 };
 
+// Refuerza el click de editar para nunca asignar booleanos
+function handleEditArticulo(data) {
+  if (typeof form.value !== 'object' || form.value === null) {
+    form.value = { id: null, sku: '', nombre: '', tipo: '', precioVenta: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '' };
+  }
+  Object.assign(form.value, data);
+  // Refuerzo: si no hay id, no permitas editar
+  if (!form.value.id) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'El artículo no tiene ID válido para editar.', life: 4000 });
+    showModal.value = false;
+    return;
+  }
+  showModal.value = true;
+}
+
 const closeModal = () => {
   showModal.value = false;
+  // Nunca reasignes form.value a false ni a booleanos
 };
 
 const saveArticulo = async () => {
@@ -112,10 +137,10 @@ const saveArticulo = async () => {
       precioCompra: Number(form.value.precioCompra) || 0,
       codigoSat: form.value.codigoSat,
       codigoUnidadSat: form.value.codigoUnidadSat,
-      unidad: '', // si el backend lo requiere, si no, elimínalo
-      descripcion: '', // si el backend lo requiere, si no, elimínalo
+      unidad: '',
+      descripcion: '',
     };
-    if (form.value.id) {
+    if (form.value.id && !isNaN(Number(form.value.id))) {
       await updateArticulo(form.value.id, articuloPayload);
       toast.add({ severity: 'success', summary: 'Artículo actualizado', life: 3000 });
     } else {
@@ -172,7 +197,7 @@ const exportToExcel = () => {
       <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
       <Column header="Acciones">
         <template #body="{ data }">
-          <Button icon="pi pi-pencil" class="mr-2" @click="() => { form.value = { ...data }; showModal.value = true; }" />
+          <Button icon="pi pi-pencil" class="mr-2" @click="() => handleEditArticulo(data)" />
           <Button icon="pi pi-trash" @click="() => { articuloToDelete.value = data; showConfirmDelete.value = true; }" />
         </template>
       </Column>

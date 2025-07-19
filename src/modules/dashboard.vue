@@ -60,6 +60,33 @@
     </Sidebar>
     <!-- Menubar normal para escritorio -->
     <Menubar :model="items" class="desktop-menu">
+      <template #end>
+        <button class="profile-btn profile-btn-onda" @click="showProfileMenu($event)">
+          <span class="profile-avatar">
+            {{ (user.username || 'U').charAt(0).toUpperCase() }}
+          </span>
+          <span class="profile-username" style="color:var(--color-title)">{{ user.username || 'Usuario' }}</span>
+        </button>
+        <OverlayPanel ref="overlayRef" :dismissable="true" style="min-width:240px; background:var(--color-bg); color:var(--color-text);">
+          <Card>
+            <template #title>
+              <div class="profile-card-title">
+                <span class="profile-avatar-lg">{{ (user.username || 'U').charAt(0).toUpperCase() }}</span>
+                <div>
+                  <div class="profile-real-username" style="color:var(--color-title)">{{ user.username || 'Usuario desconocido' }}</div>
+                  <div class="profile-real-perfil" style="color:var(--color-text)">
+                    <span class="pi pi-id-card mr-1" />
+                    {{ user.perfil || 'Perfil desconocido' }}
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template #content>
+              <Button label="Cerrar Sesión" icon="pi pi-sign-out" class="p-button-text mt-3 w-full" @click="handleLogout" style="color:var(--color-title)" />
+            </template>
+          </Card>
+        </OverlayPanel>
+      </template>
       <template #item="{ item, props, hasSubmenu }">
         <template v-if="item.separator">
           <hr class="menu-separator" />
@@ -98,6 +125,8 @@ import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import Menubar from 'primevue/menubar';
 import TieredMenu from 'primevue/tieredmenu';
 import Sidebar from 'primevue/sidebar';
+import OverlayPanel from 'primevue/overlaypanel';
+import Card from 'primevue/card';
 import { useRouter, useRoute } from 'vue-router';
 import informacion from './informacion.vue';
 import { useLoginStore } from '@/stores/loginStore';
@@ -112,6 +141,8 @@ const route = useRoute();
 const loginStore = useLoginStore();
 
 const showSidebar = ref(false);
+const overlayRef = ref();
+const user = computed(() => loginStore.user || {});
 
 const isHomeRoute = computed(() => route.path === '/dashboard');
 
@@ -192,6 +223,10 @@ watch(
     loading.value = false;
   }
 );
+
+function showProfileMenu(event) {
+  overlayRef.value.toggle(event);
+}
 </script>
 
 <style scoped>
@@ -250,6 +285,71 @@ watch(
 .mobile-menu {
   width: 100%;
   min-width: 220px;
+}
+.profile-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-left: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.7rem 0.2rem 0.2rem;
+  border-radius: 2rem;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.profile-btn-onda {
+  background: var(--color-card, #f7f7fa);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border: 1px solid var(--color-border, #e0e0e0);
+  color: var(--color-text, #222);
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.profile-btn:hover, .profile-btn-onda:hover {
+  background: var(--color-primary, var(--color-title, #1976d2));
+  color: var(--color-on-primary, var(--color-bg, #fff));
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.profile-avatar {
+  background: var(--color-primary, var(--color-title, #1976d2));
+  color: var(--color-on-primary, var(--color-bg, #fff));
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+  transition: background 0.2s, color 0.2s;
+}
+.profile-avatar-lg {
+  background: var(--color-primary, var(--color-title, #1976d2));
+  color: var(--color-on-primary, var(--color-bg, #fff));
+  border-radius: 50%;
+  width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  transition: background 0.2s, color 0.2s;
+}
+.profile-real-username {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: var(--color-primary, var(--color-title, #1976d2));
+}
+.profile-real-perfil {
+  font-size: 0.95rem;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.1rem;
 }
 @media (max-width: 768px) {
   .desktop-menu {
