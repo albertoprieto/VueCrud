@@ -122,7 +122,7 @@ async function generarPDF() {
         ]
       },
       { text: '\n' },
-      { text: 'Orden de venta', style: 'title', alignment: 'center' },
+      { text: 'Orden de servicio', style: 'title', alignment: 'center' },
       { text: `${folio}`, style: 'folio', alignment: 'center' },
       { text: '\n' },
       {

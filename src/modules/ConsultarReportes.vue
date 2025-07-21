@@ -83,7 +83,7 @@
           <Button
             icon="pi pi-file-pdf"
             class="p-button-sm p-button-success ml-2"
-            label="Orden de venta"
+            label="Orden de servicio"
             @click="descargarOrdenVenta(slotProps.data)"
           />
           <Button

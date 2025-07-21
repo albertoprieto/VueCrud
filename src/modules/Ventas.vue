@@ -21,7 +21,7 @@
           />
         </div>
         <div class="ventas-form-col">
-          <label>Orden de venta nº</label>
+          <label>Orden de servicio nº</label>
           <InputText :value="folioPropuesto" disabled class="w-full" />
         </div>
         <div class="ventas-form-col">
@@ -182,7 +182,7 @@
 El tiempo de traslado en el envió de los paquetes depende de la paquetería.</small>
       </div>
 
-      <Dialog v-model:visible="ventaRegistrada" header="Venta registrada" :closable="false" :modal="true" class="ventas-dialog">
+      <Dialog v-model:visible="ventaRegistrada" header="Orden de Servicio" :closable="false" :modal="true" class="ventas-dialog">
         <p>{{ mensajeExito }}</p>
         <Button label="Aceptar" icon="pi pi-check" @click="cerrarDialogoVenta" autofocus />
       </Dialog>
@@ -239,7 +239,7 @@ const {
 } = useVentas();
 
 const ventaRegistrada = ref(false);
-const mensajeExito = ref('La orden de venta se registró correctamente.');
+const mensajeExito = ref('La orden de servicio se registró correctamente.');
 const detalleVentaPDF = ref([]);
 const clientePDF = ref({});
 const articulosPDF = ref([]);
@@ -455,8 +455,8 @@ async function guardarVentaConLoading() {
     });
 
     ventaRegistrada.value = true;
-    mensajeExito.value = 'La orden de venta se registró correctamente.';
-    toast.add({ severity: 'success', summary: 'Orden de Venta registrada', detail: mensajeExito.value, life: 3000 });
+    mensajeExito.value = 'La orden de servicio se registró correctamente.';
+    toast.add({ severity: 'success', summary: 'Orden de servicio registrada', detail: mensajeExito.value, life: 3000 });
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la orden.', life: 4000 });
   } finally {

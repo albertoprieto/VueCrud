@@ -458,7 +458,7 @@ const irAClientes = () => {
             <Column header="Subtotal" :style="{ minWidth: '100px' }">
               <template #body="slotProps">
                 <span class="mobile-text">
-                  <!-- {{ ((Number(slotProps.data.cantidad) || 0) * (Number(slotProps.data.precio_unitario) || 0).toFixed(2) }} -->
+                  {{ (Number(slotProps.data.cantidad) || 0) * (Number(slotProps.data.precio_unitario) || 0).toFixed(2) }}
                 </span>
               </template>
             </Column>
