@@ -9,7 +9,7 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
 import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
+
 import { useToast } from 'primevue/usetoast';
 
 const toast = useToast();
@@ -234,11 +234,13 @@ const exportToExcel = () => {
 
 <template>
   <div>
+    
+    <h2 class="mb-4">Artículos</h2>
     <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" class="mb-3" />
     <Button label="Exportar a Excel" icon="pi pi-file-excel" @click="exportToExcel" class="mb-3" />
     <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive">
       <Column field="codigo" header="Código" :sortable="true" />
-      <Column field="nombre" header="Nombre" :sortable="true" />
+      <!-- <Column field="nombre" header="Nombre" :sortable="true" /> -->
       <Column field="sku" header="SKU" :sortable="true" />
       <Column field="tipo" header="Tipo" :sortable="true" />
       <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />

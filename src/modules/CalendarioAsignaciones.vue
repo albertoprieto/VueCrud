@@ -18,19 +18,9 @@
             <strong>Fecha de Servicio:</strong> {{ selectedEvent.startStr?.slice(0,10) || '-' }}
           </div>
           <div class="dialog-section">
-            <strong>Detalle:</strong> {{ selectedEvent.extendedProps?.descripcion || 'Sin descripción' }}
-          </div>
-          <div class="dialog-section">
-            <strong>Status:</strong> {{ selectedEvent.extendedProps?.status || '-' }}
-          </div>
-          <div class="dialog-section">
-            <strong>IMEI:</strong> {{ selectedEvent.extendedProps?.imei || '-' }}
-          </div>
-          <div class="dialog-section">
-            <strong>ID Asignación:</strong> {{ selectedEvent.extendedProps?.id || '-' }}
+            <strong>Descripcion:</strong> {{ selectedEvent.extendedProps?.descripcion || 'Sin descripción' }}
           </div>
           <div class="dialog-actions" style="display:flex; gap:1rem; margin-top:1.5rem;">
-            {{selectedEvent.extendedProps}}
             <Button label="Agregar Reporte" icon="pi pi-plus" class="p-button-success p-button-sm" @click="irReporteServicio(selectedEvent.extendedProps)" />
             <Button label="Descargar Orden" icon="pi pi-file-pdf" class="p-button-secondary p-button-sm" @click="descargarNota(selectedEventData)" v-if="selectedEventData.venta_id" />
           </div>

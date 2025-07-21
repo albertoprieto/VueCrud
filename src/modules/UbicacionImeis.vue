@@ -26,7 +26,7 @@
 
     <DataTable :value="imeisFiltrados" :loading="loading">
       <Column field="imei" header="IMEI" />
-      <Column field="articulo_nombre" header="Artículo" />
+      <!-- <Column field="articulo_nombre" header="Artículo" /> -->
       <Column field="sku" header="SKU" />
       <Column field="status" header="Estado">
         <template #body="slotProps">
@@ -40,7 +40,7 @@
         </template>
       </Column>
       <Column field="date" header="Fecha registro" />
-      <Column field="registeredBy" header="Registró" />
+      <!-- <Column field="registeredBy" header="Registró" /> -->
     </DataTable>
   </div>
 </template>

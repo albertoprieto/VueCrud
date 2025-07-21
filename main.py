@@ -1406,12 +1406,20 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    # Lista de columnas válidas según DESCRIBE reportes_servicio
+    valid_columns = [
+        "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos"
+    ]
     campos = []
     valores = []
     for k, v in reporte.items():
-        if k != "id":
+        if k in valid_columns:
             campos.append(f"{k}=%s")
             valores.append(v)
+    if not campos:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=400, detail="No hay campos válidos para actualizar.")
     valores.append(reporte_id)
     sql = f"UPDATE reportes_servicio SET {', '.join(campos)} WHERE id=%s"
     cursor.execute(sql, valores)

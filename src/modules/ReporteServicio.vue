@@ -78,7 +78,7 @@
                 <InputText :value="tecnicoNombre" placeholder="Técnico asignado" class="w-full mb-2" disabled />
                 <InputText :value="tecnicoTelefono" placeholder="Teléfono del técnico" class="w-full mb-2" disabled />
               </div>
-              <h4 class="section-title">Firmas y aviso</h4>
+              <h4 class="section-title">Aviso</h4>
               <div class="form-group">
                 <label>Nombre del cliente</label>
                 <InputText :value="form.nombre_cliente" placeholder="Nombre del cliente" class="w-full mb-2" disabled />
@@ -88,9 +88,7 @@
                 <InputText :value="form.telefono_cliente" placeholder="Teléfono" class="w-full mb-2" disabled />
               </div>
               <div class="form-group">
-                <InputText v-model="form.firma_cliente" placeholder="Firma del cliente" class="w-full mb-2" />
                 <InputText :value="tecnicoNombre" placeholder="Nombre del instalador" class="w-full mb-2" disabled />
-                <InputText v-model="form.firma_instalador" placeholder="Firma del instalador" class="w-full mb-2" />
               </div>
             </div>
             <div class="form-col">
@@ -137,7 +135,7 @@
               </div>
               <h4 class="section-title">Venta y pago</h4>
               <div class="form-group">
-                <label>Subtotal (orden de venta)</label>
+                <label>Subtotal (orden de servicio)</label>
                 <InputText v-model="form.subtotal" placeholder="Subtotal" class="w-full mb-2" :disabled="true" />
               </div>
               <div class="form-group">
@@ -198,6 +196,8 @@ import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getUsuarios } from '@/services/usuariosService';
 import { getVentas } from '@/services/ventasService';
 import InputNumber from 'primevue/inputnumber';
+
+const emit = defineEmits(['close', 'saved']);
 
 const route = useRoute();
 const asignacionIdValido = computed(() => Number.isInteger(Number(route.params.asignacionId)) && Number(route.params.asignacionId) > 0);

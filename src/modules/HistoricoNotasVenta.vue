@@ -1,6 +1,6 @@
 <template>
   <div class="historico-notas-container">
-    <h2 class="historico-title">Consultar Orden de Venta</h2>
+    <h2 class="historico-title">Consultar Orden de Servicio</h2>
     <!-- Agrega esto antes del DataTable -->
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
       <InputText v-model="filtroFolio" placeholder="Buscar por folio..." class="filtro-input" clearable />
@@ -44,7 +44,7 @@
       responsiveLayout="scroll"
       class="historico-table"
     >
-      <Column field="id" header="Folio" />
+      <Column field="folio" header="Folio" />
       <Column field="cliente_nombre" header="Cliente" />
       <Column field="tecnicoNombre" header="Asignado a">
         <template #body="slotProps">
@@ -180,6 +180,8 @@ onMounted(async () => {
     })
   );
   ventas.value = ventasConTecnico;
+  console.log(ventas.value);
+  
   loading.value = false;
 });
 
