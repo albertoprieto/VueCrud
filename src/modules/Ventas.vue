@@ -13,7 +13,7 @@
           <Dropdown
             v-model="cotizacionSeleccionada"
             :options="cotizacionesCliente"
-            optionLabel="id"
+            optionLabel="label"
             optionValue="id"
             placeholder="Selecciona cotización"
             class="w-full"
@@ -22,7 +22,7 @@
         </div>
         <div class="ventas-form-col">
           <label>Orden de servicio nº</label>
-          <InputText :value="folioPropuesto" disabled class="w-full" />
+          <InputText :value="folioAsignado || 'Se asignará automáticamente'" disabled class="w-full" />
         </div>
         <div class="ventas-form-col">
           <label>Fecha</label>
@@ -32,10 +32,10 @@
 
       <!-- Fila 2: Referencia, Vendedor, Descuento -->
       <div class="ventas-form-header">
-        <div class="ventas-form-col">
+        <!-- <div class="ventas-form-col">
           <label>N.º de cotización</label>
           <InputText v-model="venta.referencia" class="w-full" />
-        </div>
+        </div> -->
         <div class="ventas-form-col">
           <label>Vendedor</label>
           <Dropdown
@@ -154,6 +154,21 @@
         <InputText v-model="venta.observaciones" class="w-full" />
       </div>
 
+      <div class="mb-2">
+        <label>Método de pago <span style="color:red">*</span></label>
+        <Dropdown
+          v-model="venta.terminos_pago"
+          :options="metodoPagoOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Selecciona método de pago"
+          class="w-full"
+          :class="{'p-invalid': !venta.terminos_pago}"
+        />
+        <small v-if="!venta.terminos_pago" class="error-text">Selecciona un método de pago</small>
+      </div>
+
+
       <!-- Mensaje de advertencia si falta stock -->
       <div v-if="stockInsuficiente" class="error-text mb-2">
         No hay suficiente stock para uno o más artículos en la ubicación seleccionada.
@@ -215,7 +230,6 @@ import Chip from 'primevue/chip';
 
 const venta = reactive({
   cliente_id: null,
-  folio: '',
   fecha: new Date().toISOString().slice(0, 10),
   referencia: '',
   fecha_envio: '',
@@ -245,13 +259,13 @@ const clientePDF = ref({});
 const articulosPDF = ref([]);
 const showDetalleDialog = ref(false);
 const loadingGuardar = ref(false);
-const folioPropuesto = ref('');
 const ubicaciones = ref([]);
 const vendedores = ref([]);
 const cotizacionesCliente = ref([]);
 const cotizacionSeleccionada = ref(null);
 const esVentaDeCotizacion = computed(() => !!cotizacionSeleccionada.value);
 const articulosDisponibles = ref([]);
+const folioAsignado = ref('');
 
 function irAEditarCotizacion() {
   if (cotizacionSeleccionada.value) {
@@ -267,16 +281,10 @@ const terminosPagoOptions = [
   { label: 'Pago Contra Entrega', value: 'Pago Contra Entrega' }
 ];
 
-function generarFolioConsecutivo(ventas) {
-  const max = ventas
-    .map(v => {
-      const match = typeof v.folio === 'string' && v.folio.match(/^SO-(\d+)$/);
-      return match ? parseInt(match[1], 10) : 0;
-    })
-    .reduce((a, b) => Math.max(a, b), 0);
-  const siguiente = max + 1;
-  return `SO-${siguiente.toString().padStart(5, '0')}`;
-}
+const metodoPagoOptions = [
+  { label: 'Depósito', value: 'Depósito' },
+  { label: 'Transferencia', value: 'Transferencia' }
+];
 
 const clientes = ref([]);
 const todasCotizaciones = ref([]); // Guarda todas las cotizaciones para filtrar clientes
@@ -299,8 +307,8 @@ onMounted(async () => {
   // 4. Cargar ubicaciones, ventas, usuarios
   ubicaciones.value = await getUbicaciones();
   const ventas = await getVentas();
-  folioPropuesto.value = generarFolioConsecutivo(ventas);
-  venta.folio = folioPropuesto.value;
+  // folioPropuesto.value = generarFolioConsecutivo(ventas);
+  // venta.folio = folioPropuesto.value;
   const usuarios = await getUsuarios();
   vendedores.value = usuarios.filter(u => u.perfil === 'Vendedor');
 });
@@ -352,7 +360,7 @@ watch(
         )
         .map(c => ({
           ...c,
-          label: `#${c.id} ${c.descripcion ? '- ' + c.descripcion : ''}`
+          label: `COTIZACION-${String(c.id).padStart(5, '0')}`
         }));
       console.log('Cotizaciones del cliente seleccionado:', cotizacionesCliente.value);
     } else {
@@ -365,9 +373,11 @@ watch(
 async function guardarVentaConLoading() {
   loadingGuardar.value = true;
   try {
-    const ventas = await getVentas();
-    venta.folio = generarFolioConsecutivo(ventas);
-
+    if (!venta.terminos_pago) {
+      toast.add({ severity: 'error', summary: 'Error', detail: 'Debes seleccionar un método de pago.', life: 4000 });
+      loadingGuardar.value = false;
+      return;
+    }
     // Prepara los datos de la venta
     const { addVenta } = await import('@/services/ventasService');
     const ubicacionObj = ubicaciones.value.find(u => u.id === venta.ubicacion_id);
@@ -382,11 +392,10 @@ async function guardarVentaConLoading() {
     }));
 
     // Guarda la venta
-    await addVenta({
+    const response = await addVenta({
       cliente_id: venta.cliente_id,
       fecha: venta.fecha,
-      folio: venta.folio,
-      referencia: venta.referencia ? String(venta.referencia) : '', // <-- aquí
+      referencia: venta.referencia ? String(venta.referencia) : '',
       fecha_envio: venta.fecha_envio ? venta.fecha_envio : null,
       terminos_pago: venta.terminos_pago,
       metodo_entrega: venta.metodo_entrega,
@@ -399,6 +408,8 @@ async function guardarVentaConLoading() {
       observaciones: venta.observaciones,
       articulos: articulosLimpios
     });
+
+    folioAsignado.value = response.folio || '';
 
     // Si la venta proviene de una cotización, autoriza la cotización
     if (cotizacionSeleccionada.value) {
@@ -455,7 +466,7 @@ async function guardarVentaConLoading() {
     });
 
     ventaRegistrada.value = true;
-    mensajeExito.value = 'La orden de servicio se registró correctamente.';
+    mensajeExito.value = `La orden de servicio se registró correctamente.\nFolio asignado: ${folioAsignado.value}`;
     toast.add({ severity: 'success', summary: 'Orden de servicio registrada', detail: mensajeExito.value, life: 3000 });
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la orden.', life: 4000 });

@@ -69,23 +69,25 @@
       <Column header="Acciones">
         <template #body="slotProps">
           <Button
+            v-if="!slotProps.data.pagado"  
             icon="pi pi-pencil"
             class="p-button-sm p-button-info"
             label="Editar"
             @click="abrirEditar(slotProps.data)"
           />
           <Button
+            v-if="!slotProps.data.pagado"
             icon="pi pi-trash"
             class="p-button-sm p-button-danger ml-2"
             label="Eliminar"
             @click="confirmarEliminarReporte(slotProps.data)"
           />
-          <Button
+          <!-- <Button
             icon="pi pi-file-pdf"
             class="p-button-sm p-button-success ml-2"
             label="Orden de servicio"
             @click="descargarOrdenVenta(slotProps.data)"
-          />
+          /> -->
           <Button
             icon="pi pi-file-pdf"
             class="p-button-sm p-button-warning ml-2"
@@ -93,16 +95,11 @@
             @click="descargarReporteServicio(slotProps.data)"
           />
           <Button
-            icon="pi pi-upload"
-            class="p-button-sm p-button-help ml-2"
-            label="Subir comprobante"
-            @click="subirComprobante(slotProps.data)"
-          />
-          <Button
-            icon="pi pi-info-circle"
-            class="p-button-sm p-button-secondary ml-2"
-            label="¿Dónde pagó?"
-            @click="verCuentaPago(slotProps.data)"
+            v-if="!slotProps.data.pagado"
+            icon="pi pi-check-circle"
+            class="p-button-sm p-button-success ml-2"
+            label="Marcar como pagado"
+            @click="marcarComoPagado(slotProps.data)"
           />
         </template>
       </Column>
@@ -485,14 +482,20 @@ onMounted(async () => {
   });
 });
 
-function subirComprobante(reporte) {
-  console.log('Subir comprobante para reporte:', reporte);
-  // Aquí puedes abrir un diálogo o modal para subir el archivo
-}
-
-function verCuentaPago(reporte) {
-  console.log('Ver cuenta donde pagó para reporte:', reporte);
-  // Aquí puedes mostrar la información de la cuenta destino
+async function marcarComoPagado(reporte) {
+  loading.value = true;
+  try {
+    await axios.put(`${API_URL}/${reporte.id}`, { ...reporte, pagado: true });
+    await cargarReportes();
+    toast.add({ severity: 'success', summary: 'Pagado', detail: 'El reporte fue marcado como pagado.', life: 3000 });
+    messageDialogText.value = 'El reporte fue marcado como pagado.';
+    showMessageDialog.value = true;
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo marcar como pagado.', life: 4000 });
+    messageDialogText.value = 'No se pudo marcar como pagado.';
+    showMessageDialog.value = true;
+  }
+  loading.value = false;
 }
 </script>
 
@@ -500,23 +503,23 @@ function verCuentaPago(reporte) {
 .consultar-reportes-container {
   margin: 2rem auto;
   text-align: center;
-  background: #23272f;
+  /* background: #23272f; */
   border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
-  color: #e4c8c8;
+  /* box-shadow: 0 4px 24px rgba(0,0,0,0.10); */
+  /* color: #e4c8c8; */
   padding: 2rem 1.5rem;
 }
 .consultar-reportes-title {
   margin-bottom: 2rem;
-  color: #e4c8c8;
+  /* color: #e4c8c8; */
 }
 .historico-dialog :deep(.p-dialog-content) {
-  background: var(--color-card, #23272f);
+  /* background: var(--color-card, #23272f); */
   padding: 1.5rem 1rem;
   border-radius: 12px;
 }
 .historico-dialog :deep(.p-dialog-header) {
-  background: var(--color-bg, #23272f);
+  /* background: var(--color-bg, #23272f); */
   color: var(--color-title, #ff4081);
   border-bottom: 1px solid #e0e0e0;
   border-radius: 12px 12px 0 0;
@@ -543,9 +546,9 @@ function verCuentaPago(reporte) {
 .filtro-input {
   flex: 1;
   min-width: 150px;
-  background: #2c2f3e;
+  /* background: #2c2f3e; */
   color: #e4c8c8;
-  border: 1px solid #444851;
+  /* border: 1px solid #444851; */
   border-radius: 8px;
   padding: 0.5rem 1rem;
 }

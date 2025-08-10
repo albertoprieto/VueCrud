@@ -848,6 +848,21 @@ def crear_venta(venta: Venta):
     )
     cursor = db.cursor()
     fecha = venta.fecha or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # --- FOLIO GENERATION (SAFE, UNIQUE) ---
+    cursor.execute("LOCK TABLES ventas WRITE")
+    cursor.execute("SELECT folio FROM ventas WHERE folio LIKE 'SERVICIO-%' ORDER BY id DESC LIMIT 1")
+    last_folio_row = cursor.fetchone()
+    if last_folio_row and last_folio_row[0]:
+        import re
+        match = re.match(r"SERVICIO-(\d+)", last_folio_row[0])
+        last_num = int(match.group(1)) if match else 0
+    else:
+        last_num = 0
+    new_folio = f"SERVICIO-{str(last_num + 1).zfill(5)}"
+    cursor.execute("UNLOCK TABLES")
+    # --- END FOLIO GENERATION ---
+
     cursor.execute(
         """
         INSERT INTO ventas
@@ -855,7 +870,7 @@ def crear_venta(venta: Venta):
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
-            venta.cliente_id, fecha, venta.folio, venta.referencia, venta.fecha_envio, venta.terminos_pago,
+            venta.cliente_id, fecha, new_folio, venta.referencia, venta.fecha_envio, venta.terminos_pago,
             venta.metodo_entrega, venta.vendedor, venta.almacen, venta.descuento, venta.notas_cliente,
             venta.terminos_condiciones, venta.total, venta.observaciones
         )
@@ -906,7 +921,7 @@ def crear_venta(venta: Venta):
         print(f"Error al registrar movimiento de dinero: {e}")
     cursor.close()
     db.close()
-    return {"message": "Venta registrada exitosamente", "venta_id": venta_id}
+    return {"message": "Venta registrada exitosamente", "venta_id": venta_id, "folio": new_folio}
 
 @app.get("/ventas")
 def listar_ventas():
