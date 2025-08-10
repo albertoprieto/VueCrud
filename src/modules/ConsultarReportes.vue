@@ -190,10 +190,13 @@ import { getTodosArticulos } from '@/services/articulosService';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { useToast } from 'primevue/usetoast';
 import { generarReporteServicioPDF } from '@/services/reporteServicioPdfService.js';
+import { useLoginStore } from '@/stores/loginStore';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
 
 const toast = useToast();
+const loginStore = useLoginStore();
+const user = computed(() => loginStore.user || {});
 
 const reportes = ref([]);
 const loading = ref(false);
@@ -262,7 +265,18 @@ const filtroFecha = ref('');
 const filtroPagado = ref('');
 
 const reportesFiltrados = computed(() => {
-  return reportes.value.filter(r => {
+  let lista = reportes.value;
+  // Si es técnico y NO es admin, filtra solo sus reportes
+  if (user.value.perfil === 'Tecnico') {
+    lista = lista.filter(r => {
+      // nombre_instalador puede ser username o nombre
+      return (
+        (r.nombre_instalador && r.nombre_instalador.toLowerCase() === (user.value.username || '').toLowerCase())
+      );
+    });
+  }
+  // Admin ve todo, otros perfiles pueden tener lógica aquí si se requiere
+  return lista.filter(r => {
     const clienteOk = !filtroCliente.value || (r.nombre_cliente && r.nombre_cliente.toLowerCase().includes(filtroCliente.value.toLowerCase()));
     const so = r.folio || obtenerSO(r);
     const soOk = !filtroSO.value || (so && so.toLowerCase().includes(filtroSO.value.toLowerCase()));

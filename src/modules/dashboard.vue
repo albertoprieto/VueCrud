@@ -165,64 +165,82 @@ const reportesNuevos = ref(0);
 
 // Opcional: recargar cuando cambie la ruta o cada cierto tiempo
 
-const items = computed(() => [
-  {
-    label: 'Inicio',
-    icon: 'pi pi-fw pi-home',
-    route: '/dashboard'
-  },
-  {
-    label: 'Inventario',
-    icon: 'pi pi-fw pi-shopping-cart',
-    items: [
-      { label: 'Alta artículos', route: '/alta-articulo', icon: 'pi pi-fw pi-plus-circle' },
-      { label: 'Asignar IMEIs', route: '/asignar-imeis', icon: 'pi pi-fw pi-barcode' },
+const items = computed(() => {
+  if (user.value.perfil === 'Tecnico') {
+    return [
       {
-        label: 'Transferir IMEIs',
-        route: '/transferir-imeis',
-        icon: 'pi pi-fw pi-share-alt'
+        label: 'Técnicos',
+        icon: 'pi pi-fw pi-user-cog',
+        items: [
+          { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
+          { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
+        ]
       },
-      { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
-      { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
-      // { label: 'Historico', route: '/articulos-con-imeis', icon: 'pi pi-fw pi-history' },
-    ]
-  },
-  {
-    label: 'Ventas',
-    icon: 'pi pi-fw pi-briefcase',
-    items: [
-      { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users' },
-      { label: 'Cotizador',icon: 'pi pi-fw pi-file-edit',route: '/cotizador'},
-      { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', badge: cotizacionesPendientes.value || undefined },
-      { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
-      { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
-    ]
-  },
-  {
-    label: 'Dinero',
-    icon: 'pi pi-fw pi-wallet',
-    route: '/dinero'
-  },
-  {
-    label: 'Usuarios',
-    icon: 'pi pi-fw pi-users',
-    route: '/usuarios'
-  },
-  {
-    label: 'Técnicos',
-    icon: 'pi pi-fw pi-user-cog',
-    items: [
-      // { label: 'Asignaciones a Técnicos', route: '/calendario-asignaciones', icon: 'pi pi-fw pi-calendar' },
-      { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
-      { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
-    ]
-  },
-  {
-    label: 'Cerrar Sesión',
-    icon: 'pi pi-fw pi-sign-out',
-    command: handleLogout
+      {
+        label: 'Cerrar Sesión',
+        icon: 'pi pi-fw pi-sign-out',
+        command: handleLogout
+      }
+    ];
   }
-]);
+
+  return [
+    {
+      label: 'Inicio',
+      icon: 'pi pi-fw pi-home',
+      route: '/dashboard'
+    },
+    {
+      label: 'Inventario',
+      icon: 'pi pi-fw pi-shopping-cart',
+      items: [
+        { label: 'Alta artículos', route: '/alta-articulo', icon: 'pi pi-fw pi-plus-circle' },
+        { label: 'Asignar IMEIs', route: '/asignar-imeis', icon: 'pi pi-fw pi-barcode' },
+        {
+          label: 'Transferir IMEIs',
+          route: '/transferir-imeis',
+          icon: 'pi pi-fw pi-share-alt'
+        },
+        { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
+        { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
+      ]
+    },
+    {
+      label: 'Ventas',
+      icon: 'pi pi-fw pi-briefcase',
+      items: [
+        { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users' },
+        { label: 'Cotizador',icon: 'pi pi-fw pi-file-edit',route: '/cotizador'},
+        { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', badge: cotizacionesPendientes.value || undefined },
+        { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
+        { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
+      ]
+    },
+    {
+      label: 'Dinero',
+      icon: 'pi pi-fw pi-wallet',
+      route: '/dinero'
+    },
+    {
+      label: 'Usuarios',
+      icon: 'pi pi-fw pi-users',
+      route: '/usuarios'
+    },
+    {
+      label: 'Técnicos',
+      icon: 'pi pi-fw pi-user-cog',
+      items: [
+        { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
+        { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
+      ]
+    },
+    {
+      label: 'Cerrar Sesión',
+      icon: 'pi pi-fw pi-sign-out',
+      command: handleLogout
+    }
+  ];
+});
 
 const loading = ref(false);
 

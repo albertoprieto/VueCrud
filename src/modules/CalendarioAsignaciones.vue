@@ -112,6 +112,7 @@ import { getVentas, getDetalleVenta } from '@/services/ventasService';
 import { getTodosArticulos } from '@/services/articulosService';
 import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
 import Dialog from 'primevue/dialog';
+import { useLoginStore } from '@/stores/loginStore';
 
 const props = defineProps({
   vista: {
@@ -162,6 +163,9 @@ const selectedEvent = ref(null);
 const dialogTitle = ref('Detalle de Asignación');
 const selectedEventData = ref({});
 
+const loginStore = useLoginStore();
+const user = computed(() => loginStore.user || {});
+
 onMounted(async () => {
   loading.value = true;
   const [asignacionesRaw, clientesRaw, ventasRaw] = await Promise.all([
@@ -169,26 +173,33 @@ onMounted(async () => {
     getClientes(),
     getVentas()
   ]);
-  // Mapea id -> nombre para clientes
   clientesMap.value = Object.fromEntries(clientesRaw.map(c => [c.id, c.nombre]));
-  // Mapea id -> folio para ventas
   ventasMap.value = Object.fromEntries(ventasRaw.map(v => [v.id, v.folio]));
-  asignaciones.value = asignacionesRaw.map(a => ({
+  let todasAsignaciones = asignacionesRaw.map(a => ({
     ...a,
     cliente: clientesMap.value[a.cliente_id] || a.cliente_nombre || a.cliente_id || '',
     tecnico: a.tecnico || a.tecnico_nombre || '',
     venta_folio: ventasMap.value[a.venta_id] || ''
   }));
+  // Filtrar por técnico si el usuario es técnico
+  if (user.value.perfil === 'Tecnico') {
+    todasAsignaciones = todasAsignaciones.filter(a => {
+      // Comparar por username o nombre según cómo se guarde el técnico
+      return (
+        (a.tecnico && a.tecnico.toLowerCase() === (user.value.username || '').toLowerCase()) ||
+        (a.tecnico_nombre && a.tecnico_nombre.toLowerCase() === (user.value.username || '').toLowerCase())
+      );
+    });
+  }
+  asignaciones.value = todasAsignaciones;
   tecnicos.value = [...new Set(asignaciones.value.map(a => a.tecnico).filter(Boolean))].map(t => ({ tecnico: t }));
   clientes.value = [...new Set(asignaciones.value.map(a => a.cliente).filter(Boolean))].map(c => ({ cliente: c }));
   loading.value = false;
-
-  // Para el calendario:
   events.value = asignaciones.value.map(a => ({
     title: a.tecnico ? `Técnico: ${a.tecnico}` : 'Asignación',
     start: a.fecha_servicio,
     description: `Cliente: ${a.cliente || a.cliente_id || ''}\nVenta: ${a.venta_folio || a.venta_id || ''}`,
-    id: a.id ?? a.venta_id, // Asegura que siempre haya un id
+    id: a.id ?? a.venta_id,
     ...a
   }));
   calendarOptions.value.events = events.value;
