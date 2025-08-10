@@ -9,7 +9,7 @@
       </div>
     </div>
     <form v-else class="reporte-form" @submit.prevent="guardar">
-      <div class="abonos-section" v-if="form.total">
+      <!-- <div class="abonos-section" v-if="form.total">
         <h4 class="section-title">Pagos y abonos</h4>
         <div v-if="pagos.length === 0" class="abonos-vacio">No hay pagos registrados para este servicio.</div>
         <div v-else>
@@ -42,7 +42,7 @@
           </div>
           <Button type="submit" label="Registrar abono" icon="pi pi-plus" class="p-button-success" />
         </form>
-      </div>
+      </div> -->
 
       <div v-if="loading" class="loader-overlay">
         <Loader />
@@ -66,8 +66,8 @@
               <div class="form-group">
                 <InputText v-model="form.marca" placeholder="Marca" class="w-full mb-2" />
                 <InputText v-model="form.submarca" placeholder="Submarca" class="w-full mb-2" />
-                <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" :disabled="!!form.modelo" />
-                <InputText v-model="form.placas" placeholder="Placas" class="w-full mb-2" :disabled="!!form.placas" />
+                <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" />
+                <InputText v-model="form.placas" placeholder="Placas" class="w-full mb-2" />
                 <InputText v-model="form.color" placeholder="Color" class="w-full mb-2" />
                 <InputText v-model="form.numero_economico" placeholder="Número económico" class="w-full mb-2" />
               </div>
@@ -76,7 +76,7 @@
                 <InputText v-model="form.sim_proveedor" placeholder="Proveedor" class="w-full mb-2" />
                 <InputText v-model="form.sim_serie" placeholder="Serie" class="w-full mb-2" />
                 <InputText :value="tecnicoNombre" placeholder="Técnico asignado" class="w-full mb-2" disabled />
-                <InputText :value="tecnicoTelefono" placeholder="Teléfono del técnico" class="w-full mb-2" disabled />
+                <!-- <InputText :value="tecnicoTelefono" placeholder="Teléfono del técnico" class="w-full mb-2" disabled /> -->
               </div>
               <h4 class="section-title">Aviso</h4>
               <div class="form-group">
@@ -87,9 +87,9 @@
                 <label>Teléfono del cliente</label>
                 <InputText :value="form.telefono_cliente" placeholder="Teléfono" class="w-full mb-2" disabled />
               </div>
-              <div class="form-group">
+              <!-- <div class="form-group">
                 <InputText :value="tecnicoNombre" placeholder="Nombre del instalador" class="w-full mb-2" disabled />
-              </div>
+              </div> -->
             </div>
             <div class="form-col">
               <h4 class="section-title">Datos del equipo</h4>
@@ -119,7 +119,7 @@
                   placeholder="Selecciona plataforma"
                   class="w-full mb-2"
                   optionLabel="label"
-                  :disabled="true"
+                  :disabled="false"
                 />
               </div>
               <div class="form-group">
@@ -130,7 +130,7 @@
                   placeholder="Selecciona usuario"
                   class="w-full mb-2"
                   optionLabel="label"
-                  :disabled="true"
+                  :disabled="false"
                 />
               </div>
               <h4 class="section-title">Venta y pago</h4>
@@ -140,15 +140,13 @@
               </div>
               <div class="form-group">
                 <label>Total a cobrar</label>
-                <InputText v-model="form.total" placeholder="Total a cobrar" class="w-full mb-2" />
+                <InputNumber v-model="form.total" placeholder="Total a cobrar" class="w-full mb-2" />
                 <small>El instalador puede modificar este valor si hay algún ajuste.</small>
               </div>
+              <!-- Método de pago (display-only) -->
               <div class="form-group">
-                <Dropdown v-model="form.forma_pago" :options="formasPago" placeholder="Forma de pago" class="w-full mb-2" />
-                <div class="checkbox-group mb-2">
-                  <Checkbox v-model="form.pagado" :binary="true" inputId="pagado" />
-                  <label for="pagado">Pagado</label>
-                </div>
+                <label>Método de pago</label>
+                <InputText v-model="form.value.forma_pago" disabled class="w-full" />
               </div>
               <div class="form-group">
                 <label>Observaciones de la unidad o ajuste de cobro</label>
@@ -269,6 +267,8 @@ async function cargarDatosTecnico() {
       u.username?.toLowerCase() === asignacion.value.tecnico?.toLowerCase() ||
       u.nombre?.toLowerCase() === asignacion.value.tecnico?.toLowerCase()
     );
+    console.log('Datos del técnico:', tecnico);
+    
     if (tecnico) {
       tecnicoNombre.value = tecnico.username || tecnico.nombre || '';
       tecnicoTelefono.value = tecnico.telefono || '';
@@ -293,6 +293,8 @@ async function cargarDatosCliente() {
     const clientes = await getClientes();
     const cliente = clientes.find(c => c.id == asignacion.value.cliente_id);
     if (cliente) {
+      console.log('Datos del cliente:', cliente);
+      
       form.value.nombre_cliente = cliente.nombre || '';
       form.value.telefono_cliente = cliente.telefonos?.join(', ') || '';
       clienteUsuariosOptions.value = Array.isArray(cliente.usuarios)
@@ -301,14 +303,18 @@ async function cargarDatosCliente() {
       clientePlataformasOptions.value = Array.isArray(cliente.plataformas)
         ? cliente.plataformas.map(p => ({ label: p, value: p }))
         : [];
+      console.log('Plataformas del cliente:', clientePlataformasOptions.value);
+      
     }
     if (asignacion.value.venta_id) {
       const ventas = await getVentas();
       const venta = ventas.find(v => v.id == asignacion.value.venta_id);
       if (venta) {
+        console.log('Datos de la venta:', venta);
+        
         form.value.subtotal = venta.total || '';
         form.value.total = venta.total || '';
-        form.value.forma_pago = venta.forma_pago || '';
+        form.value.forma_pago = venta.terminos_pago || '';
         try {
           const detalle = await getDetalleVenta(venta.id);
           if (Array.isArray(detalle) && detalle.length > 0) {
@@ -316,7 +322,7 @@ async function cargarDatosCliente() {
             form.value.modelo = art.modelo || art.modelo_gps || '';
             form.value.imei = art.imei || '';
             form.value.serie = art.serie || '';
-            form.value.equipo_plan = art.nombre || art.articulo_nombre || '';
+            form.value.equipo_plan =  '';
             form.value.placas = art.placas || '';
             form.value.color = art.color || '';
             form.value.numero_economico = art.numero_economico || '';
@@ -365,6 +371,8 @@ onMounted(async () => {
     await checkReporteExistente();
     await cargarDatosTecnico();
     await cargarDatosCliente();
+    console.log('Datos del formulario cargados:', form.value);
+    
     try {
       await cargarPagos();
     } catch (e) {
