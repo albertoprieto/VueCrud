@@ -1,0 +1,1 @@
+async function t(e){return!e.nombre_cliente||!e.total?{exito:!1,mensaje:"Faltan datos para facturar."}:(await new Promise(a=>setTimeout(a,1500)),{exito:!0,uuid:"FAKE-UUID-PRUEBA-1234",mensaje:"Factura emitida correctamente (modo prueba)"})}export{t as emitirFacturaPrueba};
