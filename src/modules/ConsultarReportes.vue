@@ -101,6 +101,13 @@
             label="Marcar como pagado"
             @click="marcarComoPagado(slotProps.data)"
           />
+          <Button
+            v-if="slotProps.data.pagado"
+            icon="pi pi-credit-card"
+            class="p-button-sm p-button-help ml-2"
+            label="Facturar"
+            @click="facturarReporte(slotProps.data)"
+          />
         </template>
       </Column>
     </DataTable>
@@ -244,7 +251,8 @@ const camposReporte = {
   nombre_cliente: { label: 'Nombre del cliente' },
   firma_cliente: { label: 'Firma del cliente' },
   nombre_instalador: { label: 'Nombre del instalador' },
-  firma_instalador: { label: 'Firma del instalador' }
+  firma_instalador: { label: 'Firma del instalador' },
+  requiere_factura: { label: '¿Requiere factura?', type: 'select' }
 };
 
 const filtroCliente = ref('');
@@ -493,6 +501,29 @@ async function marcarComoPagado(reporte) {
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo marcar como pagado.', life: 4000 });
     messageDialogText.value = 'No se pudo marcar como pagado.';
+    showMessageDialog.value = true;
+  }
+  loading.value = false;
+}
+
+// Nueva función para facturar
+async function facturarReporte(reporte) {
+  loading.value = true;
+  try {
+    // Lógica para facturar usando el servicio SAT
+    const { emitirFacturaPrueba } = await import('@/services/facturacionSatService.js');
+    const resultado = await emitirFacturaPrueba(reporte);
+    if (resultado.exito) {
+      toast.add({ severity: 'success', summary: 'Facturado', detail: 'Factura emitida correctamente (prueba).', life: 3000 });
+      messageDialogText.value = 'Factura emitida correctamente (prueba).';
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: resultado.mensaje || 'No se pudo emitir la factura.', life: 4000 });
+      messageDialogText.value = resultado.mensaje || 'No se pudo emitir la factura.';
+    }
+    showMessageDialog.value = true;
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al facturar.', life: 4000 });
+    messageDialogText.value = 'Error al facturar.';
     showMessageDialog.value = true;
   }
   loading.value = false;
