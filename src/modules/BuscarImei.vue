@@ -60,6 +60,12 @@
             @click="transferir(slotProps.data.imei)"
           />
           <Button
+            label="Cambiar Estado"
+            icon="pi pi-refresh"
+            class="p-button-text p-button-help ml-2"
+            @click="abrirDialogoEstado(slotProps.data)"
+          />
+          <Button
             label="Eliminar"
             icon="pi pi-trash"
             class="p-button-text p-button-danger ml-2"
@@ -116,6 +122,26 @@
       </div>
     </Dialog>
   </div>
+
+  <Dialog v-model:visible="showEstadoDialog" header="Cambiar Estado del IMEI" :modal="true" :closable="false">
+    <div style="padding:1.5rem; text-align:center;">
+      <span>Selecciona el nuevo estado para el IMEI <b>{{ imeiAEditarEstado?.imei }}</b>:</span>
+      <Dropdown
+        v-model="nuevoEstado"
+        :options="estadosDisponibles"
+        optionLabel="label"
+        optionValue="value"
+        placeholder="Selecciona estado"
+        class="w-full mt-3"
+      />
+    </div>
+    <div class="modal-actions">
+      <Button label="Actualizar" icon="pi pi-refresh" class="p-button-help" @click="cambiarEstado" :disabled="!nuevoEstado" />
+      <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" @click="showEstadoDialog = false" />
+
+    </div>
+  </Dialog>
+
 </template>
 
 <script setup>
@@ -127,10 +153,39 @@ import Dropdown from 'primevue/dropdown';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
 import axios from 'axios';
-import { devolverIMEI, deleteIMEI } from '@/services/imeiService';
+import { devolverIMEI, deleteIMEI, updateIMEI } from '@/services/imeiService';
 import { getUbicaciones, asignarImeisUbicacion } from '@/services/ubicacionesService';
 import { registrarMovimiento } from '@/services/inventarioService';
 import { useToast } from 'primevue/usetoast';
+
+const showEstadoDialog = ref(false);
+const imeiAEditarEstado = ref(null);
+const nuevoEstado = ref('');
+const estadosDisponibles = [
+  { label: 'Disponible', value: 'Disponible' },
+  { label: 'Vendido', value: 'Vendido' },
+  { label: 'Devuelto', value: 'Devuelto' }
+];
+
+function abrirDialogoEstado(imeiObj) {
+  imeiAEditarEstado.value = imeiObj;
+  nuevoEstado.value = imeiObj.status;
+  showEstadoDialog.value = true;
+}
+
+async function cambiarEstado() {
+  if (!imeiAEditarEstado.value) return;
+  try {
+    await updateIMEI(imeiAEditarEstado.value.imei, { status: nuevoEstado.value });
+    await cargarImeis();
+    toast.add({ severity: 'success', summary: 'Estado actualizado', detail: 'El estado fue actualizado correctamente.', life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el estado.', life: 4000 });
+  }
+  showEstadoDialog.value = false;
+  imeiAEditarEstado.value = null;
+}
+
 
 const toast = useToast();
 
@@ -275,6 +330,8 @@ const verMotivo = async (imei) => {
 };
 </script>
 
+
+
 <style scoped>
 .buscar-imei-container {
   max-width: 900px;
@@ -307,4 +364,6 @@ const verMotivo = async (imei) => {
   color: #795548;
   font-weight: bold;
 }
+
+
 </style>
