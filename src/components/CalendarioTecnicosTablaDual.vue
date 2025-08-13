@@ -6,14 +6,12 @@
               class="p-button-sm"
               @click="toggleVista" />
     </div>
-    <CalendarioTecnicos v-if="vista === 'calendario'" />
-    <CalendarioAsignaciones v-else />
+    <CalendarioAsignaciones :vista="vista" />
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
-import CalendarioTecnicos from '@/components/CalendarioTecnicos.vue';
 import CalendarioAsignaciones from '@/modules/CalendarioAsignaciones.vue';
 import Button from 'primevue/button';
 

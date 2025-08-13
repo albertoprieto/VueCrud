@@ -2,23 +2,23 @@
   <div class="consultar-cotizaciones">
     <h2 class="consultar-cotizaciones-title">Consultar Cotizaciones</h2>
     <div class="consultar-cotizaciones-card">
-      <DataTable
-        :value="groupedQuotations"
-        dataKey="cliente_id"
-        rowExpansion
-        v-model:expandedRows="expandedRows"
-        responsiveLayout="scroll"
-      >
+      <DataTable :value="groupedQuotations" dataKey="cliente_id" rowExpansion v-model:expandedRows="expandedRows"
+        responsiveLayout="scroll">
         <Column type="expander" style="width: 3em" />
         <Column field="cliente" header="Cliente" />
+
+
         <Column header="Teléfonos">
           <template #body="slotProps">
-            <span v-if="slotProps.data.telefonos && slotProps.data.telefonos.length">
-              {{ slotProps.data.telefonos.join(', ') }}
-            </span>
-            <span v-else>NA</span>
+            <Button label="Teléfonos" icon="pi pi-phone" class="p-button-text"
+              @click="showTelefonosDialog(slotProps.data.telefonos)"
+              :disabled="!slotProps.data.telefonos || !slotProps.data.telefonos.length" />
           </template>
         </Column>
+
+
+
+
         <Column header="N° Cotizaciones">
           <template #body="slotProps">
             {{ slotProps.data.cotizaciones.length }}
@@ -26,24 +26,26 @@
         </Column>
         <Column header="Acciones">
           <template #body="slotProps">
-            <Button
-              label="Ver Cotizaciones"
-              icon="pi pi-list"
-              class="p-button-text"
-              @click="showCotizacionesDialogForCliente(slotProps.data)"
-            />
+            <Button label="Ver Cotizaciones" icon="pi pi-list" class="p-button-text"
+              @click="showCotizacionesDialogForCliente(slotProps.data)" />
           </template>
         </Column>
       </DataTable>
     </div>
 
+
+    <!-- Dialog para mostrar los teléfonos -->
+    <Dialog v-model:visible="telefonosDialogVisible" header="Teléfonos del Cliente" :modal="true" :closable="true">
+      <ul v-if="telefonosDialogList && telefonosDialogList.length">
+        <li v-for="(tel, idx) in telefonosDialogList" :key="idx">
+          Teléfono {{ idx + 1 }}: {{ tel }}
+        </li>
+      </ul>
+      <span v-else>No hay teléfonos disponibles.</span>
+    </Dialog>
+
     <!-- Dialogo para ver todas las cotizaciones del cliente -->
-    <Dialog
-      :visible="cotizacionesDialogVisible"
-      header="Cotizaciones del Cliente"
-      :modal="true"
-      :closable="false"
-    >
+    <Dialog :visible="cotizacionesDialogVisible" header="Cotizaciones del Cliente" :modal="true" :closable="false">
       <DataTable :value="cotizacionesDelCliente" responsiveLayout="scroll">
         <Column field="fecha" header="Fecha" />
         <Column field="monto" header="Monto">
@@ -53,38 +55,20 @@
         </Column>
         <Column field="status" header="Estado">
           <template #body="row">
-            <span
-              class="chip"
-              :class="{
-                'chip-pendiente': row.data.status === 'Pendiente',
-                'chip-agendado': row.data.status === 'Agendado',
-                'chip-autorizada': row.data.status === 'Autorizada'
-              }"
-            >
+            <span class="chip" :class="{
+              'chip-pendiente': row.data.status === 'Pendiente',
+              'chip-agendado': row.data.status === 'Agendado',
+              'chip-autorizada': row.data.status === 'Autorizada'
+            }">
               {{ row.data.status }}
             </span>
           </template>
         </Column>
         <Column header="Acciones">
           <template #body="row">
-            <Button
-              label="Ver Detalle"
-              icon="pi pi-eye"
-              class="p-button-text"
-              @click="showDetalleDialog(row.data)"
-            />
-            <Button
-              label="Editar"
-              icon="pi pi-pencil"
-              class="p-button-text"
-              @click="showEditarDialog(row.data)"
-            />
-            <Button
-              label="PDF"
-              icon="pi pi-file-pdf"
-              class="p-button-text"
-              @click="generatePDF(row.data)"
-            />
+            <Button label="Ver Detalle" icon="pi pi-eye" class="p-button-text" @click="showDetalleDialog(row.data)" />
+            <Button label="Editar" icon="pi pi-pencil" class="p-button-text" @click="showEditarDialog(row.data)" />
+            <Button label="PDF" icon="pi pi-file-pdf" class="p-button-text" @click="generatePDF(row.data)" />
           </template>
         </Column>
       </DataTable>
@@ -92,20 +76,17 @@
     </Dialog>
 
     <!-- Modal para detalle de cotización -->
-    <Dialog
-      :visible="detalleDialogVisible"
-      header="Detalle de Cotización"
-      :modal="true"
-      :closable="false"
-      class="detalle-cotizacion-dialog"
-    >
+    <Dialog :visible="detalleDialogVisible" header="Detalle de Cotización" :modal="true" :closable="false"
+      class="detalle-cotizacion-dialog">
       <div v-if="selectedCotizacion">
         <div class="detalle-cotizacion-info">
           <div><strong>Cliente:</strong> {{ selectedCotizacion.cliente }}</div>
           <div><strong>Fecha:</strong> {{ selectedCotizacion.fecha }}</div>
           <div><strong>Vendedor:</strong> {{ selectedCotizacion.vendedor || '-' }}</div>
           <div><strong>Descuento:</strong> {{ selectedCotizacion.descuento || 0 }}%</div>
-          <div><strong>Monto:</strong> ${{ Number(selectedCotizacion.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}</div>
+          <div><strong>Monto:</strong> ${{ Number(selectedCotizacion.monto).toLocaleString('es-MX', {
+            minimumFractionDigits:
+            2 }) }}</div>
           <div><strong>Status:</strong> {{ selectedCotizacion.status }}</div>
           <div><strong>Observaciones:</strong> {{ selectedCotizacion.observaciones || '-' }}</div>
         </div>
@@ -140,15 +121,8 @@
         <div class="form-row">
           <div class="form-group">
             <label>Cliente</label>
-            <Dropdown
-              v-model="selectedCotizacion.cliente_id"
-              :options="clientes"
-              optionLabel="nombre"
-              optionValue="id"
-              placeholder="Selecciona un cliente"
-              class="w-full"
-              :disabled="true"
-            />
+            <Dropdown v-model="selectedCotizacion.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id"
+              placeholder="Selecciona un cliente" class="w-full" :disabled="true" />
           </div>
           <div class="form-group">
             <label>Fecha</label>
@@ -158,14 +132,8 @@
         <div class="form-row">
           <div class="form-group">
             <label>Vendedor</label>
-            <Dropdown
-              v-model="selectedCotizacion.vendedor"
-              :options="vendedores"
-              optionLabel="username"
-              optionValue="username"
-              placeholder="Selecciona vendedor"
-              class="w-full"
-            />
+            <Dropdown v-model="selectedCotizacion.vendedor" :options="vendedores" optionLabel="username"
+              optionValue="username" placeholder="Selecciona vendedor" class="w-full" />
           </div>
           <div class="form-group">
             <label>Descuento (%)</label>
@@ -182,52 +150,36 @@
         <DataTable :value="selectedCotizacion.articulos" class="mb-2">
           <Column field="articulo_id" header="Artículo">
             <template #body="slotProps">
-              <Dropdown
-                v-model="slotProps.data.articulo_id"
-                :options="articulos"
-                optionLabel="sku"
-                optionValue="id"
-                placeholder="Seleccione SKU"
-                class="w-full"
-                filter
-                showClear
-                @change="handleArticuloChange(slotProps.data.articulo_id, slotProps.data)"
-              />
+              <Dropdown v-model="slotProps.data.articulo_id" :options="articulos" optionLabel="sku" optionValue="id"
+                placeholder="Seleccione SKU" class="w-full" filter showClear
+                @change="handleArticuloChange(slotProps.data.articulo_id, slotProps.data)" />
             </template>
           </Column>
           <Column field="cantidad" header="Cantidad">
             <template #body="slotProps">
-              <InputText
-                type="number"
-                v-model.number="slotProps.data.cantidad"
-                min="1"
-                class="w-full"
-                @input="handleCantidadInput(slotProps.data)"
-              />
+              <InputText type="number" v-model.number="slotProps.data.cantidad" min="1" class="w-full"
+                @input="handleCantidadInput(slotProps.data)" />
             </template>
           </Column>
           <Column field="precio_unitario" header="Precio Unitario">
             <template #body="slotProps">
-              <InputText
-                type="number"
-                v-model.number="slotProps.data.precio_unitario"
-                min="0"
-                step="0.01"
-                class="w-full"
-                :disabled="true"
-              />
+              <InputText type="number" v-model.number="slotProps.data.precio_unitario" min="0" step="0.01"
+                class="w-full" :disabled="true" />
             </template>
           </Column>
           <Column header="Acciones">
             <template #body="slotProps">
-              <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="removeArticuloEdit(slotProps.index)" />
+              <Button icon="pi pi-trash" class="p-button-danger p-button-sm"
+                @click="removeArticuloEdit(slotProps.index)" />
             </template>
           </Column>
         </DataTable>
         <div class="form-row">
           <div class="form-group">
             <label>Monto total</label>
-            <InputText :value="Number(selectedCotizacion?.monto || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })" class="w-full" disabled />
+            <InputText
+              :value="Number(selectedCotizacion?.monto || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })"
+              class="w-full" disabled />
           </div>
         </div>
         <Button label="Agregar Artículo" icon="pi pi-plus" class="mb-2" @click="addArticuloEdit" />
@@ -242,7 +194,8 @@
         <span>¿Deseas guardar los cambios de la cotización?</span>
       </div>
       <div class="modal-actions">
-        <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showConfirmUpdateDialog = false" />
+        <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary"
+          @click="showConfirmUpdateDialog = false" />
         <Button label="Guardar" icon="pi pi-save" class="p-button-success" @click="saveEditCotizacion" />
       </div>
     </Dialog>
@@ -331,7 +284,7 @@ function closeCotizacionesDialog() {
 
 function showDetalleDialog(cotizacion) {
   console.log(cotizacion);
-  
+
   selectedCotizacion.value = cotizacion;
   try {
     const articulosObj = typeof cotizacion.articulos === 'string'
@@ -396,7 +349,12 @@ function removeArticuloEdit(idx) {
 function confirmUpdate() {
   showConfirmUpdateDialog.value = true;
 }
-
+const telefonosDialogVisible = ref(false);
+const telefonosDialogList = ref([]);
+function showTelefonosDialog(telefonos) {
+  telefonosDialogList.value = telefonos || [];
+  telefonosDialogVisible.value = true;
+}
 async function saveEditCotizacion() {
   showConfirmUpdateDialog.value = false;
   let articulosObj = {};
@@ -544,9 +502,9 @@ function generatePDF(cotizacion) {
             width: 'auto',
             table: {
               body: [
-                [ { text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' } ],
+                [{ text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' }],
                 // [ { text: 'Descuento', style: 'totalLabel' }, { text: `$${descuentoMonto.toFixed(2)}`, style: 'totalValue' } ],
-                [ { text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' } ]
+                [{ text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' }]
               ]
             },
             layout: 'noBorders'
@@ -655,44 +613,52 @@ watch(
   background: var(--color-bg);
   color: var(--color-text);
   border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10);
   padding: 2rem 1.5rem;
 }
+
 .consultar-cotizaciones-title {
   margin-bottom: 2rem;
   color: var(--color-title);
 }
+
 .consultar-cotizaciones-card {
   background: var(--color-card);
   border-radius: 8px;
   padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   margin-bottom: 2rem;
 }
+
 .text-center {
   text-align: center;
 }
+
 .form-group {
   margin-bottom: 1rem;
   text-align: left;
 }
+
 label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: bold;
   color: var(--color-title);
 }
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
   margin-top: 1rem;
 }
+
 .error-text {
   color: #d32f2f;
   font-size: 0.85rem;
   margin-top: 0.25rem;
 }
+
 .chip {
   display: inline-block;
   padding: 0.2em 0.7em;
@@ -701,23 +667,28 @@ label {
   font-weight: 500;
   margin-right: 0.2em;
 }
+
 .chip-pendiente {
   background: #ffe082;
   color: #795548;
 }
+
 .chip-agendado {
   background: #b2ebf2;
   color: #00695c;
 }
+
 .chip-autorizada {
   background: #c8e6c9;
   color: #388e3c;
 }
+
 .detalle-cotizacion-dialog .p-dialog-content {
   background: var(--color-card, #fff);
   border-radius: 12px;
   padding: 1.5rem 1rem;
 }
+
 .detalle-cotizacion-info {
   display: flex;
   flex-wrap: wrap;
@@ -726,6 +697,7 @@ label {
   font-size: 1.05em;
   text-align: left;
 }
+
 .detalle-cotizacion-table {
   width: 100%;
   border-collapse: collapse;
@@ -733,29 +705,36 @@ label {
   background: var(--color-card, #f9f9f9);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   color: var(--color-text, #222);
 }
-.detalle-cotizacion-table th, .detalle-cotizacion-table td {
+
+.detalle-cotizacion-table th,
+.detalle-cotizacion-table td {
   padding: 0.7em 1em;
   text-align: left;
   border-bottom: 1px solid #e0e0e0;
 }
+
 .detalle-cotizacion-table th {
   background: var(--color-bg, #f5f5f5);
   color: var(--color-title, #ff4081);
   font-weight: 600;
 }
+
 .detalle-cotizacion-table tr:last-child td {
   border-bottom: none;
 }
+
 @media (max-width: 700px) {
   .consultar-cotizaciones {
     padding: 1rem 0.2rem;
   }
+
   .consultar-cotizaciones-card {
     padding: 0.5rem;
   }
+
   .modal-actions {
     flex-direction: column;
     gap: 0.5rem;

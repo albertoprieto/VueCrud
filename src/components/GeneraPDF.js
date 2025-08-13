@@ -65,8 +65,8 @@ export class NotaVentaPdfService {
           ]
         },
         { text: '\n' },
-        { text: 'Orden de venta', style: 'title', alignment: 'center' },
-        { text: `Orden de venta nº ${folio}`, style: 'folio', alignment: 'center' },
+        { text: 'Orden de servicio', style: 'title', alignment: 'center' },
+        { text: `Orden de servicio nº ${folio}`, style: 'folio', alignment: 'center' },
         { text: '\n' },
         {
           columns: [

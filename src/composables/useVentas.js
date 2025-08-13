@@ -230,7 +230,6 @@ export function useVentas() {
       await addVenta({
         cliente_id: venta.cliente_id,
         fecha: venta.fecha,
-        folio: venta.folio,
         referencia: venta.referencia,
         fecha_envio: venta.fecha_envio,
         terminos_pago: venta.terminos_pago,

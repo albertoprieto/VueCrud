@@ -9,7 +9,7 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
 import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
+
 import { useToast } from 'primevue/usetoast';
 
 const toast = useToast();
@@ -119,8 +119,24 @@ const editArticulo = (data) => {
   showModal.value = true;
 };
 
+// Refuerza el click de editar para nunca asignar booleanos
+function handleEditArticulo(data) {
+  if (typeof form.value !== 'object' || form.value === null) {
+    form.value = { id: null, sku: '', nombre: '', tipo: '', precioVenta: '', precioCompra: '', codigoSat: '', codigoUnidadSat: '' };
+  }
+  Object.assign(form.value, data);
+  // Refuerzo: si no hay id, no permitas editar
+  if (!form.value.id) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'El artículo no tiene ID válido para editar.', life: 4000 });
+    showModal.value = false;
+    return;
+  }
+  showModal.value = true;
+}
+
 const closeModal = () => {
   showModal.value = false;
+  // Nunca reasignes form.value a false ni a booleanos
 };
 
 const saveArticulo = async () => {
@@ -218,11 +234,13 @@ const exportToExcel = () => {
 
 <template>
   <div>
+    
+    <h2 class="mb-4">Artículos</h2>
     <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" class="mb-3" />
     <Button label="Exportar a Excel" icon="pi pi-file-excel" @click="exportToExcel" class="mb-3" />
     <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive">
       <Column field="codigo" header="Código" :sortable="true" />
-      <Column field="nombre" header="Nombre" :sortable="true" />
+      <!-- <Column field="nombre" header="Nombre" :sortable="true" /> -->
       <Column field="sku" header="SKU" :sortable="true" />
       <Column field="tipo" header="Tipo" :sortable="true" />
       <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />
@@ -231,8 +249,8 @@ const exportToExcel = () => {
       <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
       <Column header="Acciones">
         <template #body="{ data }">
-          <Button icon="pi pi-pencil" class="mr-2" @click="editArticulo(data)" />
-          <Button icon="pi pi-trash" @click="() => handleDeleteClick(data)" />
+          <Button icon="pi pi-pencil" class="mr-2" @click="() => handleEditArticulo(data)" />
+          <Button icon="pi pi-trash" @click="() => { articuloToDelete.value = data; showConfirmDelete.value = true; }" />
         </template>
       </Column>
     </DataTable>
