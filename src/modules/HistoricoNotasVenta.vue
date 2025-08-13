@@ -1,6 +1,6 @@
 <template>
   <div class="historico-notas-container">
-    <h2 class="historico-title">Consultar Orden de Venta</h2>
+    <h2 class="historico-title">Consultar Orden de Servicio</h2>
     <!-- Agrega esto antes del DataTable -->
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
       <InputText v-model="filtroFolio" placeholder="Buscar por folio..." class="filtro-input" clearable />
@@ -44,7 +44,7 @@
       responsiveLayout="scroll"
       class="historico-table"
     >
-      <Column field="id" header="Folio" />
+      <Column field="folio" header="Folio" />
       <Column field="cliente_nombre" header="Cliente" />
       <Column field="tecnicoNombre" header="Asignado a">
         <template #body="slotProps">
@@ -65,6 +65,16 @@
           >
             {{ slotProps.data.tecnicoNombre ? 'Asignado' : 'Sin asignar' }}
           </span>
+        </template>
+      </Column>
+      <Column field="terminos_pago" header="Términos de Pago">
+        <template #body="slotProps">
+          {{ slotProps.data.terminos_pago || '-' }}
+        </template>
+      </Column>
+      <Column header="Artículos">
+        <template #body="slotProps">
+          <Button text raised label="Ver Artículos" icon="pi pi-list" class="p-button-sm p-button-info" @click="verArticulos(slotProps.data)" />
         </template>
       </Column>
       <Column header="Acciones">
@@ -118,6 +128,17 @@
       </div>
       <Button label="Aceptar" icon="pi pi-check" @click="showResponseDialog = false" class="mt-3" />
     </Dialog>
+    <Dialog v-model:visible="showArticulosDialog" header="Artículos" :modal="true">
+      <div v-if="articulosDialogList && articulosDialogList.length">
+        <ul>
+          <li v-for="(art, idx) in articulosDialogList" :key="idx">
+            {{ art.sku }} - Cantidad: {{ art.cantidad }}
+          </li>
+        </ul>
+      </div>
+      <span v-else>No hay artículos para esta venta.</span>
+      <Button label="Cerrar" icon="pi pi-times" @click="showArticulosDialog = false" class="mt-3" />
+    </Dialog>
   </div>
 </template>
 
@@ -153,6 +174,8 @@ const tecnicoSeleccionado = ref(null);
 const fechaServicio = ref(null); // NUEVO: fecha de servicio
 const showResponseDialog = ref(false);
 const responseMessage = ref('');
+const showArticulosDialog = ref(false);
+const articulosDialogList = ref([]);
 
 // Filtros
 const filtroFolio = ref('');
@@ -180,6 +203,8 @@ onMounted(async () => {
     })
   );
   ventas.value = ventasConTecnico;
+  console.log(ventas.value);
+  
   loading.value = false;
 });
 
@@ -297,6 +322,20 @@ async function eliminarAsignacion(venta) {
   }
   responseMessage.value = 'Asignación eliminada';
   showResponseDialog.value = true;
+}
+
+async function verArticulos(venta) {
+  const detalle = await getDetalleVenta(venta.id);
+  const articulos = await getTodosArticulos();
+  articulosDialogList.value = detalle.map(item => {
+    const art = articulos.find(a => a.id === item.articulo_id) || {};
+    return {
+      ...item,
+      sku: art.sku,
+      nombre: art.nombre
+    };
+  });
+  showArticulosDialog.value = true;
 }
 </script>
 

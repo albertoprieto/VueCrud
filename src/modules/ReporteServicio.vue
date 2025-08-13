@@ -9,7 +9,7 @@
       </div>
     </div>
     <form v-else class="reporte-form" @submit.prevent="guardar">
-      <div class="abonos-section" v-if="form.total">
+      <!-- <div class="abonos-section" v-if="form.total">
         <h4 class="section-title">Pagos y abonos</h4>
         <div v-if="pagos.length === 0" class="abonos-vacio">No hay pagos registrados para este servicio.</div>
         <div v-else>
@@ -35,43 +35,15 @@
         <form class="abono-form" @submit.prevent="registrarAbono">
           <div class="form-group">
             <label>Nuevo abono</label>
-            <input v-model.number="nuevoAbono" type="number" min="1" step="0.01" placeholder="Monto del abono" class="w-full mb-2" required />
+            <InputNumber v-model="nuevoAbono" mode="currency" currency="MXN" locale="es-MX" :min="1" :step="0.01" placeholder="Monto del abono" class="w-full mb-2" required />
           </div>
           <div class="form-group">
-            <input v-model="nuevaReferencia" type="text" placeholder="Referencia (opcional)" class="w-full mb-2" />
+            <InputText v-model="nuevaReferencia" placeholder="Referencia (opcional)" class="w-full mb-2" />
           </div>
-          <button type="submit" class="p-button p-button-success">Registrar abono</button>
+          <Button type="submit" label="Registrar abono" icon="pi pi-plus" class="p-button-success" />
         </form>
-      </div>
-import { getMovimientosDineroPorReferencia, registrarAbonoDinero } from '@/services/dineroService';
-const pagos = ref([]);
-const nuevoAbono = ref("");
-const nuevaReferencia = ref("");
-const totalPagado = computed(() => pagos.value.reduce((acc, p) => acc + Number(p.monto), 0));
-const saldoPendiente = computed(() => (Number(form.value.total)||0) - totalPagado.value);
+      </div> -->
 
-async function cargarPagos() {
-  if (!form.value || !form.value.referencia) return pagos.value = [];
-  pagos.value = await getMovimientosDineroPorReferencia(form.value.referencia);
-}
-
-async function registrarAbono() {
-  if (!nuevoAbono.value || Number(nuevoAbono.value) <= 0) return;
-  const movimiento = {
-    fecha: new Date().toISOString().slice(0, 19).replace('T', ' '),
-    tipo: 'Ingreso',
-    concepto: `Abono servicio ${form.value.referencia || ''}`,
-    monto: Number(nuevoAbono.value),
-    referencia: nuevaReferencia.value || form.value.referencia || ''
-  };
-  await registrarAbonoDinero(movimiento);
-  nuevoAbono.value = "";
-  nuevaReferencia.value = "";
-  await cargarPagos();
-}
-function formatoMoneda(valor) {
-  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor) || 0);
-}
       <div v-if="loading" class="loader-overlay">
         <Loader />
       </div>
@@ -94,8 +66,8 @@ function formatoMoneda(valor) {
               <div class="form-group">
                 <InputText v-model="form.marca" placeholder="Marca" class="w-full mb-2" />
                 <InputText v-model="form.submarca" placeholder="Submarca" class="w-full mb-2" />
-                <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" :disabled="!!form.modelo" />
-                <InputText v-model="form.placas" placeholder="Placas" class="w-full mb-2" :disabled="!!form.placas" />
+                <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" />
+                <InputText v-model="form.placas" placeholder="Placas" class="w-full mb-2" />
                 <InputText v-model="form.color" placeholder="Color" class="w-full mb-2" />
                 <InputText v-model="form.numero_economico" placeholder="Número económico" class="w-full mb-2" />
               </div>
@@ -104,9 +76,9 @@ function formatoMoneda(valor) {
                 <InputText v-model="form.sim_proveedor" placeholder="Proveedor" class="w-full mb-2" />
                 <InputText v-model="form.sim_serie" placeholder="Serie" class="w-full mb-2" />
                 <InputText :value="tecnicoNombre" placeholder="Técnico asignado" class="w-full mb-2" disabled />
-                <InputText :value="tecnicoTelefono" placeholder="Teléfono del técnico" class="w-full mb-2" disabled />
+                <!-- <InputText :value="tecnicoTelefono" placeholder="Teléfono del técnico" class="w-full mb-2" disabled /> -->
               </div>
-              <h4 class="section-title">Firmas y aviso</h4>
+              <h4 class="section-title">Aviso</h4>
               <div class="form-group">
                 <label>Nombre del cliente</label>
                 <InputText :value="form.nombre_cliente" placeholder="Nombre del cliente" class="w-full mb-2" disabled />
@@ -115,11 +87,9 @@ function formatoMoneda(valor) {
                 <label>Teléfono del cliente</label>
                 <InputText :value="form.telefono_cliente" placeholder="Teléfono" class="w-full mb-2" disabled />
               </div>
-              <div class="form-group">
-                <InputText v-model="form.firma_cliente" placeholder="Firma del cliente" class="w-full mb-2" />
+              <!-- <div class="form-group">
                 <InputText :value="tecnicoNombre" placeholder="Nombre del instalador" class="w-full mb-2" disabled />
-                <InputText v-model="form.firma_instalador" placeholder="Firma del instalador" class="w-full mb-2" />
-              </div>
+              </div> -->
             </div>
             <div class="form-col">
               <h4 class="section-title">Datos del equipo</h4>
@@ -149,7 +119,7 @@ function formatoMoneda(valor) {
                   placeholder="Selecciona plataforma"
                   class="w-full mb-2"
                   optionLabel="label"
-                  :disabled="true"
+                  :disabled="false"
                 />
               </div>
               <div class="form-group">
@@ -160,25 +130,23 @@ function formatoMoneda(valor) {
                   placeholder="Selecciona usuario"
                   class="w-full mb-2"
                   optionLabel="label"
-                  :disabled="true"
+                  :disabled="false"
                 />
               </div>
               <h4 class="section-title">Venta y pago</h4>
               <div class="form-group">
-                <label>Subtotal (orden de venta)</label>
+                <label>Subtotal (orden de servicio)</label>
                 <InputText v-model="form.subtotal" placeholder="Subtotal" class="w-full mb-2" :disabled="true" />
               </div>
               <div class="form-group">
                 <label>Total a cobrar</label>
-                <InputText v-model="form.total" placeholder="Total a cobrar" class="w-full mb-2" />
+                <InputNumber v-model="form.total" placeholder="Total a cobrar" class="w-full mb-2" />
                 <small>El instalador puede modificar este valor si hay algún ajuste.</small>
               </div>
+              <!-- Método de pago (display-only) -->
               <div class="form-group">
-                <Dropdown v-model="form.forma_pago" :options="formasPago" placeholder="Forma de pago" class="w-full mb-2" />
-                <div class="checkbox-group mb-2">
-                  <Checkbox v-model="form.pagado" :binary="true" inputId="pagado" />
-                  <label for="pagado">Pagado</label>
-                </div>
+                <label>Método de pago</label>
+                <InputText v-model="form.value.forma_pago" disabled class="w-full" />
               </div>
               <div class="form-group">
                 <label>Observaciones de la unidad o ajuste de cobro</label>
@@ -225,29 +193,16 @@ import { useRoute } from 'vue-router';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getUsuarios } from '@/services/usuariosService';
 import { getVentas } from '@/services/ventasService';
-
-const route = useRoute();
-
-const props = defineProps({
-  asignacionId: {
-    type: [Number, String],
-    required: true
-  },
-  ventaDetalle: Object,
-  cliente: Object
-});
-
-const asignacionIdCentral = computed(() => {
-  // Solo usa el prop, nunca la ruta
-  if (props.asignacionId && !isNaN(Number(props.asignacionId))) return Number(props.asignacionId);
-  return undefined;
-});
-const asignacionIdValido = computed(() => {
-  return asignacionIdCentral.value && !isNaN(Number(asignacionIdCentral.value)) && Number(asignacionIdCentral.value) > 0;
-});
+import InputNumber from 'primevue/inputnumber';
 
 const emit = defineEmits(['close', 'saved']);
 
+const route = useRoute();
+const asignacionIdValido = computed(() => Number.isInteger(Number(route.params.asignacionId)) && Number(route.params.asignacionId) > 0);
+const asignacionIdCentral = computed(() => asignacionIdValido.value ? Number(route.params.asignacionId) : null);
+const asignacion = ref(null);
+
+// --- Ensure assignment ID is valid and centralize its use ---
 const tiposServicio = ['Instalación', 'Reinstalación', 'Revisión', 'Desinstalación', 'Búsqueda'];
 const formasPago = ['Efectivo Entregado al tecnico', 'Transferencia', 'Depósito', ];
 
@@ -275,13 +230,13 @@ const form = ref({
   ignicion: '',
   corte: '',
   ubicacion_corte: '',
-  observaciones: props.ventaDetalle?.observaciones || '',
-  plataforma: props.cliente?.plataformas?.[0] || '',
-  usuario: props.cliente?.usuarios?.[0] || '',
-  subtotal: props.ventaDetalle?.total || '',
+  observaciones: '',
+  plataforma: '',
+  usuario: '',
+  subtotal: '',
   forma_pago: '',
   pagado: false,
-  nombre_cliente: props.ventaDetalle?.cliente_nombre || props.cliente?.nombre || '',
+  nombre_cliente: '',
   firma_cliente: '',
   nombre_instalador: '',
   firma_instalador: '',
@@ -295,68 +250,51 @@ const showResultDialog = ref(false);
 const resultMessage = ref('');
 const reporteExistente = ref(false);
 
-const clienteNombre = computed(() => {
-  const nombre = props.cliente?.nombre || '';
-  console.log('Cliente nombre:', nombre);
-  return nombre;
-});
-const clienteUsuarios = computed(() => {
-  const usuarios = Array.isArray(props.cliente?.usuarios)
-    ? props.cliente.usuarios.join(', ')
-    : (props.cliente?.usuarios || '');
-  console.log('Cliente usuarios:', usuarios);
-  return usuarios;
-});
-const clientePlataformas = computed(() => {
-  const plataformas = Array.isArray(props.cliente?.plataformas)
-    ? props.cliente.plataformas.join(', ')
-    : (props.cliente?.plataformas || '');
-  console.log('Cliente plataformas:', plataformas);
-  return plataformas;
-});
 const clienteUsuariosOptions = ref([]);
 const clientePlataformasOptions = ref([]);
+const pagos = ref([]);
+
+async function cargarPagos() {
+  pagos.value = [];
+  // Si tienes lógica real para cargar pagos, ponla aquí
+}
 
 async function cargarDatosTecnico() {
-  let asignaciones = await getAsignacionesTecnicos();
-  let asignacion = asignaciones.find(a => a.id == asignacionIdCentral.value);
-  console.log('Asignacion encontrada:', asignacion);
-  if (asignacion && asignacion.tecnico) {
+  try {
+    if (!asignacion.value) return;
     let usuarios = await getUsuarios();
-    console.log('Usuarios:', usuarios, 'Buscando tecnico por nombre:', asignacion.tecnico);
-    // Busca por nombre de usuario (puede ser username o nombre)
     let tecnico = usuarios.find(u => 
-      u.username?.toLowerCase() === asignacion.tecnico.toLowerCase() ||
-      u.nombre?.toLowerCase() === asignacion.tecnico.toLowerCase()
+      u.username?.toLowerCase() === asignacion.value.tecnico?.toLowerCase() ||
+      u.nombre?.toLowerCase() === asignacion.value.tecnico?.toLowerCase()
     );
-    console.log('Técnico encontrado:', tecnico);
+    console.log('Datos del técnico:', tecnico);
+    
     if (tecnico) {
       tecnicoNombre.value = tecnico.username || tecnico.nombre || '';
       tecnicoTelefono.value = tecnico.telefono || '';
       form.value.sim_instalador = tecnicoNombre.value;
       form.value.sim_telefono = tecnicoTelefono.value;
       form.value.nombre_instalador = tecnicoNombre.value;
-    } else {
-      // Si no lo encuentra, al menos pon el nombre de la asignación
-      tecnicoNombre.value = asignacion.tecnico;
+    } else if (asignacion.value.tecnico) {
+      tecnicoNombre.value = asignacion.value.tecnico;
       tecnicoTelefono.value = '';
-      form.value.sim_instalador = asignacion.tecnico;
-      form.value.nombre_instalador = asignacion.tecnico;
+      form.value.sim_instalador = asignacion.value.tecnico;
+      form.value.nombre_instalador = asignacion.value.tecnico;
     }
-  } else {
-    console.warn('No se encontró técnico en la asignación');
+  } catch (e) {
+    console.error('Error en cargarDatosTecnico:', e);
   }
 }
 
 async function cargarDatosCliente() {
-  let asignaciones = await getAsignacionesTecnicos();
-  const asignacion = asignaciones.find(a => a.id == asignacionIdCentral.value);
-  if (asignacion && asignacion.cliente_id) {
+  try {
+    if (!asignacion.value) return;
     const { getClientes } = await import('@/services/clientesService');
     const clientes = await getClientes();
-    const cliente = clientes.find(c => c.id == asignacion.cliente_id);
-
+    const cliente = clientes.find(c => c.id == asignacion.value.cliente_id);
     if (cliente) {
+      console.log('Datos del cliente:', cliente);
+      
       form.value.nombre_cliente = cliente.nombre || '';
       form.value.telefono_cliente = cliente.telefonos?.join(', ') || '';
       clienteUsuariosOptions.value = Array.isArray(cliente.usuarios)
@@ -365,58 +303,86 @@ async function cargarDatosCliente() {
       clientePlataformasOptions.value = Array.isArray(cliente.plataformas)
         ? cliente.plataformas.map(p => ({ label: p, value: p }))
         : [];
+      console.log('Plataformas del cliente:', clientePlataformasOptions.value);
+      
     }
-  }
-
-  // Buscar la venta por venta_id de la asignación y mostrar el total y datos de artículos
-  if (asignacion && asignacion.venta_id) {
-    const ventas = await getVentas();
-    const venta = ventas.find(v => v.id == asignacion.venta_id);
-    if (venta) {
-      form.value.subtotal = venta.total || '';
-      form.value.total = venta.total || '';
-      form.value.forma_pago = venta.forma_pago || '';
-      // Precargar datos del vehículo/equipo desde el detalle de la venta
-      try {
-        const detalle = await getDetalleVenta(venta.id);
-        if (Array.isArray(detalle) && detalle.length > 0) {
-          // Toma el primer artículo tipo GPS/servicio/instalación
-          const art = detalle[0];
-          form.value.modelo = art.modelo || art.modelo_gps || '';
-          form.value.imei = art.imei || '';
-          form.value.serie = art.serie || '';
-          form.value.equipo_plan = art.nombre || art.articulo_nombre || '';
-          form.value.placas = art.placas || '';
-          form.value.color = art.color || '';
-          form.value.numero_economico = art.numero_economico || '';
-          form.value.accesorios = art.accesorios || '';
+    if (asignacion.value.venta_id) {
+      const ventas = await getVentas();
+      const venta = ventas.find(v => v.id == asignacion.value.venta_id);
+      if (venta) {
+        console.log('Datos de la venta:', venta);
+        
+        form.value.subtotal = venta.total || '';
+        form.value.total = venta.total || '';
+        form.value.forma_pago = venta.terminos_pago || '';
+        try {
+          const detalle = await getDetalleVenta(venta.id);
+          if (Array.isArray(detalle) && detalle.length > 0) {
+            const art = detalle[0];
+            form.value.modelo = art.modelo || art.modelo_gps || '';
+            form.value.imei = art.imei || '';
+            form.value.serie = art.serie || '';
+            form.value.equipo_plan =  '';
+            form.value.placas = art.placas || '';
+            form.value.color = art.color || '';
+            form.value.numero_economico = art.numero_economico || '';
+            form.value.accesorios = art.accesorios || '';
+          }
+        } catch (e) {
+          console.error('Error en getDetalleVenta:', e);
         }
-      } catch (e) {
-        // Si falla, no autollenar
       }
     }
+  } catch (e) {
+    console.error('Error en cargarDatosCliente:', e);
   }
 }
 
 async function checkReporteExistente() {
-  if (!asignacionIdValido.value) {
+  try {
+    if (!asignacionIdValido.value) {
+      reporteExistente.value = false;
+      return;
+    }
+    const reporte = await getReportePorAsignacion(Number(asignacionIdCentral.value));
+    console.log('Reporte existente:', reporte);
+    reporteExistente.value = !!reporte;
+  } catch (e) {
+    console.error('Error en checkReporteExistente:', e);
     reporteExistente.value = false;
-    return;
   }
-  const reporte = await getReportePorAsignacion(Number(asignacionIdCentral.value));
-  console.log('Reporte existente:', reporte);
-  
-  reporteExistente.value = !!reporte;
 }
 
 
 onMounted(async () => {
-  if (!asignacionIdValido.value) return;
-  form.value.asignacion_id = asignacionIdCentral.value;
-  await checkReporteExistente();
-  await cargarDatosTecnico();
-  await cargarDatosCliente();
-  await cargarPagos();
+  loading.value = true;
+  console.log('route:', route);
+  console.log('asignacionIdCentral:', asignacionIdCentral.value);
+  try {
+    const asignaciones = await getAsignacionesTecnicos();
+    asignacion.value = asignaciones.find(a => a.id === asignacionIdCentral.value);
+    console.log('Asignación encontrada:', asignacion.value?.id);
+    
+    // if (!asignacion.value) {
+    //   loading.value = false;
+    //   return;
+    // }
+    form.value.asignacion_id = asignacion.value.id;
+    await checkReporteExistente();
+    await cargarDatosTecnico();
+    await cargarDatosCliente();
+    console.log('Datos del formulario cargados:', form.value);
+    
+    try {
+      await cargarPagos();
+    } catch (e) {
+      console.error('Error en cargarPagos:', e);
+    }
+    loading.value = false;
+  } catch (e) {
+    console.error('Error en onMounted:', e);
+    loading.value = false;
+  }
 });
 
 function cerrar() {
@@ -452,6 +418,7 @@ async function guardar() {
     await checkReporteExistente();
     cerrar();
   } catch (e) {
+    console.error('Error en guardar:', e);
     resultMessage.value = 'Error al guardar el reporte de servicio.';
   } finally {
     loading.value = false;
@@ -466,6 +433,11 @@ function formatearFecha(fecha) {
   const mes = String(d.getMonth() + 1).padStart(2, '0');
   const anio = d.getFullYear();
   return `${dia}/${mes}/${anio}`;
+}
+
+function formatoMoneda(valor) {
+  if (isNaN(valor)) return '$0.00';
+  return valor.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 });
 }
 </script>
 
