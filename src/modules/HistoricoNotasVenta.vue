@@ -341,7 +341,6 @@ async function verArticulos(venta) {
 
 <style scoped>
 .historico-notas-container {
-  max-width: 1000px;
   margin: 2rem auto;
   background: var(--color-bg);
   border-radius: 12px;
