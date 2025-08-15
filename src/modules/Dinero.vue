@@ -16,13 +16,19 @@
       </div>
     </div>
     <h3>Movimientos</h3>
-    <DataTable :value="movimientos" :paginator="true" :rows="10" class="dinero-table" :loading="cargando">
-      <Column field="fecha" header="Fecha" sortable />
-      <Column field="tipo" header="Tipo" sortable />
-      <Column field="concepto" header="Concepto" sortable />
-      <Column field="monto" header="Monto" :body="formatoMoneda" sortable />
-      <Column field="referencia" header="Referencia" />
-    </DataTable>
+    <div v-if="error" class="dinero-error">{{ error }}</div>
+    <div v-else>
+      <DataTable :value="movimientos" :paginator="true" :rows="10" class="dinero-table" :loading="cargando">
+        <Column field="fecha" header="Fecha" sortable />
+        <Column field="tipo" header="Tipo" sortable />
+        <Column field="concepto" header="Concepto" sortable />
+        <Column field="monto" header="Monto" :body="formatoMoneda" sortable />
+        <Column field="referencia" header="Referencia" />
+        <template #empty>
+          <div class="dinero-empty">No hay movimientos registrados.</div>
+        </template>
+      </DataTable>
+    </div>
   </div>
 </template>
 
@@ -34,16 +40,23 @@ import axios from 'axios';
 
 const movimientos = ref([]);
 const cargando = ref(false);
-
+const error = ref("");
 
 const cargarMovimientos = async () => {
   cargando.value = true;
+  error.value = "";
   try {
     const apiUrl = import.meta.env.VITE_API_URL || '';
     const res = await axios.get(`${apiUrl}/movimientos-dinero`);
-    movimientos.value = res.data;
+    if (Array.isArray(res.data)) {
+      movimientos.value = res.data;
+    } else {
+      movimientos.value = [];
+      error.value = "Respuesta inesperada del servidor.";
+    }
   } catch (e) {
     movimientos.value = [];
+    error.value = "No se pudo cargar la información. Intenta más tarde.";
   }
   cargando.value = false;
 };
@@ -92,5 +105,18 @@ const formatoMoneda = (valor) => {
 }
 .dinero-table {
   margin-top: 1rem;
+}
+.dinero-error {
+  color: #e53935;
+  background: #fff3f3;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+.dinero-empty {
+  color: #bbb;
+  text-align: center;
+  padding: 2rem 0;
 }
 </style>

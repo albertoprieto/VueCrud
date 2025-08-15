@@ -146,7 +146,8 @@
               <!-- Método de pago (display-only) -->
               <div class="form-group">
                 <label>Método de pago</label>
-                <InputText v-model="form.value.forma_pago" disabled class="w-full" />
+                <InputText v-if="form.value" v-model="form.value.forma_pago" disabled class="w-full" />
+                <InputText v-else :value="''" disabled class="w-full" />
               </div>
               <div class="form-group">
                 <label>Observaciones de la unidad o ajuste de cobro</label>
@@ -359,20 +360,22 @@ onMounted(async () => {
   console.log('route:', route);
   console.log('asignacionIdCentral:', asignacionIdCentral.value);
   try {
-    const asignaciones = await getAsignacionesTecnicos();
-    asignacion.value = asignaciones.find(a => a.id === asignacionIdCentral.value);
-    console.log('Asignación encontrada:', asignacion.value?.id);
-    
-    // if (!asignacion.value) {
-    //   loading.value = false;
-    //   return;
-    // }
+  const asignaciones = await getAsignacionesTecnicos();
+  console.log('Asignaciones recibidas:', asignaciones);
+  // Si asignacionIdCentral.value es venta_id, buscar por venta_id, si es id de asignación, buscar por id
+  asignacion.value = asignaciones.find(a => String(a.id) === String(asignacionIdCentral.value) || String(a.venta_id) === String(asignacionIdCentral.value));
+  console.log('Asignación encontrada:', asignacion.value?.id);
+    if (!asignacion.value) {
+      loading.value = false;
+      resultMessage.value = 'No se encontró la asignación para el ID proporcionado.';
+      showResultDialog.value = true;
+      return;
+    }
     form.value.asignacion_id = asignacion.value.id;
     await checkReporteExistente();
     await cargarDatosTecnico();
     await cargarDatosCliente();
     console.log('Datos del formulario cargados:', form.value);
-    
     try {
       await cargarPagos();
     } catch (e) {
@@ -398,7 +401,7 @@ async function guardar() {
   loading.value = true;
   try {
     let asignaciones = await getAsignacionesTecnicos();
-    const asignacion = asignaciones.find(a => a.id == asignacionIdCentral.value);
+    const asignacion = asignaciones.find(a => String(a.id) === String(asignacionIdCentral.value) || String(a.venta_id) === String(asignacionIdCentral.value));
     if (!asignacion || !asignacion.venta_id) {
       resultMessage.value = 'No se puede guardar el reporte: falta asignación o venta asociada.';
       loading.value = false;
@@ -410,7 +413,7 @@ async function guardar() {
       plataforma: typeof form.value.plataforma === 'object' ? form.value.plataforma.value : form.value.plataforma,
       usuario: typeof form.value.usuario === 'object' ? form.value.usuario.value : form.value.usuario,
       subtotal: String(form.value.subtotal ?? ''),
-      asignacion_id: Number(asignacionIdCentral.value)
+      asignacion_id: asignacion.id
     };
     await addReporteServicio(payload);
     resultMessage.value = 'Reporte de servicio guardado correctamente.';
