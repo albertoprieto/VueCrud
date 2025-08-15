@@ -106,7 +106,7 @@
             icon="pi pi-credit-card"
             class="p-button-sm p-button-help ml-2"
             label="Facturar"
-            @click="facturarReporte(slotProps.data)"
+            @click="abrirFacturaDialog(slotProps.data)"
           />
         </template>
       </Column>
@@ -166,9 +166,59 @@
     <!-- Dialogo Mensaje -->
     <Dialog v-model:visible="showMessageDialog" header="Mensaje" :modal="true" :closable="false">
       <div style="padding:1.5rem; text-align:center;">
-        <span>{{ messageDialogText }}</span>
+        <span v-if="!messageDialogText">Factura generada correctamente.</span>
+        <span v-else>{{ messageDialogText }}</span>
+        <div v-if="xmlGenerado" style="margin-top:2rem;">
+          <Button label="Descargar XML" icon="pi pi-download" @click="descargarXML" class="p-button-success" />
+        </div>
       </div>
       <Button label="Aceptar" icon="pi pi-check" @click="showMessageDialog = false" class="mt-3" />
+    </Dialog>
+
+    <!-- Dialogo Factura (PrimeVue, datos prellenados) -->
+    <Dialog v-model:visible="showFacturaDialog" header="Datos de Facturación" :modal="true" :closable="false">
+      <form @submit.prevent="enviarFactura">
+        <div class="form-group">
+          <label>Nombre del cliente</label>
+          <InputText v-model="facturaData.nombre_cliente" class="w-full" required />
+        </div>
+        <div class="form-group">
+          <label>RFC del cliente</label>
+          <InputText v-model="facturaData.rfc_cliente" class="w-full" required />
+        </div>
+        <div class="form-group">
+          <label>Uso CFDI</label>
+          <InputText v-model="facturaData.uso_cfdi" class="w-full" required />
+        </div>
+        <div class="form-group">
+          <label>Método de pago</label>
+          <InputText v-model="facturaData.metodo_pago" class="w-full" required />
+        </div>
+        <div class="form-group">
+          <label>Forma de pago</label>
+          <InputText v-model="facturaData.forma_pago" class="w-full" required />
+        </div>
+        <div class="form-group">
+          <label>Total</label>
+          <InputNumber v-model="facturaData.total" class="w-full" required />
+        </div>
+        <div class="form-group">
+          <label>Productos</label>
+          <div v-for="(prod, idx) in facturaData.productos" :key="idx" style="margin-bottom:1rem; border-bottom:1px solid #eee;">
+            <InputText v-model="prod.ClaveProdServ" placeholder="ClaveProdServ" class="w-full" required />
+            <InputText v-model="prod.ClaveUnidad" placeholder="ClaveUnidad" class="w-full" required />
+            <InputText v-model="prod.Unidad" placeholder="Unidad" class="w-full" required />
+            <InputText v-model="prod.Descripcion" placeholder="Descripción" class="w-full" required />
+            <InputNumber v-model="prod.ValorUnitario" placeholder="ValorUnitario" class="w-full" required />
+            <InputNumber v-model="prod.Importe" placeholder="Importe" class="w-full" required />
+            <InputNumber v-model="prod.Cantidad" placeholder="Cantidad" class="w-full" required />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <Button label="Facturar" icon="pi pi-check" type="submit" />
+          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" @click="showFacturaDialog = false" type="button" />
+        </div>
+      </form>
     </Dialog>
   </div>
 </template>
@@ -180,7 +230,8 @@ import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
-import InputText from 'primevue/inputtext'; // <-- Agrega esta línea
+import InputText from 'primevue/inputtext';
+import InputNumber from 'primevue/inputnumber';
 import NotaVentaPDF from '@/components/NotaVentaPDF.vue';
 import axios from 'axios';
 import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
@@ -206,6 +257,7 @@ const showEditDialog = ref(false);
 const reporteEditando = ref(null);
 
 const showConfirmDeleteDialog = ref(false);
+const reporteSeleccionado = ref(null);
 const reporteAEliminar = ref(null);
 
 const ventaSeleccionada = ref(null);
@@ -221,6 +273,7 @@ let asignaciones = [];
 
 const showMessageDialog = ref(false);
 const messageDialogText = ref('');
+const xmlGenerado = ref('');
 
 // Campos para edición dinámica
 const camposReporte = {
@@ -524,17 +577,139 @@ async function marcarComoPagado(reporte) {
 async function facturarReporte(reporte) {
   loading.value = true;
   try {
-    // Lógica para facturar usando el servicio SAT
-    const { emitirFacturaPrueba } = await import('@/services/facturacionSatService.js');
-    const resultado = await emitirFacturaPrueba(reporte);
-    if (resultado.exito) {
-      toast.add({ severity: 'success', summary: 'Facturado', detail: 'Factura emitida correctamente (prueba).', life: 3000 });
-      messageDialogText.value = 'Factura emitida correctamente (prueba).';
-    } else {
-      toast.add({ severity: 'error', summary: 'Error', detail: resultado.mensaje || 'No se pudo emitir la factura.', life: 4000 });
-      messageDialogText.value = resultado.mensaje || 'No se pudo emitir la factura.';
-    }
+    // Construir el objeto factura usando datos del reporte y sugerencias si faltan
+    const factura = {
+      nombre_cliente: reporte.nombre_cliente || 'Público en General',
+      rfc_cliente: reporte.rfc_cliente || 'XAXX010101000',
+      uso_cfdi: reporte.uso_cfdi || 'G03',
+      productos: Array.isArray(reporte.productos) && reporte.productos.length > 0
+        ? reporte.productos.map(p => ({
+            ClaveProdServ: p.ClaveProdServ || '81112100',
+            ClaveUnidad: p.ClaveUnidad || 'E48',
+            Unidad: p.Unidad || 'Servicio',
+            Descripcion: p.Descripcion || 'Servicio de reinstalación GPS',
+            ValorUnitario: Number(p.ValorUnitario) || Number(reporte.total) || 100.0,
+            Importe: Number(p.Importe) || Number(reporte.total) || 100.0,
+            Cantidad: Number(p.Cantidad) || 1
+          }))
+        : [{
+            ClaveProdServ: '81112100',
+            ClaveUnidad: 'E48',
+            Unidad: 'Servicio',
+            Descripcion: reporte.tipo_servicio || 'Servicio de reinstalación GPS',
+            ValorUnitario: Number(reporte.total) || 100.0,
+            Importe: Number(reporte.total) || 100.0,
+            Cantidad: 1
+          }],
+      metodo_pago: reporte.metodo_pago || 'PUE',
+      forma_pago: reporte.forma_pago || '01',
+      total: Number(reporte.total) || 100.0
+    };
+    const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/facturar`, factura);
+    toast.add({ severity: 'success', summary: 'XML generado', detail: 'Factura generada correctamente.', life: 3000 });
+    xmlGenerado.value = response.data.cfdi_xml;
+    messageDialogText.value = '';
     showMessageDialog.value = true;
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al facturar.', life: 4000 });
+    messageDialogText.value = 'Error al facturar.';
+    showMessageDialog.value = true;
+  }
+  loading.value = false;
+}
+
+function descargarXML() {
+  const blob = new Blob([xmlGenerado.value], { type: 'application/xml' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  // Usa el reporte seleccionado para obtener el folio
+  let filename = 'factura';
+  if (reporteSeleccionado.value) {
+    const folio = obtenerSO(reporteSeleccionado.value);
+    if (folio && folio !== '-') filename = folio.replace(/\s/g, '');
+  }
+  link.download = `${filename}.xml`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Factura - Nueva lógica
+const showFacturaDialog = ref(false);
+const facturaData = ref({
+  nombre_cliente: '',
+  rfc_cliente: '',
+  uso_cfdi: '',
+  metodo_pago: '',
+  forma_pago: '',
+  total: '',
+  productos: [{
+    ClaveProdServ: '',
+    ClaveUnidad: '',
+    Unidad: '',
+    Descripcion: '',
+    ValorUnitario: '',
+    Importe: '',
+    Cantidad: 1
+  }]
+});
+
+async function abrirFacturaDialog(reporte) {
+  reporteSeleccionado.value = reporte;
+  let venta = null;
+  let cliente = null;
+  if (reporte.asignacion_id) {
+    const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
+    if (asignacion && asignacion.venta_id) {
+      const ventas = await getVentas();
+      venta = ventas.find(v => v.id == asignacion.venta_id);
+      const clientes = await getClientes();
+      cliente = venta ? (clientes.find(c => c.id === venta.cliente_id) || {}) : {};
+    }
+  }
+  facturaData.value = {
+    nombre_cliente: reporte.nombre_cliente || cliente?.nombre || 'Público en General',
+    rfc_cliente: reporte.rfc_cliente || cliente?.rfc || 'XAXX010101000',
+    uso_cfdi: reporte.uso_cfdi || cliente?.uso_cfdi || 'G03',
+    metodo_pago: reporte.metodo_pago || venta?.metodo_pago || 'PUE',
+    forma_pago: reporte.forma_pago || venta?.forma_pago || '01',
+    total: reporte.total || venta?.total || 100.0,
+    nombre_factura: reporte.tipo_servicio || 'Servicio',
+    productos: Array.isArray(reporte.productos) && reporte.productos.length > 0
+      ? reporte.productos.map(p => ({
+          ClaveProdServ: p.ClaveProdServ || '81112100',
+          ClaveUnidad: p.ClaveUnidad || 'E48',
+          Unidad: p.Unidad || 'Servicio',
+          Descripcion: p.Descripcion || reporte.tipo_servicio || 'Servicio de reinstalación GPS',
+          ValorUnitario: p.ValorUnitario || reporte.total || venta?.total || 100.0,
+          Importe: p.Importe || reporte.total || venta?.total || 100.0,
+          Cantidad: p.Cantidad || 1
+        }))
+      : [{
+          ClaveProdServ: '81112100',
+          ClaveUnidad: 'E48',
+          Unidad: 'Servicio',
+          Descripcion: reporte.tipo_servicio || 'Servicio de reinstalación GPS',
+          ValorUnitario: reporte.total || venta?.total || 100.0,
+          Importe: reporte.total || venta?.total || 100.0,
+          Cantidad: 1
+        }]
+  };
+  showFacturaDialog.value = true;
+}
+
+async function enviarFactura() {
+  loading.value = true;
+  try {
+    const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/facturar`, {
+      ...facturaData.value,
+      total: Number(facturaData.value.total)
+    });
+    toast.add({ severity: 'success', summary: 'XML generado', detail: 'Factura generada correctamente.', life: 3000 });
+    xmlGenerado.value = response.data.cfdi_xml;
+    messageDialogText.value = '';
+    showMessageDialog.value = true;
+    showFacturaDialog.value = false;
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Error al facturar.', life: 4000 });
     messageDialogText.value = 'Error al facturar.';
