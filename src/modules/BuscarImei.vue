@@ -334,9 +334,7 @@ const verMotivo = async (imei) => {
 
 <style scoped>
 .buscar-imei-container {
-  max-width: 900px;
   margin: 2rem auto;
-  background: var(--color-bg, #23272f);
   color: var(--color-text, #fff);
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.10);
@@ -344,7 +342,7 @@ const verMotivo = async (imei) => {
 }
 .buscar-imei-title {
   margin-bottom: 1.5rem;
-  color: var(--color-title, #ff4081);
+  color: var(--color-title, #bd3838);
   text-align: center;
 }
 .buscar-imei-filtros {

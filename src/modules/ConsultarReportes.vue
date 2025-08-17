@@ -23,7 +23,7 @@
     <DataTable :value="reportesFiltrados" responsiveLayout="scroll" :loading="loading">
       <Column field="tipo_servicio" header="Tipo" />
       <Column field="nombre_cliente" header="Cliente" />
-      <Column field="folio" header="SO">
+      <Column field="folio" header="Orden">
         <template #body="slotProps">
           <span v-if="slotProps.data.folio">
             {{ slotProps.data.folio }}

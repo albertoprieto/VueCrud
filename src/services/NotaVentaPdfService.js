@@ -61,7 +61,7 @@ export async function generarNotaVentaPDF({ venta, cliente, articulos, empresa }
       },
       { text: '\n' },
       { text: 'Orden de servicio', style: 'title', alignment: 'center' },
-      { text: `Orden de servicio nº ${folio}`, style: 'folio', alignment: 'center' },
+        { text: `Orden de servicio nº ${folio}`, style: 'folio', alignment: 'center' },
       { text: '\n' },
       {
         columns: [

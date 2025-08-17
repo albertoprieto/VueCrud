@@ -32,10 +32,6 @@
 
       <!-- Fila 2: Referencia, Vendedor, Descuento -->
       <div class="ventas-form-header">
-        <!-- <div class="ventas-form-col">
-          <label>N.º de cotización</label>
-          <InputText v-model="venta.referencia" class="w-full" />
-        </div> -->
         <div class="ventas-form-col">
           <label>Vendedor</label>
           <Dropdown
@@ -57,35 +53,17 @@
       <div class="ventas-form-header">
         <div class="ventas-form-col">
           <label>Ubicación</label>
-          <Dropdown
-            v-model="venta.ubicacion_id"
-            :options="ubicaciones"
-            optionLabel="nombre"
-            optionValue="id"
-            placeholder="Selecciona ubicación"
-            class="w-full"
-          />
+          <Dropdown v-model="venta.ubicacion_id" :options="ubicaciones" optionLabel="nombre" optionValue="id" placeholder="Selecciona ubicación" class="w-full" @change="onSeleccionarUbicacion(venta.ubicacion_id)" />
+          <span v-if="venta.ubicacion_id" class="info-text">Ubicación seleccionada: {{ ubicaciones.find(u => u.id === venta.ubicacion_id)?.nombre }}</span>
         </div>
       </div>
-
-      <!-- Artículos -->
-      <!-- <h3>Artículos</h3>
-      <div class="mb-2">
-        <Button
-          label="Agregar Artículo"
-          icon="pi pi-plus"
-          class="mb-2"
-          @click="addArticulo"
-          :disabled="!venta.ubicacion_id"
-        />
-      </div> -->
 
       <!-- Tabla de artículos -->
       <DataTable
         :value="venta.articulos"
         responsiveLayout="scroll"
         class="venta-articulos-table"
-        :disabled="esVentaDeCotizacion"
+        :disabled="!ubicacionValida || esVentaDeCotizacion"
       >
         <Column header="Artículo">
           <template #body="slotProps">
@@ -147,7 +125,6 @@
           </template>
         </Column>
       </DataTable>
-      <!-- IMEI eliminado completamente -->
 
       <div class="mb-2">
         <label>Observaciones</label>
@@ -168,7 +145,6 @@
         <small v-if="!venta.terminos_pago" class="error-text">Selecciona un método de pago</small>
       </div>
 
-
       <!-- Mensaje de advertencia si falta stock -->
       <div v-if="stockInsuficiente" class="error-text mb-2">
         No hay suficiente stock para uno o más artículos en la ubicación seleccionada.
@@ -184,7 +160,7 @@
           label="Generar orden"
           class="mb-2"
           @click="guardarVentaConLoading"
-          :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar || stockInsuficiente"
+          :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar || stockInsuficiente || !ubicacionValida"
         />
       </div>
 
@@ -201,13 +177,16 @@ El tiempo de traslado en el envió de los paquetes depende de la paquetería.</s
         <p>{{ mensajeExito }}</p>
         <Button label="Aceptar" icon="pi pi-check" @click="cerrarDialogoVenta" autofocus />
       </Dialog>
+      <Dialog v-model:visible="dialogoSinStock" header="Stock insuficiente" :modal="true" :closable="true" class="ventas-dialog">
+        <p style="color: red; font-weight: bold;">{{ mensajeSinStock }}</p>
+        <Button label="Aceptar" icon="pi pi-check" @click="dialogoSinStock = false; venta.ubicacion_id = null;" autofocus />
+      </Dialog>
     </div>
   </div>
 </template>
 
 <script setup>
 import { useVentas } from '@/composables/useVentas.js';
-import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
 import { getDetalleVenta } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
@@ -245,6 +224,7 @@ const venta = reactive({
   total: 0,
   almacen: ''
 });
+const clientes = ref([]);
 const toast = useToast();
 const router = useRouter();
 
@@ -266,88 +246,47 @@ const cotizacionSeleccionada = ref(null);
 const esVentaDeCotizacion = computed(() => !!cotizacionSeleccionada.value);
 const articulosDisponibles = ref([]);
 const folioAsignado = ref('');
+const dialogoSinStock = ref(false);
+const mensajeSinStock = ref('');
+const ubicacionInvalida = ref(false);
 
-function irAEditarCotizacion() {
-  if (cotizacionSeleccionada.value) {
-    router.push(`/cotizaciones/editar/${cotizacionSeleccionada.value}`);
-  }
+const todasCotizaciones = ref([]);
+
+const mostrarDialogoUbicacion = ref(false);
+const ubicacionSeleccionada = ref(null);
+const ubicacionesDialog = ref([]);
+const articulosStockDialog = ref([]);
+const ubicacionValidaDialog = computed(() => {
+  if (!ubicacionSeleccionada.value) return false;
+  if (venta.articulos.length === 0) return true;
+  return !venta.articulos.some(a => {
+    if (a.articulo_id == null) return false;
+    const stock = articulosStockDialog.value.find(art => art.id === a.articulo_id)?.stock ?? 0;
+    return a.cantidad > stock && stock !== 'NA';
+  });
+});
+
+async function onSeleccionarUbicacion(id) {
+  const articulosUbicacion = await getArticulosStockPorUbicacion(id);
+  articulosDisponibles.value = articulosUbicacion;
+  // Log de stock de la ubicación seleccionada
+  console.log('Stock de la ubicación seleccionada:', articulosUbicacion);
 }
 
-const terminosPagoOptions = [
-  { label: 'Neto 15', value: 'Neto 15' },
-  { label: 'Neto 30', value: 'Neto 30' },
-  { label: 'Neto 45', value: 'Neto 45' },
-  { label: 'Neto 60', value: 'Neto 60' },
-  { label: 'Pago Contra Entrega', value: 'Pago Contra Entrega' }
-];
-
-const metodoPagoOptions = [
-  { label: 'Depósito', value: 'Depósito' },
-  { label: 'Transferencia', value: 'Transferencia' }
-];
-
-const clientes = ref([]);
-const todasCotizaciones = ref([]); // Guarda todas las cotizaciones para filtrar clientes
-
 onMounted(async () => {
-  // 1. Cargar todas las cotizaciones
   todasCotizaciones.value = await getQuotations();
-
-  // 2. Cargar todos los clientes
   const todosClientes = await getClientes();
-
-  // 3. Filtrar solo los clientes con cotizaciones pendientes
   const clientesConPendientes = todosClientes.filter(cliente =>
     todasCotizaciones.value.some(
       c => String(c.cliente_id) === String(cliente.id) && c.status === 'Pendiente'
     )
   );
   clientes.value = clientesConPendientes;
-
-  // 4. Cargar ubicaciones, ventas, usuarios
   ubicaciones.value = await getUbicaciones();
   const ventas = await getVentas();
-  // folioPropuesto.value = generarFolioConsecutivo(ventas);
-  // venta.folio = folioPropuesto.value;
   const usuarios = await getUsuarios();
   vendedores.value = usuarios.filter(u => u.perfil === 'Vendedor');
 });
-
-watch(
-  () => venta.ubicacion_id,
-  async (nuevaUbicacion, anteriorUbicacion) => {
-    if (nuevaUbicacion !== anteriorUbicacion) {
-      if (nuevaUbicacion) {
-        const articulosUbicacion = await getArticulosStockPorUbicacion(nuevaUbicacion);
-        const todos = await getTodosArticulos();
-        const servicios = todos.filter(a => a.tipo && a.tipo.toLowerCase() === 'servicio');
-        servicios.forEach(serv => {
-          if (!articulosUbicacion.some(a => a.id === serv.id)) {
-            articulosUbicacion.push(serv);
-          }
-        });
-        articulosDisponibles.value = articulosUbicacion;
-
-        // Imprime el stock de los artículos disponibles en consola
-        console.log('Stock en ubicación seleccionada:', articulosUbicacion.map(a => ({
-          id: a.id,
-          nombre: a.nombre,
-          stock: a.stock
-        })));
-
-        // Valida stock de los artículos ya cargados
-        venta.articulos.forEach(a => {
-          const stock = articulosUbicacion.find(art => art.id === a.articulo_id)?.stock ?? 0;
-          if (!esServicio(a.articulo_id) && a.cantidad > stock) {
-            a.cantidad = stock; // Ajusta cantidad si es mayor al stock
-          }
-        });
-      } else {
-        articulosDisponibles.value = [];
-      }
-    }
-  }
-);
 
 watch(
   () => venta.cliente_id,
@@ -362,7 +301,6 @@ watch(
           ...c,
           label: `COTIZACION-${String(c.id).padStart(5, '0')}`
         }));
-      console.log('Cotizaciones del cliente seleccionado:', cotizacionesCliente.value);
     } else {
       cotizacionesCliente.value = [];
     }
@@ -378,20 +316,15 @@ async function guardarVentaConLoading() {
       loadingGuardar.value = false;
       return;
     }
-    // Prepara los datos de la venta
     const { addVenta } = await import('@/services/ventasService');
     const ubicacionObj = ubicaciones.value.find(u => u.id === venta.ubicacion_id);
     venta.almacen = ubicacionObj ? ubicacionObj.nombre : '';
-
-    // Prepara los artículos SIN imeis
     const articulosLimpios = venta.articulos.map(a => ({
       articulo_id: a.articulo_id,
       cantidad: a.cantidad,
       precio_unitario: a.precio_unitario,
         imeis: []
     }));
-
-    // Guarda la venta
     const response = await addVenta({
       cliente_id: venta.cliente_id,
       fecha: venta.fecha,
@@ -411,11 +344,9 @@ async function guardarVentaConLoading() {
 
     folioAsignado.value = response.folio || '';
 
-    // Si la venta proviene de una cotización, autoriza la cotización
     if (cotizacionSeleccionada.value) {
       const cotizacion = cotizacionesCliente.value.find(c => c.id === cotizacionSeleccionada.value);
       if (cotizacion) {
-        // Convierte el array de artículos a objeto si es necesario
         let articulosObj = {};
         if (Array.isArray(venta.articulos)) {
           venta.articulos.forEach((a, idx) => {
@@ -434,36 +365,10 @@ async function guardarVentaConLoading() {
           status: 'Autorizada',
           autorizada: true,
           fecha_autorizacion: new Date().toISOString().slice(0, 10),
-          articulos: articulosObj // <-- Aquí va como objeto, NO como string
+          articulos: articulosObj
         });
       }
     }
-
-    // Genera PDF y muestra éxito
-    const ventasActualizadas = await getVentas();
-    const ultimaVenta = ventasActualizadas[ventasActualizadas.length - 1];
-    const detalle = await getDetalleVenta(ultimaVenta.id);
-    detalleVentaPDF.value = detalle;
-
-    const clientes = await getClientes();
-    clientePDF.value = clientes.find(c => c.id === ultimaVenta.cliente_id) || {};
-
-    const articulos = await getTodosArticulos();
-    articulosPDF.value = detalle.map(item => {
-      const art = articulos.find(a => a.id === item.articulo_id) || {};
-      return {
-        ...item,
-        sku: art.sku,
-        nombre: art.nombre
-      };
-    });
-
-    await generarNotaVentaPDF({
-      venta: ultimaVenta,
-      cliente: clientePDF.value,
-      articulos: articulosPDF.value,
-      empresa: { nombre: 'GPSubicacion.com', direccion: 'Guadalajara', rfc: 'RFC123456' }
-    });
 
     ventaRegistrada.value = true;
     mensajeExito.value = `La orden de servicio se registró correctamente.\nFolio asignado: ${folioAsignado.value}`;
@@ -495,20 +400,28 @@ const totalVenta = computed(() =>
   subtotalVenta.value - descuentoMonto.value
 );
 
-// Computed para validar stock insuficiente por ubicación
 const stockInsuficiente = computed(() => {
   if (!venta.ubicacion_id) return false;
   return venta.articulos.some(a => {
-    // No valida servicios
     if (esServicio(a.articulo_id)) return false;
     const stock = getStockDisponible(a.articulo_id, a);
     return a.cantidad > stock;
   });
 });
 
+const ubicacionValida = computed(() => {
+  if (!venta.ubicacion_id) return false;
+  if (venta.articulos.length === 0) return true;
+  const articulosUbicacion = articulosDisponibles.value;
+  return !venta.articulos.some(a => {
+    if (esServicio(a.articulo_id)) return false;
+    const stock = articulosUbicacion.find(art => art.id === a.articulo_id)?.stock ?? 0;
+    return a.cantidad > stock;
+  });
+});
+
 function articulosConStockUbicacion(row = null) {
   if (!venta.ubicacion_id) return [];
-  // Solo muestra artículos con stock > 0 o servicios
   return articulosDisponibles.value.filter(art => {
     if (art.tipo && art.tipo.toLowerCase() === 'servicio') return true;
     return art.stock > 0;
@@ -517,9 +430,7 @@ function articulosConStockUbicacion(row = null) {
 
 function cargarCotizacionEnVenta(cotizacion) {
   if (!cotizacion) return;
-  console.log('Cotización seleccionada:', cotizacion);
 
-  // Parsear articulos si es string
   let articulos = [];
   if (typeof cotizacion.articulos === 'string') {
     try {
@@ -545,17 +456,13 @@ function cargarCotizacionEnVenta(cotizacion) {
   venta.terminos_condiciones = cotizacion.terminos_condiciones || '';
 }
 
-// Agrega esta función para evitar el error en la tabla
 function getStockDisponible(articulo_id, row) {
-  // Devuelve un número de stock simulado o real según tu lógica
   const articulo = articulosDisponibles.value.find(a => a.id === articulo_id);
   if (!articulo) return 0;
-  // Si tienes stock en el objeto, usa eso, si no, retorna un valor por defecto
   return articulo.stock ?? 0;
 }
 
 function mostrarColumnaIMEI(articulo_id) {
-  // Eliminada la lógica de IMEI
   return false;
 }
 
@@ -580,22 +487,22 @@ function getArticuloNombre(articulo_id) {
 }
 
 function getArticuloNombreAsync(articulo_id, row) {
-  // Si ya está en la lista, mostrarlo
   const nombre = getArticuloNombre(articulo_id);
   if (nombre) return nombre;
-  // Si ya está en cache, mostrarlo
   if (articulosNombreCache[articulo_id]) return articulosNombreCache[articulo_id];
-  // Si no, buscarlo y actualizar el row
   fetchArticuloNombre(articulo_id).then(nombre => {
     if (row && nombre && nombre !== articulo_id) {
       row._articulo_nombre = nombre;
     }
   });
-  // Si ya se guardó en el row, mostrarlo
   if (row && row._articulo_nombre) return row._articulo_nombre;
-  // Mientras, mostrar el id
   return articulo_id;
 }
+
+const metodoPagoOptions = [
+  { label: 'Transferencia', value: 'transferencia' },
+  { label: 'Depósito', value: 'deposito' }
+];
 </script>
 
 <style scoped>
@@ -688,7 +595,6 @@ function getArticuloNombreAsync(articulo_id, row) {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1rem;
-  background: var(--color-card);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
