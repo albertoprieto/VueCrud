@@ -1,15 +1,39 @@
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 
-// Sugerencia: guarda tu base64 en src/assets/logo_base64.txt y cárgalo dinámicamente
 async function getLogoBase64() {
-  // Puedes usar fetch para cargar el archivo base64
   const res = await fetch('/src/assets/logoBase64.txt');
   return await res.text();
 }
 
 export class NotaVentaPdfService {
   static async generarPDF({ venta, cliente, articulos, empresa }) {
+    if (!venta || !cliente || !articulos || articulos.length === 0) {
+      window.toast && window.toast.add({ severity: 'error', summary: 'Datos incompletos', detail: 'No se puede generar el PDF porque faltan datos de la venta, cliente o artículos.', life: 5000 });
+      return;
+    }
+    // Validación de campos clave
+    const camposObligatorios = [
+      venta.cliente_id,
+      venta.vendedor,
+      venta.fecha,
+      venta.total,
+      venta.subtotal,
+      cliente.nombre,
+      cliente.rfc
+    ];
+    if (camposObligatorios.some(c => !c)) {
+      window.toast && window.toast.add({ severity: 'error', summary: 'Datos obligatorios faltantes', detail: 'Verifica que todos los campos obligatorios estén completos antes de generar el PDF.', life: 5000 });
+      return;
+    }
+    // Validación de artículos
+    for (const art of articulos) {
+      if (!art.nombre || !art.cantidad || !art.precio_unitario) {
+        window.toast && window.toast.add({ severity: 'error', summary: 'Artículo incompleto', detail: 'Todos los artículos deben tener nombre, cantidad y precio unitario.', life: 5000 });
+        return;
+      }
+    }
+
     const logo = await getLogoBase64();
 
     const vendedor = venta.vendedor || '';

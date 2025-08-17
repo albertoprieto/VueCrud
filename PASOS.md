@@ -40,12 +40,6 @@ Este documento describe el recorrido funcional de la aplicación, desde el acces
 - Loader/spinner mientras se espera la respuesta.
 - Toast o alerta en caso de error (credenciales incorrectas, usuario inactivo, etc).
 
-**Inconsistencias y observaciones:**
-- Mensajes de error poco claros si el login falla (ejemplo: "Error desconocido" en vez de "Usuario o contraseña incorrectos").
-- No se valida el formato del usuario antes de enviar (puede aceptar cualquier string).
-- El token puede no guardarse correctamente si hay problemas de sincronización con el store.
-- No hay opción de recuperación de contraseña ni registro de nuevos usuarios desde el login.
-
 **Ejemplo de error frecuente:**
 > El usuario ingresa credenciales incorrectas y el sistema muestra un mensaje genérico, sin indicar si el usuario existe o si la contraseña es incorrecta.
 
@@ -173,10 +167,8 @@ Este documento describe el recorrido funcional de la aplicación, desde el acces
 - GET `/ventas/:id/pdf` (descarga PDF)
 
 **Inconsistencias y observaciones:**
-- El cálculo de totales y descuentos puede ser incorrecto si los datos no se actualizan tras editar artículos.
 - El PDF puede no reflejar todos los datos si el modelo de venta está incompleto o hay campos vacíos.
-- El feedback visual (toasts, loaders) puede no aparecer en todos los errores (ejemplo: error de stock insuficiente).
-- El registro puede permitir ventas con artículos sin stock si no se valida correctamente.
+
 
 **Ejemplo de error frecuente:**
 > El usuario registra una venta con descuento y el total calculado no coincide con el esperado, generando confusión y posibles errores contables.
