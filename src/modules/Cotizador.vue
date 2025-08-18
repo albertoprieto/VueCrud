@@ -101,6 +101,14 @@ watch(
 const showPDFDialog = ref(false);
 const pdfDocDefinition = ref(null);
 
+// Validación de campos obligatorios
+const cotizacionInvalida = computed(() => {
+  if (!cotizacion.value.cliente_id || !cotizacion.value.vendedor || !cotizacion.value.fecha) return true;
+  if (!cotizacion.value.articulos.length) return true;
+  // Algún artículo sin seleccionar o cantidad inválida
+  return cotizacion.value.articulos.some(a => !a.articulo_id || !a.cantidad || a.cantidad < 1);
+});
+
 const guardarCotizacion = async () => {
   if (!cotizacion.value.cliente_id || cotizacion.value.articulos.length === 0) {
     toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Selecciona cliente y al menos un artículo.', life: 4000 });
@@ -526,10 +534,11 @@ const irAClientes = () => {
           <div class="form-group">
             <label>Cliente</label>
             <Dropdown v-model="cotizacion.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id" 
-              placeholder="Selecciona un cliente" class="w-full mobile-dropdown" />
+              placeholder="Selecciona un cliente" class="w-full" :class="{'p-invalid': !cotizacion.cliente_id}" />
           </div>
-          <div class="form-group mobile-button-group">
-            <Button label="Nuevo Cliente" icon="pi pi-plus" class="p-button-success mobile-button" 
+          <div class="form-group">
+            <label>Nuevo</label>
+            <Button label="Nuevo Cliente" icon="pi pi-plus" class="w-full p-button-secondary" 
               @click="showNuevoClienteDialog = true" />
           </div>
           <Dialog v-model:visible="showNuevoClienteDialog" header="Agregar Cliente" :modal="true" class="mobile-dialog">
@@ -545,7 +554,7 @@ const irAClientes = () => {
           </div>
           <div class="form-group">
             <label>Fecha</label>
-            <InputText v-model="cotizacion.fecha" type="date" class="w-full mobile-input" />
+            <InputText v-model="cotizacion.fecha" type="date" class="w-full mobile-input" :class="{'p-invalid': !cotizacion.fecha}" />
           </div>
         </div>
         
@@ -553,12 +562,12 @@ const irAClientes = () => {
           <div class="form-group">
             <label>Vendedor</label>
             <Dropdown v-model="cotizacion.vendedor" :options="vendedores" optionLabel="username" optionValue="username" 
-              placeholder="Selecciona vendedor" class="w-full mobile-dropdown" />
+              placeholder="Selecciona vendedor" class="w-full mobile-dropdown" :class="{'p-invalid': !cotizacion.vendedor}" />
           </div>
           <div class="form-group">
             <label>Descuento (%)</label>
             <InputText v-model.number="cotizacion.descuento" type="number" min="0" max="100" 
-              class="w-full mobile-input" />
+              class="w-full mobile-input" :class="{'p-invalid': cotizacion.descuento === null || cotizacion.descuento === undefined}" />
           </div>
         </div>
         
@@ -577,6 +586,7 @@ const irAClientes = () => {
                   filter
                   showClear
                   @change="handleArticuloChange(slotProps.data.articulo_id, slotProps.data)"
+                  :class="{'p-invalid': !slotProps.data.articulo_id}"
                 />
               </template>
             </Column>
@@ -589,6 +599,7 @@ const irAClientes = () => {
                   class="w-full mobile-input"
                   :disabled="!slotProps.data.articulo_id"
                   @input="handleCantidadInput(slotProps.data)"
+                  :class="{'p-invalid': !slotProps.data.cantidad || slotProps.data.cantidad < 1}"
                 />
               </template>
             </Column>
@@ -644,6 +655,7 @@ const irAClientes = () => {
             icon="pi pi-save"
             class="p-button-success mobile-button full-width-button"
             type="submit"
+            :disabled="cotizacionInvalida"
           />
           <!-- <Button
             label="Generar PDF"
