@@ -160,7 +160,7 @@
           label="Generar orden"
           class="mb-2"
           @click="guardarVentaConLoading"
-          :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar || stockInsuficiente || !ubicacionValida"
+          :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar || stockInsuficiente || !ubicacionValida || !venta.terminos_pago"
         />
       </div>
 
@@ -268,7 +268,19 @@ const ubicacionValidaDialog = computed(() => {
 
 async function onSeleccionarUbicacion(id) {
   const articulosUbicacion = await getArticulosStockPorUbicacion(id);
+  // Agrega el objeto de instalación a la ubicación seleccionada
+  const instalacionObj = {
+    cantidad: 1,
+    id: 5,
+    stock: 1,
+    articulo_id: 5,
+    precio_unitario: 650,
+    nombre: 'Instalacion a Domicilio GDL'
+  };
+  articulosUbicacion.push(instalacionObj);
   articulosDisponibles.value = articulosUbicacion;
+  console.log('Artículos de la cotización:', venta.articulos);
+  console.log('Artículos de la ubicación seleccionada:', articulosDisponibles.value);
   // Log de stock de la ubicación seleccionada
   console.log('Stock de la ubicación seleccionada:', articulosUbicacion);
 }
@@ -386,8 +398,10 @@ function cerrarDialogoVenta() {
 }
 
 const esServicio = (articulo_id) => {
-  const art = articulosDisponibles.value.find(a => a.id === articulo_id);
-  return art && String(art.tipo).toLocaleLowerCase() === 'servicio';
+  const art = articulosDisponibles.value.find(a => a.id === articulo_id || a.articulo_id === articulo_id);
+  if (!art) return false;
+  const tipo = String(art.tipo).toLocaleLowerCase();
+  return tipo === 'servicio' || tipo === 'servicio' || tipo === 'servicios';
 };
 
 const subtotalVenta = computed(() =>
@@ -404,7 +418,9 @@ const stockInsuficiente = computed(() => {
   if (!venta.ubicacion_id) return false;
   return venta.articulos.some(a => {
     if (esServicio(a.articulo_id)) return false;
-    const stock = getStockDisponible(a.articulo_id, a);
+    // Buscar el artículo en la ubicación por id o articulo_id
+    const artUbicacion = articulosDisponibles.value.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
+    const stock = artUbicacion ? artUbicacion.stock ?? 0 : 0;
     return a.cantidad > stock;
   });
 });
@@ -415,7 +431,8 @@ const ubicacionValida = computed(() => {
   const articulosUbicacion = articulosDisponibles.value;
   return !venta.articulos.some(a => {
     if (esServicio(a.articulo_id)) return false;
-    const stock = articulosUbicacion.find(art => art.id === a.articulo_id)?.stock ?? 0;
+    const artUbicacion = articulosUbicacion.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
+    const stock = artUbicacion ? artUbicacion.stock ?? 0 : 0;
     return a.cantidad > stock;
   });
 });
@@ -457,7 +474,7 @@ function cargarCotizacionEnVenta(cotizacion) {
 }
 
 function getStockDisponible(articulo_id, row) {
-  const articulo = articulosDisponibles.value.find(a => a.id === articulo_id);
+  const articulo = articulosDisponibles.value.find(a => a.id === articulo_id || a.articulo_id === articulo_id);
   if (!articulo) return 0;
   return articulo.stock ?? 0;
 }
