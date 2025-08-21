@@ -1,7 +1,11 @@
 from dotenv import load_dotenv
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.backends import default_backend
+# satcfdi para facturación oficial SAT
+from decimal import Decimal
+from satcfdi.models import Signer
+from satcfdi.create.cfd import cfdi40
+from satcfdi.create.cfd.cfdi40 import Comprobante, Emisor, Receptor, Concepto, Traslado
+from satcfdi.create.cfd.catalogos import RegimenFiscal, UsoCFDI, MetodoPago, Impuesto, TipoFactor
+
 import base64
 import os
 from pydantic import BaseModel
@@ -60,56 +64,90 @@ class FacturaRequest(BaseModel):
     forma_pago: str
     total: float
 
+
 @app.post("/api/facturar")
 def facturar(data: FacturaRequest):
+    from satcfdi import render
+    from satcfdi.render import BODY_TEMPLATE
     CERT_PATH = os.getenv("CSD_CERT_PATH")
     KEY_PATH = os.getenv("CSD_KEY_PATH")
-    KEY_PASS = os.getenv("CSD_KEY_PASS").encode() if os.getenv("CSD_KEY_PASS") else b""
+    KEY_PASS = os.getenv("CSD_KEY_PASS")
+    RFC = os.getenv("CSD_RFC", "RAQÑ7701212M3")
 
-    try:
-        if not KEY_PATH or not os.path.exists(KEY_PATH):
-            raise Exception(f"No se encontró la llave privada en la ruta: {KEY_PATH}")
-        with open(KEY_PATH, "rb") as key_file:
-            private_key = serialization.load_der_private_key(
-                key_file.read(),
-                password=KEY_PASS,
-                backend=default_backend()
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error cargando llave: {str(e)}")
+    # Crear conceptos
+    conceptos = [
+        Concepto(
+            clave_prod_serv=p.ClaveProdServ,
+            cantidad=p.Cantidad,
+            clave_unidad=p.ClaveUnidad,
+            unidad=p.Unidad,
+            descripcion=p.Descripcion,
+            valor_unitario=p.ValorUnitario
+        ) for p in data.productos
+    ]
 
-    conceptos_xml = "".join([
-        f'<cfdi:Concepto ClaveProdServ="{p.ClaveProdServ}" Cantidad="{p.Cantidad}" ClaveUnidad="{p.ClaveUnidad}" Unidad="{p.Unidad}" Descripcion="{p.Descripcion}" ValorUnitario="{p.ValorUnitario}" Importe="{p.Importe}"/>'
-        for p in data.productos
-    ])
-    cfdi_xml = f'''<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" Version="4.0" Serie="A" Folio="1" Fecha="2025-08-15T12:00:00" FormaPago="{data.forma_pago}" SubTotal="{data.total}" Moneda="MXN" Total="{data.total}" TipoDeComprobante="I" MetodoPago="{data.metodo_pago}" LugarExpedicion="64000">
-  <cfdi:Emisor Rfc="{os.getenv('CSD_RFC','RAQÑ7701212M3')}" Nombre="Empresa de Pruebas" RegimenFiscal="601"/>
-  <cfdi:Receptor Rfc="{data.rfc_cliente}" Nombre="{data.nombre_cliente}" DomicilioFiscalReceptor="64000" RegimenFiscalReceptor="601" UsoCFDI="{data.uso_cfdi}"/>
-  <cfdi:Conceptos>
-    {conceptos_xml}
-  </cfdi:Conceptos>
-  <cfdi:Impuestos TotalImpuestosTrasladados="16.00">
-    <cfdi:Traslados>
-      <cfdi:Traslado Base="100.00" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="16.00"/>
-    </cfdi:Traslados>
-  </cfdi:Impuestos>
-</cfdi:Comprobante>'''
 
-    string_original = f"||4.0|A|1|2025-08-15T12:00:00|{data.forma_pago}|{data.total}|0|MXN|{data.total}|I|{data.metodo_pago}|64000|{os.getenv('CSD_RFC','RAQÑ7701212M3')}|601|{data.rfc_cliente}|{data.uso_cfdi}|{data.productos[0].Descripcion}|{data.productos[0].Importe}|16.00||"
+    # Crear comprobante CFDI
+    comprobante = cfdi40.Comprobante(
+        emisor=cfdi40.Emisor(
+            rfc=RFC,
+            nombre="Empresa de Pruebas",
+            regimen_fiscal=RegimenFiscal.GENERAL_DE_LEY_PERSONAS_MORALES
+        ),
+        lugar_expedicion="64000",
+        receptor=cfdi40.Receptor(
+            rfc=data.rfc_cliente,
+            nombre=data.nombre_cliente,
+            uso_cfdi=UsoCFDI.GASTOS_EN_GENERAL,
+            domicilio_fiscal_receptor="64000",
+            regimen_fiscal_receptor=RegimenFiscal.GENERAL_DE_LEY_PERSONAS_MORALES
+        ),
+        metodo_pago=MetodoPago.PAGO_EN_PARCIALIDADES_O_DIFERIDO,
+        serie="A",
+        folio="1",
+        conceptos=[
+            cfdi40.Concepto(
+                clave_prod_serv=p.ClaveProdServ,
+                cantidad=Decimal(str(p.Cantidad)),
+                clave_unidad=p.ClaveUnidad,
+                descripcion=p.Descripcion,
+                valor_unitario=Decimal(str(p.ValorUnitario)),
+                impuestos=cfdi40.Impuestos(
+                    traslados=cfdi40.Traslado(
+                        impuesto=Impuesto.IVA,
+                        tipo_factor=TipoFactor.TASA,
+                        tasa_o_cuota=Decimal("0.160000"),
+                    )
+                ),
+                _traslados_incluidos=False
+            ) for p in data.productos
+        ]
+    )
 
-    try:
-        signature = private_key.sign(
-            string_original.encode(),
-            padding.PKCS1v15(),
-            hashes.SHA256()
-        )
-        sello = base64.b64encode(signature).decode()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error firmando CFDI: {str(e)}")
-
+    # Generar XML
+    signer = Signer.load(
+        certificate=open(CERT_PATH, "rb").read(),
+        key=open(KEY_PATH, "rb").read(),
+        password=KEY_PASS
+    )
+    comprobante.sign(signer)
+    comprobante = comprobante.process()
+    # Generar XML en archivo y en string
+    xml_path = "factura.xml"
+    comprobante.xml_write(xml_path)
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml_content = f.read()
+    # Generar PDF en archivo y en base64
+    pdf_path = "factura.pdf"
+    from satcfdi.render import pdf_write
+    pdf_write([comprobante], pdf_path)
+    with open(pdf_path, "rb") as f:
+        pdf_bytes = f.read()
+    import base64
+    pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
     return {
-        "cfdi_xml": cfdi_xml,
-        "sello": sello
+        "cfdi_xml": xml_content,
+        "cfdi_pdf": pdf_base64
     }
 
 
