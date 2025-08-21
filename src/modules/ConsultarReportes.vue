@@ -168,8 +168,9 @@
       <div style="padding:1.5rem; text-align:center;">
         <span v-if="!messageDialogText">Factura generada correctamente.</span>
         <span v-else>{{ messageDialogText }}</span>
-        <div v-if="xmlGenerado" style="margin-top:2rem;">
-          <Button label="Descargar XML" icon="pi pi-download" @click="descargarXML" class="p-button-success" />
+        <div v-if="xmlGenerado || pdfGenerado" style="margin-top:2rem; display: flex; gap: 1rem; justify-content: center;">
+          <Button v-if="xmlGenerado" label="Descargar XML" icon="pi pi-download" @click="descargarXML" class="p-button-success" />
+          <Button v-if="pdfGenerado" label="Descargar PDF" icon="pi pi-file-pdf" @click="descargarPDF" class="p-button-warning" />
         </div>
       </div>
       <Button label="Aceptar" icon="pi pi-check" @click="showMessageDialog = false" class="mt-3" />
@@ -274,6 +275,7 @@ let asignaciones = [];
 const showMessageDialog = ref(false);
 const messageDialogText = ref('');
 const xmlGenerado = ref('');
+const pdfGenerado = ref('');
 
 // Campos para edición dinámica
 const camposReporte = {
@@ -606,8 +608,9 @@ async function facturarReporte(reporte) {
       total: Number(reporte.total) || 100.0
     };
     const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/facturar`, factura);
-    toast.add({ severity: 'success', summary: 'XML generado', detail: 'Factura generada correctamente.', life: 3000 });
+    toast.add({ severity: 'success', summary: 'XML/PDF generado', detail: 'Factura generada correctamente.', life: 3000 });
     xmlGenerado.value = response.data.cfdi_xml;
+    pdfGenerado.value = response.data.cfdi_pdf || '';
     messageDialogText.value = '';
     showMessageDialog.value = true;
   } catch (e) {
@@ -622,13 +625,34 @@ function descargarXML() {
   const blob = new Blob([xmlGenerado.value], { type: 'application/xml' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  // Usa el reporte seleccionado para obtener el folio
   let filename = 'factura';
   if (reporteSeleccionado.value) {
     const folio = obtenerSO(reporteSeleccionado.value);
     if (folio && folio !== '-') filename = folio.replace(/\s/g, '');
   }
   link.download = `${filename}.xml`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function descargarPDF() {
+  if (!pdfGenerado.value) return;
+  let byteCharacters = atob(pdfGenerado.value);
+  let byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  let byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: 'application/pdf' });
+  const link = document.createElement('a');
+  let filename = 'factura';
+  if (reporteSeleccionado.value) {
+    const folio = obtenerSO(reporteSeleccionado.value);
+    if (folio && folio !== '-') filename = folio.replace(/\s/g, '');
+  }
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filename}.pdf`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -705,8 +729,9 @@ async function enviarFactura() {
       ...facturaData.value,
       total: Number(facturaData.value.total)
     });
-    toast.add({ severity: 'success', summary: 'XML generado', detail: 'Factura generada correctamente.', life: 3000 });
+    toast.add({ severity: 'success', summary: 'XML/PDF generado', detail: 'Factura generada correctamente.', life: 3000 });
     xmlGenerado.value = response.data.cfdi_xml;
+    pdfGenerado.value = response.data.cfdi_pdf || '';
     messageDialogText.value = '';
     showMessageDialog.value = true;
     showFacturaDialog.value = false;
