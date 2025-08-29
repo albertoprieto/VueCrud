@@ -20,7 +20,7 @@ const loadingArticulos = ref(true);
 const showModal = ref(false);
 const form = ref({
   id: null,
-  codigo: '',
+  codigo: '', // Opcional
   nombre: '',
   sku: '',
   tipo: '',
@@ -90,7 +90,7 @@ const filteredArticulos = computed(() => {
 const openModal = () => {
   form.value = {
     id: null,
-    codigo: '',
+    codigo: '', // Opcional
     nombre: '',
     sku: '',
     tipo: '',
@@ -283,11 +283,11 @@ const exportToExcel = () => {
             <InputText id="precioCompra" v-model.number="form.precioCompra" type="number" class="w-full" />
           </div>
           <div class="field col-12 md:col-6">
-            <label for="codigoSat">Código SAT:</label>
+            <label for="codigoSat">Código de artículo del SAT:</label>
             <InputText id="codigoSat" v-model="form.codigoSat" class="w-full" />
           </div>
           <div class="field col-12 md:col-6">
-            <label for="unidadSat">Unidad SAT:</label>
+            <label for="unidadSat">Código de unidad del SAT:</label>
             <InputText id="unidadSat" v-model="form.unidadSat" class="w-full" />
           </div>
           <div class="field col-12 md:col-6">

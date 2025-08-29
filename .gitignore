@@ -34,3 +34,9 @@ DataAPI.js
 
 .env
 .env.production
+venv/
+# Ignorar cualquier entorno virtual Python
+.venv/
+*.txt
+*.docx
+RAQÑ7701212M3_20230509115720/
