@@ -12,6 +12,7 @@ import { useToast } from 'primevue/usetoast';
 import { useRouter } from 'vue-router';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getUsuarios } from '@/services/usuariosService';
+import { getLogoBase64 } from '@/services/logoService';
 
 const toast = useToast();
 const showDialog = ref(false);
@@ -23,7 +24,7 @@ const router = useRouter();
 const cotizacion = ref({
   id: null,
   cliente_id: null,
-  cliente: '', // <-- este campo es el que se usa en la tabla y filtros
+  cliente: '',
   fecha: new Date().toISOString().slice(0, 10),
   vendedor: null,
   descuento: 0,
@@ -86,8 +87,11 @@ const subtotal = computed(() =>
 const descuentoMonto = computed(() =>
   subtotal.value * ((Number(cotizacion.value.descuento) || 0) / 100)
 );
+const ivaMonto = computed(() =>
+  subtotal.value * 0.16
+);
 const total = computed(() =>
-  subtotal.value - descuentoMonto.value
+  subtotal.value - descuentoMonto.value + ivaMonto.value
 );
 
 watch(
@@ -115,13 +119,22 @@ const guardarCotizacion = async () => {
     return;
   }
   try {
-    // Convierte el array de artículos a objeto
+    const logo = await getLogoBase64();
+    const empresa = {
+      nombre: 'COMERCIALIZADORA TECNOLOGICA DEL RIO',
+      direccion: 'Fresno 1441 44910 Guadalajara, Jalisco, México',
+      rfc: 'CTR1905206K5',
+      regimen: '626 - Régimen Simplificado de Confianza',
+      telefono: '3325373183',
+      correo: 'gpsvector@gmail.com',
+      web: 'gpsubicacion.com'
+    };
+
     const articulosObj = {};
     cotizacion.value.articulos.forEach((a, idx) => {
       articulosObj[idx] = a;
     });
     const clienteObj = clientes.value.find(c => c.id === cotizacion.value.cliente_id);
-    // Espera la respuesta del endpoint para obtener el id
     const cotizacionCreada = await addQuotation({
       ...cotizacion.value,
       cliente: clienteObj ? clienteObj.nombre : '',
@@ -129,27 +142,21 @@ const guardarCotizacion = async () => {
       descripcion: cotizacion.value.descripcion || '',
       status: 'Pendiente'
     });
-    // DEBUG: Mostrar la respuesta en consola para verificar el id
-    console.log('Respuesta addQuotation:', cotizacionCreada);
-    // Genera PDF y guarda docDefinition usando el id recibido
-    const logo = "";
+
     const articulosPDF = cotizacion.value.articulos.map((a, idx) => {
       const art = articulos.value.find(x => x.id === a.articulo_id) || {};
       return {
         ...a,
-        sku: art.sku,
         nombre: art.nombre,
         descripcion: art.descripcion,
-        unidad: art.unidad,
-        codigoUnidadSat: art.codigoUnidadSat
+        unidad: art.unidad
       };
     });
     const body = [
       [
         { text: '#', style: 'tableHeader' },
         { text: 'Artículo', style: 'tableHeader' },
-        { text: 'Código del artículo', style: 'tableHeader' },
-        { text: 'Código de unidad', style: 'tableHeader' },
+        { text: 'Descripción', style: 'tableHeader' },
         { text: 'Cant.', style: 'tableHeader' },
         { text: 'Tarifa', style: 'tableHeader' },
         { text: 'Importe', style: 'tableHeader' }
@@ -157,8 +164,7 @@ const guardarCotizacion = async () => {
       ...articulosPDF.map((a, idx) => [
         idx + 1,
         `${a.nombre || ''}`,
-        a.sku || '',
-        a.codigoUnidadSat || '',
+        a.descripcion || '',
         `${a.cantidad} ${a.unidad || ''}`,
         `$${Number(a.precio_unitario).toFixed(2)}`,
         `$${(Number(a.cantidad) * Number(a.precio_unitario)).toFixed(2)}`
@@ -166,8 +172,8 @@ const guardarCotizacion = async () => {
     ];
     const subtotal = articulosPDF.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
     const descuentoMonto = subtotal * ((Number(cotizacion.value.descuento) || 0) / 100);
-    const total = subtotal - descuentoMonto;
-    // Usa el id recibido para el folio
+    const iva = subtotal * 0.16;
+    const total = subtotal - descuentoMonto + iva;
     const folio = cotizacionCreada.folio
       ? cotizacionCreada.folio
       : cotizacionCreada.id
@@ -181,13 +187,13 @@ const guardarCotizacion = async () => {
         {
           columns: [
             [
-              { text: 'COMERCIALIZADORA TECNOLOGICA DEL RIO', style: 'empresaHeader', alignment: 'left' },
-              { text: 'Mezquite 1272\n44900 Guadalajara Jalisco\nMexico', style: 'empresaSubheader', alignment: 'left' },
-              { text: 'IVA CTR1905206K5', style: 'empresaSubheader', alignment: 'left' },
-              { text: 'Régimen fiscal: 626 - Régimen Simplificado de Confianza', style: 'empresaSubheader', alignment: 'left' },
-              { text: '3325373183', style: 'empresaSubheader', alignment: 'left' },
-              { text: 'gpsvector@gmail.com', style: 'empresaSubheader', alignment: 'left' },
-              { text: 'gpsubicacion.com', style: 'empresaSubheader', alignment: 'left' }
+              { text: empresa.nombre, style: 'empresaHeader', alignment: 'left' },
+              { text: empresa.direccion, style: 'empresaSubheader', alignment: 'left' },
+              { text: empresa.rfc, style: 'empresaSubheader', alignment: 'left' },
+              { text: `Régimen fiscal: ${empresa.regimen}`, style: 'empresaSubheader', alignment: 'left' },
+              { text: empresa.telefono, style: 'empresaSubheader', alignment: 'left' },
+              { text: empresa.correo, style: 'empresaSubheader', alignment: 'left' },
+              { text: empresa.web, style: 'empresaSubheader', alignment: 'left' }
             ]
           ]
         },
@@ -213,7 +219,7 @@ const guardarCotizacion = async () => {
         {
           table: {
             headerRows: 1,
-            widths: [18, 120, 60, 60, 40, 50, 60],
+            widths: [18, 120, 120, 40, 50, 60],
             body
           },
           layout: {
@@ -231,6 +237,7 @@ const guardarCotizacion = async () => {
               table: {
                 body: [
                   [ { text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' } ],
+                  [ { text: 'IVA (16%)', style: 'totalLabel' }, { text: `$${iva.toFixed(2)}`, style: 'totalValue' } ],
                   [ { text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' } ]
                 ]
               },
@@ -240,7 +247,7 @@ const guardarCotizacion = async () => {
         },
         { text: '\n' },
         { text: 'Notas', style: 'sectionHeader' },
-        { text: cotizacion.value.observaciones || 'Si necesita factura el pago sería más IVA.', style: 'notas' },
+        { text: 'Si no necesitas factura y tu pago es mediante transferencia podemos descontar el IVA.', style: 'notas' },
         { text: '\n' },
         { text: 'Términos y condiciones', style: 'sectionHeader' },
         { text: 'Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. El tiempo de traslado en el envió de los paquetes depende de la paquetería.', style: 'notas' }
@@ -289,7 +296,7 @@ const descargarPDFCotizacion = async () => {
     pdfMake = (await import('pdfmake/build/pdfmake')).default;
     await import('pdfmake/build/vfs_fonts');
   }
-  pdfMake.createPdf(pdfDocDefinition.value).download('cotizacion.pdf');
+  pdfMake.createPdf(pdfDocDefinition.value).download(`${cotizacionGeneradaNumero.value}.pdf`);
   showPDFDialog.value = false;
 };
 
@@ -330,26 +337,21 @@ const generarPDFCotizacion = async () => {
   }
   const clienteObj = clientes.value.find(c => c.id === cotizacion.value.cliente_id) || {};
 
-  // Prepara los artículos para el PDF (nombre para cliente, sku para control)
   const articulosPDF = cotizacion.value.articulos.map((a, idx) => {
     const art = articulos.value.find(x => x.id === a.articulo_id) || {};
     return {
       ...a,
-      sku: art.sku,
       nombre: art.nombre,
       descripcion: art.descripcion,
-      unidad: art.unidad,
-      codigoUnidadSat: art.codigoUnidadSat
+      unidad: art.unidad
     };
   });
 
-  // Tabla de artículos
   const body = [
     [
       { text: '#', style: 'tableHeader' },
       { text: 'Artículo', style: 'tableHeader' },
-      { text: 'Código del artículo', style: 'tableHeader' },
-      { text: 'Código de unidad', style: 'tableHeader' },
+      { text: 'Descripción', style: 'tableHeader' },
       { text: 'Cant.', style: 'tableHeader' },
       { text: 'Tarifa', style: 'tableHeader' },
       { text: 'Importe', style: 'tableHeader' }
@@ -357,8 +359,7 @@ const generarPDFCotizacion = async () => {
     ...articulosPDF.map((a, idx) => [
       idx + 1,
       `${a.nombre || ''}`,
-      a.sku || '',
-      a.codigoUnidadSat || '',
+      a.descripcion || '',
       `${a.cantidad} ${a.unidad || ''}`,
       `$${Number(a.precio_unitario).toFixed(2)}`,
       `$${(Number(a.cantidad) * Number(a.precio_unitario)).toFixed(2)}`
@@ -367,7 +368,8 @@ const generarPDFCotizacion = async () => {
 
   const subtotal = articulosPDF.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
   const descuentoMonto = subtotal * ((Number(cotizacion.value.descuento) || 0) / 100);
-  const total = subtotal - descuentoMonto;
+  const iva = subtotal * 0.16;
+  const total = subtotal - descuentoMonto + iva;
 
   const docDefinition = {
     content: [
@@ -383,7 +385,7 @@ const generarPDFCotizacion = async () => {
         columns: [
           [
             { text: 'COMERCIALIZADORA TECNOLOGICA DEL RIO', style: 'empresaHeader', alignment: 'left' },
-            { text: 'Mezquite 1272\n44900 Guadalajara Jalisco\nMexico', style: 'empresaSubheader', alignment: 'left' },
+            { text: 'Fresno 1441 44910 Guadalajara, Jalisco, México', style: 'empresaSubheader', alignment: 'left' },
             { text: 'IVA CTR1905206K5', style: 'empresaSubheader', alignment: 'left' },
             { text: 'Régimen fiscal: 626 - Régimen Simplificado de Confianza', style: 'empresaSubheader', alignment: 'left' },
             { text: '3325373183', style: 'empresaSubheader', alignment: 'left' },
@@ -414,7 +416,7 @@ const generarPDFCotizacion = async () => {
       {
         table: {
           headerRows: 1,
-          widths: [18, 120, 60, 60, 40, 50, 60],
+          widths: [18, 120, 120, 40, 50, 60],
           body
         },
         layout: {
@@ -432,6 +434,7 @@ const generarPDFCotizacion = async () => {
             table: {
               body: [
                 [ { text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' } ],
+                [ { text: 'IVA (16%)', style: 'totalLabel' }, { text: `$${iva.toFixed(2)}`, style: 'totalValue' } ],
                 [ { text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' } ]
               ]
             },
@@ -441,7 +444,7 @@ const generarPDFCotizacion = async () => {
       },
       { text: '\n' },
       { text: 'Notas', style: 'sectionHeader' },
-      { text: cotizacion.value.observaciones || 'Si necesita factura el pago sería más IVA.', style: 'notas' },
+      { text: 'Si no necesitas factura y tu pago es mediante transferencia podemos descontar el IVA.', style: 'notas' },
       { text: '\n' },
       { text: 'Términos y condiciones', style: 'sectionHeader' },
       { text: 'Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. El tiempo de traslado en el envió de los paquetes depende de la paquetería.', style: 'notas' }
@@ -462,7 +465,6 @@ const generarPDFCotizacion = async () => {
     }
   };
 
-  // @ts-ignore
   if (window.pdfMake) {
     window.pdfMake.createPdf(docDefinition).open();
   } else {
@@ -483,7 +485,7 @@ const enviarCotizacionAlCliente = async () => {
     const clienteObj = clientes.value.find(c => c.id === cotizacion.value.cliente_id) || {};
     const articulosTexto = cotizacion.value.articulos.map((a, idx) => {
       const art = articulos.value.find(x => x.id === a.articulo_id) || {};
-      return `${idx + 1}. ${art.nombre || ''} (${art.sku || ''}) x${a.cantidad} - $${Number(a.precio_unitario).toFixed(2)}`;
+      return `${idx + 1}. ${art.nombre || ''} x${a.cantidad} - $${Number(a.precio_unitario).toFixed(2)}`;
     }).join('\n');
 
     const mensaje = 
@@ -494,6 +496,7 @@ const enviarCotizacionAlCliente = async () => {
       `*Artículos:*\n${articulosTexto}\n\n` +
       `Subtotal: $${subtotal.value.toFixed(2)}\n` +
       `Descuento: ${cotizacion.value.descuento || 0}% ($${descuentoMonto.value.toFixed(2)})\n` +
+      `IVA (16%): $${ivaMonto.value.toFixed(2)}\n` +
       `Total: $${total.value.toFixed(2)}\n\n` +
       `Observaciones: ${cotizacion.value.observaciones || '-'}`;
 
@@ -517,7 +520,6 @@ const enviarCotizacionAlCliente = async () => {
 
 const closeConfirmSendDialog = () => {
   showConfirmSendDialog.value = false;
-  // router.push('/dashboard');
 };
 
 const irAClientes = () => {
@@ -638,6 +640,7 @@ const irAClientes = () => {
           <div>
             <div><strong>Subtotal:</strong> ${{ subtotal.toFixed(2) }}</div>
             <div><strong>Descuento:</strong> {{ cotizacion.descuento || 0 }}% (${{ descuentoMonto.toFixed(2) }})</div>
+            <div><strong>IVA (16%):</strong> ${{ ivaMonto.toFixed(2) }}</div>
             <div><strong>Total:</strong> ${{ total.toFixed(2) }}</div>
           </div>
         </div>
@@ -657,14 +660,6 @@ const irAClientes = () => {
             type="submit"
             :disabled="cotizacionInvalida"
           />
-          <!-- <Button
-            label="Generar PDF"
-            disabled=true
-            icon="pi pi-file-pdf"
-            class="mobile-button full-width-button"
-            :style="{ background: '#f8bbd0', borderColor: '#f8bbd0', color: '#6d214f' }"
-            @click="generarPDFCotizacion"
-          /> -->
         </div>
       </form>
       
@@ -727,11 +722,9 @@ const irAClientes = () => {
 .cotizador-title {
   font-size: 1.5rem;
   margin-bottom: 1rem;
-  /* color: #2c3e50; */
 }
 
 .cotizador-card {
-  /* background: white; */
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -752,7 +745,6 @@ const irAClientes = () => {
 .section-title {
   margin: 1.5rem 0 1rem;
   font-size: 1.2rem;
-  /* color: #2c3e50; */
 }
 
 .table-wrapper {
@@ -762,7 +754,6 @@ const irAClientes = () => {
 }
 
 .acciones-footer {
-  /* background: #f8f9fa; */
   padding: 1rem;
   border-radius: 6px;
 }

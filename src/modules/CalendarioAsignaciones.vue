@@ -51,6 +51,7 @@
           forceSelection
           showClear
         />
+        <Button icon="pi pi-search" class="p-button-text" @click="abrirTecladoBusquedaCliente" />
         <InputText
           v-model="busqueda"
           placeholder="Buscar..."
@@ -284,6 +285,11 @@ async function descargarNota(asignacion) {
 
 function modificarOrden(asignacion) {
   console.log('Modificar orden de servicio:', asignacion);
+}
+
+function abrirTecladoBusquedaCliente() {
+  window.scrollTo(0, 0);
+  document.querySelector('input[placeholder="Filtrar por cliente"]')?.focus();
 }
 </script>
 

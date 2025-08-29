@@ -2,7 +2,12 @@
   <div class="consultar-cotizaciones">
     <h2 class="consultar-cotizaciones-title">Consultar Cotizaciones</h2>
     <div class="consultar-cotizaciones-card">
-      <DataTable :value="groupedQuotations" dataKey="cliente_id" rowExpansion v-model:expandedRows="expandedRows"
+      <div class="filters">
+        <InputText v-model="filtroNombre" placeholder="Buscar por nombre" class="mb-2" />
+        <InputText v-model="filtroTelefono" placeholder="Buscar por teléfono" class="mb-2" />
+        <InputText v-model="filtroCotizacion" placeholder="Buscar por N° cotización" class="mb-2" />
+      </div>
+      <DataTable :value="cotizacionesFiltradas" dataKey="cliente_id" rowExpansion v-model:expandedRows="expandedRows"
         responsiveLayout="scroll">
         <Column type="expander" style="width: 3em" />
         <Column field="cliente" header="Cliente" />
@@ -211,7 +216,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { getQuotations, updateQuotation } from '@/services/quotationService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
@@ -240,6 +245,18 @@ const selectedCotizacion = ref(null);
 const articulosCotizacion = ref([]);
 const showConfirmUpdateDialog = ref(false);
 const showSuccessDialog = ref(false);
+
+const filtroNombre = ref('');
+const filtroTelefono = ref('');
+const filtroCotizacion = ref('');
+const cotizacionesFiltradas = computed(() => {
+  return groupedQuotations.value.filter(q => {
+    const nombreOk = !filtroNombre.value || q.cliente.toLowerCase().includes(filtroNombre.value.toLowerCase());
+    const telefonoOk = !filtroTelefono.value || (q.telefonos && q.telefonos.some(tel => tel.includes(filtroTelefono.value)));
+    const cotizacionOk = !filtroCotizacion.value || (q.cotizaciones && q.cotizaciones.some(c => String(c.id).includes(filtroCotizacion.value)));
+    return nombreOk && telefonoOk && cotizacionOk;
+  });
+});
 
 async function reloadQuotations() {
   const [cotizaciones, clientesList, articulosList, usuarios] = await Promise.all([
@@ -633,6 +650,13 @@ watch(
   margin-bottom: 2rem;
 }
 
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
 .text-center {
   text-align: center;
 }
@@ -744,3 +768,4 @@ label {
   }
 }
 </style>
+``` 

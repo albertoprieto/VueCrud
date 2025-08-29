@@ -58,6 +58,24 @@
         </div>
       </div>
 
+      <!-- Campo Atendido por -->
+      <div class="form-group">
+        <label>Atendido por:</label>
+        <InputText v-model="usuarioActual" class="w-full" />
+      </div>
+
+      <!-- Casilla Requiere Factura -->
+      <div class="form-group">
+        <Checkbox v-model="requiereFactura" label="Requiere factura" />
+      </div>
+      <div class="form-group">
+        <InputText v-model="rfc" :disabled="!requiereFactura" placeholder="RFC" />
+      </div>
+      <div class="form-group">
+        <label>Adjuntar constancia fiscal:</label>
+        <input type="file" @change="e => archivoConstancia.value = e.target.files[0]" />
+      </div>
+
       <!-- Tabla de artículos -->
       <DataTable
         :value="venta.articulos"
@@ -199,6 +217,7 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
 import Calendar from 'primevue/calendar';
+import Checkbox from 'primevue/checkbox';
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { getArticulosStockPorUbicacion } from '@/services/articulosService';
@@ -266,6 +285,11 @@ const ubicacionValidaDialog = computed(() => {
   });
 });
 
+const usuarioActual = ref('');
+const requiereFactura = ref(false);
+const rfc = ref('XAXX010101000');
+const archivoConstancia = ref(null);
+
 async function onSeleccionarUbicacion(id) {
   const articulosUbicacion = await getArticulosStockPorUbicacion(id);
   // Agrega el objeto de instalación a la ubicación seleccionada
@@ -298,6 +322,11 @@ onMounted(async () => {
   const ventas = await getVentas();
   const usuarios = await getUsuarios();
   vendedores.value = usuarios.filter(u => u.perfil === 'Vendedor');
+
+  // Precargar usuario actual
+  const res = await import('@/services/usuariosService');
+  const usuario = await res.getUsuarioActual?.();
+  usuarioActual.value = usuario?.username || '';
 });
 
 watch(

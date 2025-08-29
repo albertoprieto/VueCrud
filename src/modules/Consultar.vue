@@ -48,7 +48,13 @@
       </Column>
       <Column header="Acciones">
         <template #body="slotProps">
-          <Button label="Editar" icon="pi pi-pencil" class="p-button-text" @click="openEditModal(slotProps.data)" />
+          <Button
+            v-if="usuarioActual.perfil === 'Administrador'"
+            label="Editar"
+            icon="pi pi-pencil"
+            class="p-button-text"
+            @click="openEditModal(slotProps.data)"
+          />
         </template>
       </Column>
     </DataTable>
@@ -95,6 +101,7 @@ import { getIMEIs, updateIMEI } from '@/services/imeiService';
 const items = ref([]);
 const technicians = ref(['Juan', 'Pedro', 'Paco']);
 const selectedTechnician = ref('Todos');
+const usuarioActual = ref({});
 
 const filteredItems = computed(() => {
   if (!selectedTechnician.value || selectedTechnician.value === 'Todos') {
@@ -108,6 +115,8 @@ const editItem = ref(null);
 
 onMounted(async () => {
   items.value = await getIMEIs();
+  const res = await import('@/services/usuariosService');
+  usuarioActual.value = await res.getUsuarioActual?.();
 });
 
 const openEditModal = (item) => {
