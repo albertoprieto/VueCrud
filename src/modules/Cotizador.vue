@@ -12,7 +12,7 @@ import { useToast } from 'primevue/usetoast';
 import { useRouter } from 'vue-router';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getUsuarios } from '@/services/usuariosService';
-import { getLogoBase64 } from '@/services/logoService';
+import { getLogoBase64 } from '@/components/GeneraPDF.js';
 
 const toast = useToast();
 const showDialog = ref(false);

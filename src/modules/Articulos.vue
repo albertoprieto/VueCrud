@@ -233,79 +233,88 @@ const exportToExcel = () => {
 </script>
 
 <template>
-  <div>
-    
-    <h2 class="mb-4">Artículos</h2>
-    <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" class="mb-3" />
-    <Button label="Exportar a Excel" icon="pi pi-file-excel" @click="exportToExcel" class="mb-3" />
-    <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive">
-      <Column field="codigo" header="Código" :sortable="true" />
-      <!-- <Column field="nombre" header="Nombre" :sortable="true" /> -->
-      <Column field="sku" header="SKU" :sortable="true" />
-      <Column field="tipo" header="Tipo" :sortable="true" />
-      <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />
-      <Column field="precioCompra" header="Precio Compra" :sortable="true" :body="formatoMoneda" />
-      <Column field="codigoSat" header="Código SAT" :sortable="true" />
-      <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
-      <Column header="Acciones">
-        <template #body="{ data }">
-          <Button icon="pi pi-pencil" class="mr-2" @click="() => handleEditArticulo(data)" />
-          <Button icon="pi pi-trash" @click="() => { articuloToDelete.value = data; showConfirmDelete.value = true; }" />
-        </template>
-      </Column>
-    </DataTable>
+  <div class="articulos-page">
+    <div class="articulos-header-card">
+      <h2 class="mb-4 articulos-title">
+        <i class="pi pi-database" style="color:#ff4081; font-size:1.5em; margin-right:0.5em;"></i>
+        Artículos
+      </h2>
+      <div class="articulos-actions">
+        <Button label="Agregar Artículo" icon="pi pi-plus" @click="openModal" class="mb-3 articulos-btn" />
+        <Button label="Exportar a Excel" icon="pi pi-file-excel" @click="exportToExcel" class="mb-3 articulos-btn" />
+      </div>
+    </div>
+    <div class="articulos-table-card">
+      <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive articulos-table">
+        <Column field="sku" header="SKU" :sortable="true" />
+        <Column field="tipo" header="Tipo" :sortable="true" />
+        <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />
+        <Column field="precioCompra" header="Precio Compra" :sortable="true" :body="formatoMoneda" />
+        <Column field="codigoSat" header="Código SAT" :sortable="true" />
+        <Column field="codigoUnidadSat" header="Código Unidad SAT" :sortable="true" />
+        <Column header="Acciones">
+          <template #body="{ data }">
+            <Button icon="pi pi-pencil" class="mr-2 articulos-btn" @click="() => handleEditArticulo(data)" />
+            <Button icon="pi pi-trash" class="articulos-btn" @click="() => handleDeleteClick(data)" />
+          </template>
+        </Column>
+      </DataTable>
+    </div>
 
-    <Dialog header="Artículo" v-model:visible="showModal" :modal="true" :closeOnEscape="true" :dismissableMask="true">
-      <div class="p-fluid">
-        <div class="formgrid grid">
-          <div class="field col-12 md:col-6">
-            <label for="codigo">Código:</label>
-            <InputText id="codigo" v-model="form.codigo" class="w-full" />
+    <Dialog header="Artículo" v-model:visible="showModal" :modal="true" :closeOnEscape="true" :dismissableMask="true" class="dialog-articulo dialog-articulo-amplio">
+      <div class="dialog-articulo-content">
+        <div class="dialog-articulo-header">
+          <span class="dialog-articulo-title">
+            <i class="pi pi-box" style="color:#ff4081; font-size:1.5em; margin-right:0.5em;"></i>
+            {{ form.id ? 'Editar artículo' : 'Nuevo artículo' }}
+          </span>
+        </div>
+        <div class="dialog-articulo-sections">
+          <div class="dialog-articulo-card">
+            <div class="formgrid grid grid-responsive">
+              <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
+                <label for="nombre"><i class="pi pi-tag" style="margin-right:0.3em;color:#ff4081"></i>Nombre:</label>
+                <InputText id="nombre" v-model="form.nombre" class="w-full" placeholder="Nombre del artículo" />
+              </div>
+              <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
+                <label for="sku"><i class="pi pi-barcode" style="margin-right:0.3em;color:#ff4081"></i>SKU:</label>
+                <InputText id="sku" v-model="form.sku" class="w-full" placeholder="SKU único" />
+              </div>
+              <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
+                <label for="tipo"><i class="pi pi-cog" style="margin-right:0.3em;color:#ff4081"></i>Tipo:</label>
+                <Dropdown id="tipo" v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecciona tipo" class="w-full" />
+              </div>
+              <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
+                <label for="precioVenta"><i class="pi pi-dollar" style="margin-right:0.3em;color:#ff4081"></i>Precio Venta:</label>
+                <InputText id="precioVenta" v-model.number="form.precioVenta" type="number" class="w-full" placeholder="Precio de venta" />
+              </div>
+              <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
+                <label for="precioCompra"><i class="pi pi-money-bill" style="margin-right:0.3em;color:#ff4081"></i>Precio Compra:</label>
+                <InputText id="precioCompra" v-model.number="form.precioCompra" type="number" class="w-full" placeholder="Precio de compra" />
+              </div>
+            </div>
           </div>
-          <div class="field col-12 md:col-6">
-            <label for="nombre">Nombre:</label>
-            <InputText id="nombre" v-model="form.nombre" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
-            <label for="sku">SKU:</label>
-            <InputText id="sku" v-model="form.sku" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
-            <label for="tipo">Tipo:</label>
-            <Dropdown id="tipo" v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecciona tipo" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
-            <label for="precioVenta">Precio Venta:</label>
-            <InputText id="precioVenta" v-model.number="form.precioVenta" type="number" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
-            <label for="precioCompra">Precio Compra:</label>
-            <InputText id="precioCompra" v-model.number="form.precioCompra" type="number" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
-            <label for="codigoSat">Código de artículo del SAT:</label>
-            <InputText id="codigoSat" v-model="form.codigoSat" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
-            <label for="unidadSat">Código de unidad del SAT:</label>
-            <InputText id="unidadSat" v-model="form.unidadSat" class="w-full" />
-          </div>
-          <div class="field col-12 md:col-6">
-            <label for="codigoUnidadSat">Código Unidad SAT:</label>
-            <InputText id="codigoUnidadSat" v-model="form.codigoUnidadSat" class="w-full" />
+          <div class="dialog-articulo-card">
+            <div class="formgrid grid grid-responsive">
+              <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
+                <label for="codigoSat"><i class="pi pi-key" style="margin-right:0.3em;color:#ff4081"></i>Código de artículo del SAT:</label>
+                <InputText id="codigoSat" v-model="form.codigoSat" class="w-full" placeholder="Código de artículo del SAT" />
+              </div>
+              <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
+                <label for="unidadSat"><i class="pi pi-hashtag" style="margin-right:0.3em;color:#ff4081"></i>Código de unidad del SAT:</label>
+                <InputText id="unidadSat" v-model="form.codigoUnidadSat" class="w-full" placeholder="Código de unidad del SAT" />
+              </div>
+              <!-- <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
+                <label for="codigoUnidadSat"><i class="pi pi-hashtag" style="margin-right:0.3em;color:#ff4081"></i>Código Unidad SAT:</label>
+                <InputText id="codigoUnidadSat" v-model="form.codigoUnidadSat" class="w-full" placeholder="Código Unidad SAT" />
+              </div> -->
+            </div>
           </div>
         </div>
-        <!-- Ubicación eliminada -->
-        <!--
-        <div class="form-group">
-          <label for="ubicacion_id">Ubicación:</label>
-          <Dropdown id="ubicacion_id" v-model="form.ubicacion_id" :options="ubicaciones" optionLabel="nombre" optionValue="id" placeholder="Selecciona ubicación" class="w-full" />
-        </div>
-        -->
       </div>
       <template #footer>
         <Button label="Cancelar" icon="pi pi-times" @click="closeModal" class="p-button-text" />
-        <Button label="Guardar" icon="pi pi-check" @click="saveArticulo" />
+        <Button label="Guardar" icon="pi pi-check" @click="saveArticulo" class="p-button-success" />
       </template>
     </Dialog>
 
@@ -331,28 +340,134 @@ const exportToExcel = () => {
 </template>
 
 <style scoped>
+.articulos-page {
+  background: linear-gradient(135deg,#fff 80%,#ffe6f0 100%);
+  min-height: 100vh;
+  padding: 2rem 0.5rem;
+}
+.articulos-header-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(255,64,129,0.10);
+  padding: 1.2rem 2rem 1rem 2rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.articulos-title {
+  font-size: 2em;
+  font-weight: 700;
+  color: #ff4081;
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
+.articulos-actions {
+  display: flex;
+  gap: 1.2rem;
+  margin-bottom: 0.5em;
+}
+.articulos-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(255,64,129,0.08);
+  background: linear-gradient(90deg,#fff 60%,#fff 100%);
+  color: #bd3838;
+}
+.articulos-table-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(255,64,129,0.10);
+  padding: 1.2rem 1rem 1rem 1rem;
+}
+.articulos-table {
+  font-size: 1em;
+  border-radius: 12px;
+  background: transparent;
+}
 .datatable-responsive {
-  font-size: 0.875rem;
+  font-size: 0.95rem;
 }
 
-.form-group {
-  padding-bottom: 1rem;
+.dialog-articulo {
+  min-width: 420px;
+  max-width: 600px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  background: linear-gradient(135deg,#fff 80%,#ffe6f0 100%);
+}
+.dialog-articulo-content {
+  padding: .1rem 0.7rem 0.5rem 0.7rem;
+}
+.dialog-articulo-header {
+  text-align: left;
+  margin-bottom: 1.2rem;
+}
+.dialog-articulo-title {
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #ff4081;
+  display: flex;
+  align-items: center;
+}
+.dialog-articulo-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.dialog-articulo-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(255,64,129,0.08);
+  padding: 0.7rem 0.7rem 0.3rem 0.7rem;
+  margin-bottom: 0.2rem;
+}
+.dialog-articulo-card label {
+  font-weight: 500;
+  color: #bd3838;
+  margin-bottom: 0.3em;
+  display: block;
+}
+.dialog-articulo-card .pi {
+  vertical-align: middle;
+}
+.dialog-articulo-card .w-full {
+  margin-bottom: 0.3em;
+}
+@media (max-width: 700px) {
+  .dialog-articulo {
+    min-width: 90vw;
+    max-width: 98vw;
+    padding: 0.5rem;
+  }
+  .dialog-articulo-content {
+    padding: 0.5rem 0.2rem;
+  }
 }
 
-.form-row,
-.form-section {
-  padding: 0.5rem 0;
+.dialog-articulo.dialog-articulo-amplio {
+  min-width: 600px;
+  max-width: 900px;
 }
-
-.p-dialog .p-dialog-content,
-.p-dialog .p-dialog-footer {
-  padding: 1.5rem !important;
+.grid-responsive {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1.2rem;
 }
-
-.reporte-servicio-container,
-.articulos-imeis-card,
-.clientes-card,
-.ventas-card {
-  padding: 2rem 1.5rem;
+.grid-responsive > .field {
+  min-width: 220px;
+  flex: 1 1 45%;
+  margin-bottom: 0.2em;
+}
+@media (max-width: 900px) {
+  .dialog-articulo.dialog-articulo-amplio {
+    min-width: 98vw;
+    max-width: 99vw;
+  }
+  .grid-responsive > .field {
+    min-width: 100%;
+    flex: 1 1 100%;
+  }
 }
 </style>

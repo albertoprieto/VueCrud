@@ -6,6 +6,8 @@ async function getLogoBase64() {
   return await res.text();
 }
 
+export { getLogoBase64 };
+
 export class NotaVentaPdfService {
   static async generarPDF({ venta, cliente, articulos, empresa }) {
     if (!venta || !cliente || !articulos || articulos.length === 0) {
