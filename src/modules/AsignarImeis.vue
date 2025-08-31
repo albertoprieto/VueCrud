@@ -169,18 +169,18 @@ const registrarYAsignar = async () => {
     await asignarImeisUbicacion(ubicacionDestino.value.id, imeis.value);
 
     // Registrar movimiento en inventario
-    for (const imei of imeis.value) {
-      await registrarMovimiento({
-        usuario: 'sistema',
-        evento: 'asignacion',
-        articulo_id: selectedArticulo.value.id,
-        articulo_nombre: selectedArticulo.value.nombre,
-        imei: imei, // para cada imei asignado
-        ubicacion_origen: null,
-        ubicacion_destino: ubicacionDestino.value?.nombre || null,
-        motivo: 'Asignación de IMEI a artículo'
-      });
-    }
+    // for (const imei of imeis.value) {
+    //   await registrarMovimiento({
+    //     usuario: 'sistema',
+    //     evento: 'asignacion',
+    //     articulo_id: selectedArticulo.value.id,
+    //     articulo_nombre: selectedArticulo.value.nombre,
+    //     imei: imei, // para cada imei asignado
+    //     ubicacion_origen: null,
+    //     ubicacion_destino: ubicacionDestino.value?.nombre || null,
+    //     motivo: 'Asignación de IMEI a artículo'
+    //   });
+    // }
 
     mensaje.value = `Asignaste ${imeis.value.length}, SKU: ${selectedArticulo.value.sku} a bodega ${ubicacionDestino.value.nombre}`;
     imeis.value = [];
