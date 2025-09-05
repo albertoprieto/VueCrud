@@ -2,17 +2,85 @@
   <div class="consultar-cotizaciones">
     <h2 class="consultar-cotizaciones-title">Consultar Cotizaciones</h2>
     <div class="consultar-cotizaciones-card">
-      <div class="filters">
-        <InputText v-model="filtroNombre" placeholder="Buscar por nombre" class="mb-2" />
-        <InputText v-model="filtroTelefono" placeholder="Buscar por teléfono" class="mb-2" />
-        <InputText v-model="filtroCotizacion" placeholder="Buscar por N° cotización" class="mb-2" />
+      <!-- Toolbar de filtros avanzados -->
+      <div class="filters-advanced">
+        <div class="filters-row">
+          <InputText v-model="globalQuery" placeholder="Buscar: cliente, folio, teléfono, vendedor, observaciones…" class="w-full" />
+        </div>
+        <div class="filters-row grid-2">
+          <div class="filters-field">
+            <label>Desde</label>
+            <Calendar v-model="dateFrom" dateFormat="yy-mm-dd" showIcon iconDisplay="input" placeholder="YYYY-MM-DD" />
+          </div>
+          <div class="filters-field">
+            <label>Hasta</label>
+            <Calendar v-model="dateTo" dateFormat="yy-mm-dd" showIcon iconDisplay="input" placeholder="YYYY-MM-DD" />
+          </div>
+        </div>
+        <div class="filters-row grid-3">
+          <div class="filters-field">
+            <label>Estado</label>
+            <MultiSelect v-model="statusSelected" :options="statusOptions" placeholder="Todos" class="w-full" />
+          </div>
+          <div class="filters-field">
+            <label>Vendedor</label>
+            <Dropdown v-model="vendedorSelected" :options="vendedores" optionLabel="username" optionValue="username" placeholder="Todos" class="w-full" />
+          </div>
+          <div class="filters-field">
+            <label>Monto (min - max)</label>
+            <div class="range-inline">
+              <InputNumber v-model="montoMin" mode="currency" currency="MXN" locale="es-MX" :min="0" inputClass="w-8" />
+              <span class="range-sep">—</span>
+              <InputNumber v-model="montoMax" mode="currency" currency="MXN" locale="es-MX" :min="0" inputClass="w-8" />
+            </div>
+          </div>
+        </div>
+        <div class="filters-actions">
+          <div class="left">
+            <Button :label="viewGrouped ? 'Vista agrupada' : 'Vista lista'" icon="pi pi-table" class="p-button-text" />
+            <Button :label="viewGrouped ? 'Cambiar a lista' : 'Cambiar a agrupada'" icon="pi pi-exchange" class="p-button-text" @click="viewGrouped = !viewGrouped" />
+          </div>
+          <div class="right">
+            <span class="results">{{ resultadosCount }} resultados</span>
+            <Button label="Limpiar" icon="pi pi-filter-slash" class="p-button-text" @click="clearFilters" />
+          </div>
+        </div>
       </div>
-      <DataTable :value="cotizacionesFiltradas" dataKey="cliente_id" rowExpansion v-model:expandedRows="expandedRows"
-        responsiveLayout="scroll">
+
+      <!-- Vista lista plana -->
+      <DataTable v-if="!viewGrouped" :value="filteredQuotationsList" responsiveLayout="scroll" :paginator="true" :rows="10" :rowsPerPageOptions="[10,20,50]" dataKey="id" :sortField="'fecha'" :sortOrder="-1">
+        <Column field="folio" header="Folio" sortable />
+        <Column field="fecha" header="Fecha" sortable />
+        <Column field="cliente" header="Cliente" sortable />
+        <Column field="vendedor" header="Vendedor" sortable />
+        <Column field="status" header="Estado">
+          <template #body="row">
+            <span class="chip" :class="{
+              'chip-pendiente': row.data.status === 'Pendiente',
+              'chip-agendado': row.data.status === 'Agendado',
+              'chip-autorizada': row.data.status === 'Autorizada'
+            }">{{ row.data.status }}</span>
+          </template>
+        </Column>
+        <Column field="monto" header="Monto" sortable>
+          <template #body="row">${{ Number(row.data.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}</template>
+        </Column>
+        <Column header="Acciones">
+          <template #body="row">
+            <Button label="Tel" icon="pi pi-phone" class="p-button-text"
+              @click="showTelefonosDialog(row.data.telefonos)"
+              :disabled="!row.data.telefonos || !row.data.telefonos.length" />
+            <Button label="Detalle" icon="pi pi-eye" class="p-button-text" @click="showDetalleDialog(row.data)" />
+            <Button label="Editar" icon="pi pi-pencil" class="p-button-text" @click="showEditarDialog(row.data)" />
+            <Button label="PDF" icon="pi pi-file-pdf" class="p-button-text" @click="generatePDF(row.data)" />
+          </template>
+        </Column>
+      </DataTable>
+
+      <!-- Vista agrupada por cliente (original) -->
+      <DataTable v-else :value="cotizacionesFiltradas" dataKey="cliente_id" rowExpansion v-model:expandedRows="expandedRows" responsiveLayout="scroll">
         <Column type="expander" style="width: 3em" />
         <Column field="cliente" header="Cliente" />
-
-
         <Column header="Teléfonos">
           <template #body="slotProps">
             <Button label="Teléfonos" icon="pi pi-phone" class="p-button-text"
@@ -20,19 +88,12 @@
               :disabled="!slotProps.data.telefonos || !slotProps.data.telefonos.length" />
           </template>
         </Column>
-
-
-
-
         <Column header="N° Cotizaciones">
-          <template #body="slotProps">
-            {{ slotProps.data.cotizaciones.length }}
-          </template>
+          <template #body="slotProps">{{ slotProps.data.cotizaciones.length }}</template>
         </Column>
         <Column header="Acciones">
           <template #body="slotProps">
-            <Button label="Ver Cotizaciones" icon="pi pi-list" class="p-button-text"
-              @click="showCotizacionesDialogForCliente(slotProps.data)" />
+            <Button label="Ver Cotizaciones" icon="pi pi-list" class="p-button-text" @click="showCotizacionesDialogForCliente(slotProps.data)" />
           </template>
         </Column>
       </DataTable>
@@ -227,6 +288,9 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
+import Calendar from 'primevue/calendar';
+import MultiSelect from 'primevue/multiselect';
+import InputNumber from 'primevue/inputnumber';
 import { useToast } from 'primevue/usetoast';
 
 const toast = useToast();
@@ -246,6 +310,18 @@ const articulosCotizacion = ref([]);
 const showConfirmUpdateDialog = ref(false);
 const showSuccessDialog = ref(false);
 
+// Estado filtros avanzados
+const viewGrouped = ref(false);
+const globalQuery = ref('');
+const dateFrom = ref(null);
+const dateTo = ref(null);
+const statusOptions = ['Pendiente', 'Agendado', 'Autorizada'];
+const statusSelected = ref([]);
+const vendedorSelected = ref(null);
+const montoMin = ref(null);
+const montoMax = ref(null);
+
+// Filtros anteriores mantenidos para la vista agrupada
 const filtroNombre = ref('');
 const filtroTelefono = ref('');
 const filtroCotizacion = ref('');
@@ -283,10 +359,12 @@ async function reloadQuotations() {
     }
     map[c.cliente_id].cotizaciones.push({
       ...c,
-      cliente: nombre
+    cliente: nombre,
+    telefonos
     });
   });
   groupedQuotations.value = Object.values(map);
+  quotations.value = groupedQuotations.value.flatMap(g => g.cotizaciones);
 }
 
 onMounted(reloadQuotations);
@@ -566,6 +644,72 @@ function generatePDF(cotizacion) {
   }
 }
 
+// Vista lista: filtros combinados
+const filteredQuotationsList = computed(() => {
+  const q = (globalQuery.value || '').toLowerCase().trim();
+  const from = dateFrom.value ? new Date(dateFrom.value) : null;
+  const to = dateTo.value ? new Date(dateTo.value) : null;
+  const min = montoMin.value != null ? Number(montoMin.value) : null;
+  const max = montoMax.value != null ? Number(montoMax.value) : null;
+  return (quotations.value || []).filter(c => {
+    // Texto global: cliente, vendedor, observaciones, folio, id
+    const folio = c.folio ? String(c.folio) : `COTIZACION-${String(c.id).padStart(5, '0')}`;
+    const text = [c.cliente, c.vendedor, c.observaciones, folio, String(c.id)]
+      .filter(Boolean)
+      .join(' ') 
+      .toLowerCase();
+    const phones = (c.telefonos || []).join(' ').toLowerCase();
+    const matchText = !q || text.includes(q) || phones.includes(q);
+
+    // Fecha (asumimos c.fecha en formato YYYY-MM-DD o ISO)
+    const d = c.fecha ? new Date(c.fecha) : null;
+    const matchFrom = !from || (d && d >= normalizeDate(from));
+    const matchTo = !to || (d && d <= normalizeDateEnd(to));
+
+    // Estado
+    const matchStatus = !statusSelected.value?.length || statusSelected.value.includes(c.status);
+
+    // Vendedor
+    const matchVend = !vendedorSelected.value || c.vendedor === vendedorSelected.value;
+
+    // Monto
+    const monto = Number(c.monto || 0);
+    const matchMontoMin = min === null || monto >= min;
+    const matchMontoMax = max === null || monto <= max;
+
+    return matchText && matchFrom && matchTo && matchStatus && matchVend && matchMontoMin && matchMontoMax;
+  }).map(c => ({
+    ...c,
+    folio: c.folio ? c.folio : c.id ? `COTIZACION-${String(c.id).padStart(5,'0')}` : 'COTIZACION-00000'
+  }));
+});
+
+const resultadosCount = computed(() => viewGrouped.value ? cotizacionesFiltradas.value.length : filteredQuotationsList.value.length);
+
+function normalizeDate(d) {
+  const nd = new Date(d);
+  nd.setHours(0,0,0,0);
+  return nd;
+}
+function normalizeDateEnd(d) {
+  const nd = new Date(d);
+  nd.setHours(23,59,59,999);
+  return nd;
+}
+
+function clearFilters() {
+  globalQuery.value = '';
+  dateFrom.value = null;
+  dateTo.value = null;
+  statusSelected.value = [];
+  vendedorSelected.value = null;
+  montoMin.value = null;
+  montoMax.value = null;
+  filtroNombre.value = '';
+  filtroTelefono.value = '';
+  filtroCotizacion.value = '';
+}
+
 watch(
   () => selectedCotizacion.value?.articulos,
   (articulos) => {
@@ -649,6 +793,16 @@ watch(
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   margin-bottom: 2rem;
 }
+
+.filters-advanced { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem; text-align: left; }
+.filters-row { display: flex; gap: .75rem; align-items: center; }
+.filters-row.grid-2 > * { flex: 1; }
+.filters-row.grid-3 > * { flex: 1; }
+.filters-field label { display:block; font-size:.85rem; color: var(--color-title); margin-bottom:.25rem; }
+.range-inline { display:flex; align-items:center; gap:.5rem; }
+.range-sep { color: #888; }
+.filters-actions { display:flex; justify-content: space-between; align-items:center; margin-top:.25rem; }
+.filters-actions .results { color:#666; font-size:.9rem; }
 
 .filters {
   display: flex;
@@ -761,6 +915,9 @@ label {
   .consultar-cotizaciones-card {
     padding: 0.5rem;
   }
+
+  .filters-row { flex-direction: column; align-items: stretch; }
+  .range-inline { justify-content: space-between; }
 
   .modal-actions {
     flex-direction: column;
