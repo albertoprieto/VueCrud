@@ -7,18 +7,15 @@ import Dropdown from 'primevue/dropdown';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { useVentas } from '@/composables/useVentas.js';
-import { addQuotation, enviarCotizacionWhatsapp } from '@/services/quotationService';
+import { addQuotation, enviarCotizacionWhatsapp, getQuotations } from '@/services/quotationService';
 import { useToast } from 'primevue/usetoast';
 import { useRouter } from 'vue-router';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getUsuarios } from '@/services/usuariosService';
-import { getLogoBase64 } from '@/components/GeneraPDF.js';
 
 const toast = useToast();
 const showDialog = ref(false);
 const showNuevoClienteDialog = ref(false);
-const showSendDialog = ref(false);
-const showConfirmSendDialog = ref(false);
 const cotizacionGeneradaNumero = ref(null);
 const router = useRouter();
 const cotizacion = ref({
@@ -48,7 +45,6 @@ onMounted(async () => {
   vendedores.value = usuarios.filter(u => u.perfil === 'Vendedor');
 });
 
-// Paso 1: Agregar artículo vacío y permitir selección
 const addArticuloCotizacion = () => {
   cotizacion.value.articulos.push({
     articulo_id: null,
@@ -57,7 +53,6 @@ const addArticuloCotizacion = () => {
   });
 };
 
-// Paso 2: Cuando se selecciona un artículo, autocompletar precio_unitario
 function handleArticuloChange(articulo_id, row) {
   const articulo = articulos.value.find(a => a.id === articulo_id);
   if (articulo) {
@@ -66,8 +61,6 @@ function handleArticuloChange(articulo_id, row) {
   }
 }
 
-// Paso 3: Validar cantidad (si quieres lógica extra, usa validateCantidad)
-// Nota: En cotizaciones NO se valida stock, solo se asegura que la cantidad sea un entero >= 1
 function handleCantidadInput(row) {
   if (!row.cantidad || isNaN(row.cantidad) || row.cantidad < 1) {
     row.cantidad = 1;
@@ -76,7 +69,6 @@ function handleCantidadInput(row) {
   }
 }
 
-// Paso 4: Eliminar artículo
 const removeArticuloCotizacion = (idx) => {
   cotizacion.value.articulos.splice(idx, 1);
 };
@@ -102,14 +94,9 @@ watch(
   { deep: true }
 );
 
-const showPDFDialog = ref(false);
-const pdfDocDefinition = ref(null);
-
-// Validación de campos obligatorios
 const cotizacionInvalida = computed(() => {
   if (!cotizacion.value.cliente_id || !cotizacion.value.vendedor || !cotizacion.value.fecha) return true;
   if (!cotizacion.value.articulos.length) return true;
-  // Algún artículo sin seleccionar o cantidad inválida
   return cotizacion.value.articulos.some(a => !a.articulo_id || !a.cantidad || a.cantidad < 1);
 });
 
@@ -119,29 +106,54 @@ const guardarCotizacion = async () => {
     return;
   }
   try {
-    const logo = await getLogoBase64();
-    const empresa = {
-      nombre: 'COMERCIALIZADORA TECNOLOGICA DEL RIO',
-      direccion: 'Fresno 1441 44910 Guadalajara, Jalisco, México',
-      rfc: 'CTR1905206K5',
-      regimen: '626 - Régimen Simplificado de Confianza',
-      telefono: '3325373183',
-      correo: 'gpsvector@gmail.com',
-      web: 'gpsubicacion.com'
-    };
-
     const articulosObj = {};
     cotizacion.value.articulos.forEach((a, idx) => {
       articulosObj[idx] = a;
     });
     const clienteObj = clientes.value.find(c => c.id === cotizacion.value.cliente_id);
-    const cotizacionCreada = await addQuotation({
+    const now = new Date();
+    const fechaCompleta = now.toISOString().slice(0, 19).replace('T', ' ');
+
+    const objetoCotizacion = {
       ...cotizacion.value,
       cliente: clienteObj ? clienteObj.nombre : '',
       articulos: articulosObj,
       descripcion: cotizacion.value.descripcion || '',
-      status: 'Pendiente'
-    });
+      status: 'Pendiente',
+      fecha: fechaCompleta
+    };
+    const cotizacionCreada = await addQuotation(objetoCotizacion);
+    let mensajeDialogo = '';
+    if (cotizacionCreada.message) {
+      mensajeDialogo = cotizacionCreada.message;
+    } else {
+      mensajeDialogo = 'Cotización registrada.';
+    }
+    cotizacionBDRef.value = { ...objetoCotizacion, ...cotizacionCreada };
+    showDialog.value = true;
+
+    try {
+      const todas = await getQuotations();
+      const cotizacionBD = todas.find(c => {
+        const fechaDB = c.fecha.replace('T', ' ');
+        const coincide = (
+          fechaDB === objetoCotizacion.fecha &&
+          c.monto === objetoCotizacion.monto &&
+          c.cliente_id === objetoCotizacion.cliente_id &&
+          c.vendedor === objetoCotizacion.vendedor
+        );
+        return coincide;
+      });
+      if (cotizacionBD) {
+        cotizacionBDRef.value = cotizacionBD;
+      } else {
+        return;
+        console.log('No se encontró la cotización recién creada en la base de datos.');
+      }
+      dialogVisible.value = true;
+    } catch (e) {
+      dialogVisible.value = true;
+    }
 
     const articulosPDF = cotizacion.value.articulos.map((a, idx) => {
       const art = articulos.value.find(x => x.id === a.articulo_id) || {};
@@ -152,6 +164,19 @@ const guardarCotizacion = async () => {
         unidad: art.unidad
       };
     });
+
+    //**Generar PDF */
+    const logo = '';
+    const empresa = {
+      nombre: 'COMERCIALIZADORA TECNOLOGICA DEL RIO',
+      direccion: 'Fresno 1441 44910 Guadalajara, Jalisco, México',
+      rfc: 'CTR1905206K5',
+      regimen: '626 - Régimen Simplificado de Confianza',
+      telefono: '3325373183',
+      correo: 'gpsvector@gmail.com',
+      web: 'gpsubicacion.com'
+    };
+
     const body = [
       [
         { text: '#', style: 'tableHeader' },
@@ -268,8 +293,7 @@ const guardarCotizacion = async () => {
         fontSize: 9
       }
     };
-    pdfDocDefinition.value = docDefinition;
-    showPDFDialog.value = true;
+
     cotizacion.value = {
       id: null,
       cliente_id: null,
@@ -287,24 +311,10 @@ const guardarCotizacion = async () => {
   }
 };
 
-const descargarPDFCotizacion = async () => {
-  if (!pdfDocDefinition.value) return;
-  let pdfMake;
-  if (window.pdfMake) {
-    pdfMake = window.pdfMake;
-  } else {
-    pdfMake = (await import('pdfmake/build/pdfmake')).default;
-    await import('pdfmake/build/vfs_fonts');
-  }
-  pdfMake.createPdf(pdfDocDefinition.value).download(`${cotizacionGeneradaNumero.value}.pdf`);
-  showPDFDialog.value = false;
-};
 
 const closeDialog = () => {
   showDialog.value = false;
 };
-
-// --- Correos de cliente ("Emiliano Zapata") ---
 const cotizacionEmail = ref('');
 const clienteEmails = computed(() => {
   const cliente = clientes.value.find(c => c.id === cotizacion.value.cliente_id);
@@ -317,7 +327,6 @@ watch(
   }
 );
 
-// --- Teléfonos de cliente ---
 const cotizacionTelefono = ref('');
 const clienteTelefonos = computed(() => {
   const cliente = clientes.value.find(c => c.id === cotizacion.value.cliente_id);
@@ -329,153 +338,6 @@ watch(
     cotizacionTelefono.value = clienteTelefonos.value[0] || '';
   }
 );
-
-const generarPDFCotizacion = async () => {
-  if (!cotizacion.value.cliente_id || cotizacion.value.articulos.length === 0) {
-    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Selecciona cliente y al menos un artículo.', life: 4000 });
-    return;
-  }
-  const clienteObj = clientes.value.find(c => c.id === cotizacion.value.cliente_id) || {};
-
-  const articulosPDF = cotizacion.value.articulos.map((a, idx) => {
-    const art = articulos.value.find(x => x.id === a.articulo_id) || {};
-    return {
-      ...a,
-      nombre: art.nombre,
-      descripcion: art.descripcion,
-      unidad: art.unidad
-    };
-  });
-
-  const body = [
-    [
-      { text: '#', style: 'tableHeader' },
-      { text: 'Artículo', style: 'tableHeader' },
-      { text: 'Descripción', style: 'tableHeader' },
-      { text: 'Cant.', style: 'tableHeader' },
-      { text: 'Tarifa', style: 'tableHeader' },
-      { text: 'Importe', style: 'tableHeader' }
-    ],
-    ...articulosPDF.map((a, idx) => [
-      idx + 1,
-      `${a.nombre || ''}`,
-      a.descripcion || '',
-      `${a.cantidad} ${a.unidad || ''}`,
-      `$${Number(a.precio_unitario).toFixed(2)}`,
-      `$${(Number(a.cantidad) * Number(a.precio_unitario)).toFixed(2)}`
-    ])
-  ];
-
-  const subtotal = articulosPDF.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
-  const descuentoMonto = subtotal * ((Number(cotizacion.value.descuento) || 0) / 100);
-  const iva = subtotal * 0.16;
-  const total = subtotal - descuentoMonto + iva;
-
-  const docDefinition = {
-    content: [
-      {
-        columns: [
-          [
-            { image: logo, width: 225, alignment: 'left', margin: [0, 0, 0, 10] }
-          ],
-          []
-        ]
-      },
-      {
-        columns: [
-          [
-            { text: 'COMERCIALIZADORA TECNOLOGICA DEL RIO', style: 'empresaHeader', alignment: 'left' },
-            { text: 'Fresno 1441 44910 Guadalajara, Jalisco, México', style: 'empresaSubheader', alignment: 'left' },
-            { text: 'IVA CTR1905206K5', style: 'empresaSubheader', alignment: 'left' },
-            { text: 'Régimen fiscal: 626 - Régimen Simplificado de Confianza', style: 'empresaSubheader', alignment: 'left' },
-            { text: '3325373183', style: 'empresaSubheader', alignment: 'left' },
-            { text: 'gpsvector@gmail.com', style: 'empresaSubheader', alignment: 'left' },
-            { text: 'gpsubicacion.com', style: 'empresaSubheader', alignment: 'left' }
-          ]
-        ]
-      },
-      { text: '\n' },
-      { text: 'Cotización', style: 'title', alignment: 'center' },
-      { text: '\n' },
-      {
-        columns: [
-          [
-            { text: 'Facturar a', style: 'sectionHeader' },
-            { text: clienteObj.nombre || '', style: 'clienteLabel' },
-            { text: clienteObj.direccion || '', style: 'clienteLabel' },
-            { text: `RFC del receptor ${clienteObj.rfc || ''}`, style: 'clienteLabel' },
-            { text: `Régimen fiscal: ${clienteObj.regimen_fiscal || ''}`, style: 'clienteLabel' }
-          ],
-          [
-            { text: `Fecha : ${cotizacion.value.fecha}`, style: 'clienteLabel', alignment: 'right' },
-            { text: `Vendedor : ${cotizacion.value.vendedor || ''}`, style: 'clienteLabel', alignment: 'right' }
-          ]
-        ]
-      },
-      { text: '\n' },
-      {
-        table: {
-          headerRows: 1,
-          widths: [18, 120, 120, 40, 50, 60],
-          body
-        },
-        layout: {
-          fillColor: function (rowIndex) {
-            return rowIndex === 0 ? '#ff4081' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
-          }
-        }
-      },
-      { text: '\n' },
-      {
-        columns: [
-          { width: '*', text: '' },
-          {
-            width: 'auto',
-            table: {
-              body: [
-                [ { text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' } ],
-                [ { text: 'IVA (16%)', style: 'totalLabel' }, { text: `$${iva.toFixed(2)}`, style: 'totalValue' } ],
-                [ { text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' } ]
-              ]
-            },
-            layout: 'noBorders'
-          }
-        ]
-      },
-      { text: '\n' },
-      { text: 'Notas', style: 'sectionHeader' },
-      { text: 'Si no necesitas factura y tu pago es mediante transferencia podemos descontar el IVA.', style: 'notas' },
-      { text: '\n' },
-      { text: 'Términos y condiciones', style: 'sectionHeader' },
-      { text: 'Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. El tiempo de traslado en el envió de los paquetes depende de la paquetería.', style: 'notas' }
-    ],
-    styles: {
-      empresaHeader: { fontSize: 14, bold: true, color: '#444' },
-      empresaSubheader: { fontSize: 9, color: '#666' },
-      title: { fontSize: 16, bold: true, color: '#222', margin: [0, 10, 0, 10] },
-      sectionHeader: { fontSize: 11, bold: true, color: '#444', margin: [0, 8, 0, 2] },
-      clienteLabel: { fontSize: 10, color: '#333', margin: [0, 2, 0, 2] },
-      tableHeader: { bold: true, fillColor: '#666', color: '#fff', fontSize: 10, alignment: 'center' },
-      totalLabel: { bold: true, fontSize: 11, alignment: 'right', color: '#333' },
-      totalValue: { bold: true, fontSize: 11, alignment: 'right', color: '#444' },
-      notas: { fontSize: 9, color: '#444', margin: [0, 2, 0, 2] }
-    },
-    defaultStyle: {
-      fontSize: 9
-    }
-  };
-
-  if (window.pdfMake) {
-    window.pdfMake.createPdf(docDefinition).open();
-  } else {
-    const pdfMake = (await import("pdfmake/build/pdfmake")).default;
-    await import("pdfmake/build/vfs_fonts");
-    pdfMake.createPdf(docDefinition).open();
-  }
-
-  cotizacionGeneradaNumero.value = cotizacion.value.folio || cotizacion.value.id || 'N/A';
-  showSendDialog.value = true;
-};
 
 const sendingWhatsapp = ref(false);
 
@@ -525,6 +387,172 @@ const closeConfirmSendDialog = () => {
 const irAClientes = () => {
   router.push('/clientes');
 };
+
+import { ref as vueRef } from 'vue';
+let cotizacionBDRef = vueRef(null);
+
+function descargarPDFCotizacion() {
+  if (!cotizacionBDRef.value) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se encontró la cotización para generar el PDF.', life: 4000 });
+    return;
+  }
+  const cotizacion = cotizacionBDRef.value;
+  let articulosArr = [];
+  try {
+    const articulosObj = typeof cotizacion.articulos === 'string'
+      ? JSON.parse(cotizacion.articulos)
+      : cotizacion.articulos;
+    articulosArr = Object.values(articulosObj).map(a => {
+      const art = articulos.value.find(x => x.id === a.articulo_id) || {};
+      return {
+        ...a,
+        sku: art.sku,
+        nombre: art.nombre,
+        descripcion: art.descripcion,
+        unidad: art.unidad,
+        codigoUnidadSat: art.codigoUnidadSat
+      };
+    });
+  } catch {
+    articulosArr = [];
+  }
+  const clienteObj = clientes.value.find(c => c.id === cotizacion.cliente_id) || {};
+  const empresa = {
+    nombre: 'COMERCIALIZADORA TECNOLOGICA DEL RIO',
+    direccion: 'Mezquite 1272\n44900 Guadalajara Jalisco\nMexico',
+    rfc: 'CTR1905206K5',
+    regimen: '626 - Régimen Simplificado de Confianza',
+    telefono: '3325373183',
+    correo: 'gpsvector@gmail.com',
+    web: 'gpsubicacion.com'
+  };
+  const logo = '';
+  const folio = cotizacion.folio
+    ? cotizacion.folio
+    : cotizacion.id
+      ? `COTIZACION-${String(cotizacion.id).padStart(5, '0')}`
+      : 'COTIZACION-00000';
+  const subtotal = articulosArr.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
+  const descuentoMonto = subtotal * ((Number(cotizacion.descuento) || 0) / 100);
+  const total = subtotal - descuentoMonto;
+  const body = [
+    [
+      { text: '#', style: 'tableHeader' },
+      { text: 'Artículo', style: 'tableHeader' },
+      { text: 'Código del artículo', style: 'tableHeader' },
+      { text: 'Código de unidad', style: 'tableHeader' },
+      { text: 'Cant.', style: 'tableHeader' },
+      { text: 'Tarifa', style: 'tableHeader' },
+      { text: 'Importe', style: 'tableHeader' }
+    ],
+    ...articulosArr.map((a, idx) => [
+      idx + 1,
+      `${a.nombre || ''}`,
+      a.sku || '',
+      a.codigoUnidadSat || '',
+      `${a.cantidad} ${a.unidad || ''}`,
+      `$${Number(a.precio_unitario).toFixed(2)}`,
+      `$${(Number(a.cantidad) * Number(a.precio_unitario)).toFixed(2)}`
+    ])
+  ];
+  const docDefinition = {
+    content: [
+      ...((logo && typeof logo === 'string' && logo.length > 0)
+        ? [{ columns: [[{ image: logo, width: 225, alignment: 'left', margin: [0, 0, 0, 10] }], []] }]
+        : []),
+      {
+        columns: [
+          [
+            { text: empresa.nombre, style: 'empresaHeader', alignment: 'left' },
+            { text: empresa.direccion, style: 'empresaSubheader', alignment: 'left' },
+            { text: `IVA ${empresa.rfc}`, style: 'empresaSubheader', alignment: 'left' },
+            { text: `Régimen fiscal: ${empresa.regimen}`, style: 'empresaSubheader', alignment: 'left' },
+            { text: empresa.telefono, style: 'empresaSubheader', alignment: 'left' },
+            { text: empresa.correo, style: 'empresaSubheader', alignment: 'left' },
+            { text: empresa.web, style: 'empresaSubheader', alignment: 'left' }
+          ]
+        ]
+      },
+      { text: '\n' },
+      { text: 'Cotización', style: 'title', alignment: 'center' },
+      { text: folio, style: 'folio', alignment: 'center' },
+      { text: '\n' },
+      {
+        columns: [
+          [
+            { text: 'Facturar a', style: 'sectionHeader' },
+            { text: clienteObj.nombre || '', style: 'clienteLabel' },
+            { text: clienteObj.direccion || '', style: 'clienteLabel' },
+            { text: `RFC del receptor ${clienteObj.rfc || ''}`, style: 'clienteLabel' },
+            { text: `Régimen fiscal: ${clienteObj.regimen_fiscal || ''}`, style: 'clienteLabel' }
+          ],
+          [
+            { text: `Fecha : ${cotizacion.fecha}`, style: 'clienteLabel', alignment: 'right' },
+            { text: `Vendedor : ${cotizacion.vendedor || ''}`, style: 'clienteLabel', alignment: 'right' }
+          ]
+        ]
+      },
+      { text: '\n' },
+      {
+        table: {
+          headerRows: 1,
+          widths: [18, 120, 60, 60, 40, 50, 60],
+          body
+        },
+        layout: {
+          fillColor: function (rowIndex) {
+            return rowIndex === 0 ? '#ff4081' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+          }
+        }
+      },
+      { text: '\n' },
+      {
+        columns: [
+          { width: '*', text: '' },
+          {
+            width: 'auto',
+            table: {
+              body: [
+                [{ text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' }],
+                [{ text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' }]
+              ]
+            },
+            layout: 'noBorders'
+          }
+        ]
+      },
+      { text: '\n' },
+      { text: 'Notas', style: 'sectionHeader' },
+      { text: cotizacion.observaciones || 'Si necesita factura el pago sería más IVA.', style: 'notas' },
+      { text: '\n' },
+      { text: 'Términos y condiciones', style: 'sectionHeader' },
+      { text: 'Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. El tiempo de traslado en el envió de los paquetes depende de la paquetería.', style: 'notas' }
+    ],
+    styles: {
+      empresaHeader: { fontSize: 14, bold: true, color: '#444' },
+      empresaSubheader: { fontSize: 9, color: '#666' },
+      title: { fontSize: 16, bold: true, color: '#222', margin: [0, 10, 0, 10] },
+      sectionHeader: { fontSize: 11, bold: true, color: '#444', margin: [0, 8, 0, 2] },
+      clienteLabel: { fontSize: 10, color: '#333', margin: [0, 2, 0, 2] },
+      tableHeader: { bold: true, fillColor: '#666', color: '#fff', fontSize: 10, alignment: 'center' },
+      totalLabel: { bold: true, fontSize: 11, alignment: 'right', color: '#333' },
+      totalValue: { bold: true, fontSize: 11, alignment: 'right', color: '#444' },
+      notas: { fontSize: 9, color: '#444', margin: [0, 2, 0, 2] }
+    },
+    defaultStyle: {
+      fontSize: 9
+    }
+  };
+  if (window.pdfMake) {
+    window.pdfMake.createPdf(docDefinition).open();
+  } else {
+    import('pdfmake/build/pdfmake').then(pdfMakeModule => {
+      import('pdfmake/build/vfs_fonts').then(() => {
+        pdfMakeModule.default.createPdf(docDefinition).open();
+      });
+    });
+  }
+}
 </script>
 
 <template>
@@ -664,46 +692,11 @@ const irAClientes = () => {
       </form>
       
       <Dialog v-model:visible="showDialog" header="Cotización Guardada" :modal="true" class="mobile-dialog">
-        <p>La cotización ha sido guardada exitosamente.</p>
-        <Button label="Aceptar" icon="pi pi-check" class="mobile-button" @click="closeDialog" />
-      </Dialog>
-      
-      <Dialog v-model:visible="showSendDialog" header="Enviar Cotización" :modal="true" class="mobile-dialog">
-        <p>La cotización con folio <strong>{{ cotizacionGeneradaNumero }}</strong> ha sido generada.</p>
-        <p>¿Deseas enviar esta cotización al cliente por WhatsApp?</p>
-        <p><strong>WhatsApp:</strong> {{ cotizacionTelefono }}</p>
-        <template #footer>
-          <Button label="Cancelar" class="mobile-button" 
-            @click="() => { showSendDialog = false; router.push('/dashboard'); }" />
-          <Button label="Enviar WhatsApp" class="p-button-success mobile-button" 
-            @click="enviarCotizacionAlCliente" :loading="sendingWhatsapp" />
-        </template>
-      </Dialog>
-      
-      <Dialog v-model:visible="sendingWhatsapp" header="Enviando WhatsApp" :modal="true" :closable="false" 
-        class="mobile-dialog">
-        <div class="dialog-content">
-          <span>Enviando cotización por WhatsApp...</span>
+        <p>{{ mensajeDialogo }}</p>
+        <div class="dialog-actions" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+          <Button label="Descargar PDF" icon="pi pi-file-pdf" class="p-button-success mobile-button" @click="descargarPDFCotizacion" v-if="cotizacionBDRef" />
+          <Button label="Aceptar" icon="pi pi-check" class="mobile-button" @click="closeDialog" />
         </div>
-      </Dialog>
-      
-      <Dialog v-model:visible="showConfirmSendDialog" header="Envío exitoso" :modal="true" class="mobile-dialog">
-        <p>La cotización fue enviada correctamente al cliente.</p>
-        <Button label="Aceptar" icon="pi pi-check" class="mobile-button" @click="closeConfirmSendDialog" />
-      </Dialog>
-
-      <Dialog v-model:visible="showPDFDialog" header="Cotización Guardada" :modal="true" class="mobile-dialog">
-        <p>La cotización ha sido guardada exitosamente.</p>
-        <p>¿Deseas descargar el PDF generado?</p>
-        <template #footer>
-          <Button label="Cancelar" class="mobile-button" @click="showPDFDialog = false" />
-          <Button label="Descargar PDF" class="p-button-success mobile-button" @click="descargarPDFCotizacion" />
-        </template>
-      </Dialog>
-
-      <Dialog v-model:visible="showPDFDialog" header="Cotización generada" :modal="true" class="mobile-dialog">
-        <p>La cotización fue generada correctamente.</p>
-        <Button label="Descargar PDF" icon="pi pi-file-pdf" class="p-button-success mobile-button" @click="descargarPDFCotizacion" />
       </Dialog>
     </div>
   </div>
