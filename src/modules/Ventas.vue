@@ -6,7 +6,19 @@
       <div class="ventas-form-header">
         <div class="ventas-form-col">
           <label>Cliente</label>
-          <Dropdown v-model="venta.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id" placeholder="Selecciona un cliente" class="w-full" />
+          <Dropdown
+            v-model="venta.cliente_id"
+            :options="clientes"
+            optionLabel="nombre"
+            optionValue="id"
+            placeholder="Selecciona un cliente"
+            class="w-full"
+            filter
+            filterPlaceholder="Buscar cliente..."
+            :filterBy="'nombre'"
+            showClear
+            :virtualScrollerOptions="{ itemSize: 38 }"
+          />
         </div>
         <div class="ventas-form-col">
           <label>Cotización</label>
@@ -17,6 +29,8 @@
             optionValue="id"
             placeholder="Selecciona cotización"
             class="w-full"
+            filter
+            filterPlaceholder="Buscar cotización..."
             @change="cargarCotizacionEnVenta(cotizacionesCliente.find(c => c.id === cotizacionSeleccionada))"
           />
         </div>
@@ -41,6 +55,9 @@
             optionValue="username"
             placeholder="Selecciona vendedor"
             class="w-full"
+            filter
+            filterPlaceholder="Buscar vendedor..."
+            showClear
           />
         </div>
         <div class="ventas-form-col">
@@ -53,27 +70,42 @@
       <div class="ventas-form-header">
         <div class="ventas-form-col">
           <label>Ubicación</label>
-          <Dropdown v-model="venta.ubicacion_id" :options="ubicaciones" optionLabel="nombre" optionValue="id" placeholder="Selecciona ubicación" class="w-full" @change="onSeleccionarUbicacion(venta.ubicacion_id)" />
+          <Dropdown
+            v-model="venta.ubicacion_id"
+            :options="ubicaciones"
+            optionLabel="nombre"
+            optionValue="id"
+            placeholder="Selecciona ubicación"
+            class="w-full"
+            filter
+            filterPlaceholder="Buscar ubicación..."
+            :filterBy="'nombre'"
+            @change="onSeleccionarUbicacion(venta.ubicacion_id)"
+          />
           <span v-if="venta.ubicacion_id" class="info-text">Ubicación seleccionada: {{ ubicaciones.find(u => u.id === venta.ubicacion_id)?.nombre }}</span>
         </div>
       </div>
 
-      <!-- Campo Atendido por -->
-      <div class="form-group">
-        <label>Atendido por:</label>
-        <InputText v-model="usuarioActual" class="w-full" />
-      </div>
-
-      <!-- Casilla Requiere Factura -->
-      <div class="form-group">
-        <Checkbox v-model="requiereFactura" label="Requiere factura" />
-      </div>
-      <div class="form-group">
-        <InputText v-model="rfc" :disabled="!requiereFactura" placeholder="RFC" />
-      </div>
-      <div class="form-group">
-        <label>Adjuntar constancia fiscal:</label>
-        <input type="file" @change="e => archivoConstancia.value = e.target.files[0]" />
+      <!-- Fila: Atendido / Facturación -->
+      <div class="ventas-form-header form-grid-4">
+        <div class="ventas-form-col">
+          <label>Atendido por</label>
+          <InputText v-model="usuarioActual" class="w-full" />
+        </div>
+        <div class="ventas-form-col">
+          <label>Requiere factura</label>
+          <div class="inline-control">
+            <Checkbox v-model="requiereFactura" binary />
+          </div>
+        </div>
+        <div class="ventas-form-col">
+          <label>RFC</label>
+          <InputText v-model="rfc" :disabled="!requiereFactura" placeholder="RFC" class="w-full" />
+        </div>
+        <div class="ventas-form-col">
+          <label>Constancia fiscal</label>
+          <input type="file" class="file-input" @change="e => archivoConstancia.value = e.target.files[0]" :disabled="!requiereFactura" />
+        </div>
       </div>
 
       <!-- Tabla de artículos -->
@@ -553,9 +585,9 @@ const metodoPagoOptions = [
 
 <style scoped>
 .ventas-container {
-  max-width: 900px;
+  /* max-width: 900px; */
   margin: 2rem auto;
-  padding: 2rem;
+  padding: 3rem;
   background: var(--color-bg);
   color: var(--color-text);
   border-radius: 12px;
@@ -574,15 +606,16 @@ const metodoPagoOptions = [
   margin-bottom: 2rem;
 }
 .ventas-form-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
+  margin-bottom: 1.25rem;
 }
-.ventas-form-col {
-  flex: 1;
-}
+.form-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.ventas-form-col { width: 100%; }
+.ventas-form-col label { display:block; font-weight:600; margin: 0 0 .35rem 0; color: var(--color-title); }
+.inline-control { display:flex; align-items:center; height: 2.5rem; }
+.file-input { width: 100%; }
 .mb-2 {
   margin-bottom: 1rem;
 }
@@ -678,15 +711,13 @@ const metodoPagoOptions = [
   float: right;
 }
 .acciones-footer {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 2rem;
+  gap: 1rem;
   margin-bottom: 1rem;
 }
-.acciones-footer strong {
-  font-size: 1.1em;
-}
+.acciones-footer strong { font-size: 1.05em; }
 .stock-chips {
   display: flex;
   gap: 0.5em;
@@ -697,6 +728,9 @@ const metodoPagoOptions = [
   font-weight: bold;
   border-radius: 8px;
 }
+@media (max-width: 1000px) {
+  .ventas-form-header, .form-grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
 @media (max-width: 700px) {
   .ventas-container {
     padding: 1rem 0.2rem;
@@ -704,10 +738,7 @@ const metodoPagoOptions = [
   .ventas-card {
     padding: 0.5rem;
   }
-  .ventas-form-header {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
+  .ventas-form-header, .form-grid-4 { grid-template-columns: 1fr; gap: 0.5rem; }
   .venta-articulos-table {
     font-size: 0.95em;
     padding: 0.5rem;
