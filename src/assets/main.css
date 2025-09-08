@@ -1,18 +1,51 @@
 @import './base.css';
 
-:root {
-  --color-bg: #fff;
-  --color-card: #f5f5f5;
-  --color-text: #222;
-  --color-title: #d48ca6; /* rosa seco tenue */
-  --color-border: #e0e0e0;
+/*
+  Mapa de variables del proyecto
+  - Alias a las variables semánticas definidas en assets/base.css
+  - Evita hardcodes y asegura compatibilidad con tema claro/oscuro
+*/
+:root,
+[data-theme="light"] {
+  /* Superficies y texto */
+  --color-bg: var(--color-background);
+  --color-card: var(--color-background-soft);
+  --color-bg-light: var(--color-background-mute);
+  --color-text: var(--color-text);
+  --color-title: var(--color-heading);
+  --color-border: var(--color-border);
+
+  /* Accentos y estados */
+  --color-primary: #d48ca6; /* acento rosa suave por defecto */
+  --color-error: #d32f2f;
+  --color-on-error: #ffffff;
+  --color-success: #2e7d32;
+
+  /* Utilitarios */
+  --color-muted-bg: #bdbdbd;
+  --color-on-muted: var(--color-text);
 }
+
 [data-theme="dark"] {
-  --color-bg: #23272f;
-  --color-card: #2d313a;
-  --color-text: #e4c8c8;
-  --color-title: #d48ca6;
-  --color-border: #444;
+  /* Mantener los alias a variables oscuras definidas en base.css cuando se use atributo */
+  --color-bg: var(--color-background);
+  --color-card: var(--color-background-soft);
+  --color-bg-light: var(--color-background-mute);
+  --color-text: var(--color-text);
+  --color-title: var(--color-heading);
+  --color-border: var(--color-border);
+
+  --color-primary: #d48ca6; /* mismo acento en oscuro */
+  --color-error: #d32f2f;
+  --color-on-error: #ffffff;
+  --color-success: #2e7d32;
+
+  --color-muted-bg: #61666e; /* gris medio para chips/etiquetas */
+  --color-on-muted: var(--color-text);
+  /* Sombras */
+  --shadow-1: 0 2px 8px rgba(0,0,0,0.08);
+  --shadow-2: 0 4px 24px rgba(0,0,0,0.10);
+  --shadow-3: 0 8px 32px rgba(0,0,0,0.18);
 }
 
 #app {

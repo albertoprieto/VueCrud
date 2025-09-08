@@ -2,7 +2,7 @@
   <div class="historico-notas-container">
     <h2 class="historico-title">Consultar Orden de Servicio</h2>
     <!-- Agrega esto antes del DataTable -->
-    <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+    <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
       <InputText v-model="filtroFolio" placeholder="Buscar por folio..." class="filtro-input" clearable />
       <Dropdown
         v-model="filtroCliente"
@@ -16,6 +16,22 @@
         v-model="filtroTecnico"
         :options="tecnicosUnicos"
         placeholder="Filtrar por asignado a"
+        class="filtro-dropdown"
+        showClear
+        filter
+      />
+      <Dropdown
+        v-model="filtroStatus"
+        :options="statusUnicos"
+        placeholder="Filtrar por status"
+        class="filtro-dropdown"
+        showClear
+        filter
+      />
+      <Dropdown
+        v-model="filtroTerminosPago"
+        :options="terminosPagoUnicos"
+        placeholder="Filtrar por términos de pago"
         class="filtro-dropdown"
         showClear
         filter
@@ -34,6 +50,7 @@
         filtroCliente = '';
         filtroTecnico = '';
         filtroStatus = '';
+        filtroTerminosPago = '';
         filtroFecha = [];
         filtroImei = '';
       }" />
@@ -82,7 +99,7 @@
           <Button
             :icon="slotProps.data.tecnicoNombre ? 'pi pi-user-edit' : 'pi pi-user-plus'"
             :label="slotProps.data.tecnicoNombre ? 'Cambiar técnico' : 'Asignar técnico'"
-            class="p-button-sm p-button-info ml-2"
+            class="p-button-sm p-button-info"
             @click="abrirAsignarTecnico(slotProps.data)"
           />
           <Button
@@ -95,7 +112,7 @@
           <Button
             icon="pi pi-file-pdf"
             label="PDF"
-            class="p-button-sm p-button-success"
+            class="p-button-sm p-button-success ml-2"
             @click="descargarPDF(slotProps.data)"
           />
         </template>
@@ -182,6 +199,7 @@ const filtroFolio = ref('');
 const filtroCliente = ref('');
 const filtroTecnico = ref('');
 const filtroStatus = ref('');
+const filtroTerminosPago = ref('');
 const filtroFecha = ref([]);
 const filtroImei = ref('');
 
@@ -220,16 +238,26 @@ const tecnicosUnicos = computed(() => {
   return Array.from(set);
 });
 
+const statusUnicos = computed(() => {
+  const set = new Set();
+  ventas.value.forEach(v => v.status && set.add(v.status));
+  return Array.from(set);
+});
+
+const terminosPagoUnicos = computed(() => {
+  const set = new Set();
+  ventas.value.forEach(v => v.terminos_pago && set.add(v.terminos_pago));
+  return Array.from(set);
+});
+
 const ventasFiltradas = computed(() => {
   return ventas.value.filter(v => {
-    const folioOk = !filtroFolio.value || String(v.id).toLowerCase().includes(filtroFolio.value.toLowerCase());
+    const folioBase = v.folio ?? v.id;
+    const folioOk = !filtroFolio.value || String(folioBase).toLowerCase().includes(filtroFolio.value.toLowerCase());
     const clienteOk = !filtroCliente.value || v.cliente_nombre === filtroCliente.value;
-    // const tecnicoOk = !filtroTecnico.value ||
     const tecnicoOk = !filtroTecnico.value || v.tecnicoNombre === filtroTecnico.value;
-      (typeof filtroTecnico.value === 'string'
-        ? v.tecnicoNombre && v.tecnicoNombre.toLowerCase().includes(filtroTecnico.value.toLowerCase())
-        : v.tecnicoNombre && v.tecnicoNombre === filtroTecnico.value.nombre);
     const statusOk = !filtroStatus.value || v.status === filtroStatus.value;
+    const terminosOk = !filtroTerminosPago.value || v.terminos_pago === filtroTerminosPago.value;
 
     // Fecha (rango)
     let fechaOk = true;
@@ -250,7 +278,7 @@ const ventasFiltradas = computed(() => {
         )
       ));
 
-    return folioOk && clienteOk && tecnicoOk && statusOk && fechaOk && imeiOk;
+  return folioOk && clienteOk && tecnicoOk && statusOk && terminosOk && fechaOk && imeiOk;
   });
 });
 

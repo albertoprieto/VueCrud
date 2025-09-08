@@ -2,7 +2,7 @@
   <div class="clientes-page">
     <div class="clientes-header-card">
       <h2 class="clientes-title">
-        <i class="pi pi-users" style="color:#ff4081; font-size:1.5em; margin-right:0.5em;"></i>
+        <i class="pi pi-users icon-accent"></i>
         Clientes
       </h2>
       <div class="clientes-filtros">
@@ -13,7 +13,7 @@
           clearable
         >
           <template #prepend>
-            <i class="pi pi-search" style="color:#ff4081"></i>
+            <i class="pi pi-search icon-inline"></i>
           </template>
         </InputText>
         <AutoComplete
@@ -28,7 +28,7 @@
           @item-select="e => filtroUsuario = e.value.label"
         >
           <template #prepend>
-            <i class="pi pi-user" style="color:#ff4081"></i>
+            <i class="pi pi-user icon-inline"></i>
           </template>
         </AutoComplete>
         <AutoComplete
@@ -43,7 +43,7 @@
           @item-select="e => filtroTelefono = e.value.label"
         >
           <template #prepend>
-            <i class="pi pi-phone" style="color:#ff4081"></i>
+            <i class="pi pi-phone icon-inline"></i>
           </template>
         </AutoComplete>
         <Button label="Limpiar" icon="pi pi-times" class="clientes-btn" @click="limpiarFiltros" />
@@ -57,7 +57,7 @@
           <template #body="slotProps">
             <div class="chip-list">
               <span v-for="(tel, idx) in slotProps.data.telefonos" :key="idx" class="chip chip-telefono">
-                <i class="pi pi-phone" style="margin-right:0.2em;color:#4a148c"></i>{{ tel }}
+                <i class="pi pi-phone chip-icon tel"></i>{{ tel }}
               </span>
             </div>
           </template>
@@ -68,7 +68,7 @@
           <template #body="slotProps">
             <div class="chip-list">
               <span v-for="(u, idx) in slotProps.data.usuarios" :key="idx" class="chip chip-usuario">
-                <i class="pi pi-user" style="margin-right:0.2em;color:#00695c"></i>{{ u }}
+                <i class="pi pi-user chip-icon usr"></i>{{ u }}
               </span>
             </div>
           </template>
@@ -77,7 +77,7 @@
           <template #body="slotProps">
             <div class="chip-list">
               <span v-for="(p, idx) in slotProps.data.plataformas" :key="idx" class="chip chip-plataforma">
-                <i class="pi pi-globe" style="margin-right:0.2em;color:#795548"></i>{{ p }}
+                <i class="pi pi-globe chip-icon plat"></i>{{ p }}
               </span>
             </div>
           </template>
@@ -94,11 +94,11 @@
       <div class="clientes-dialog-content compact-form">
         <div class="formgrid grid grid-responsive">
           <div class="field col-12 md:col-6">
-            <label for="nombre"><i class="pi pi-user" style="margin-right:0.3em;color:#ff4081"></i>Nombre:</label>
+            <label for="nombre"><i class="pi pi-user icon-inline"></i>Nombre:</label>
             <InputText id="nombre" v-model="form.nombre" class="w-full" placeholder="Nombre del cliente" />
           </div>
           <div class="field col-12 md:col-6">
-            <label><i class="pi pi-phone" style="margin-right:0.3em;color:#ff4081"></i>Teléfonos:</label>
+            <label><i class="pi pi-phone icon-inline"></i>Teléfonos:</label>
             <div v-for="(tel, idx) in form.telefonos" :key="idx" class="input-row">
               <InputText v-model="form.telefonos[idx]" class="w-full" placeholder="Teléfono" />
               <Button icon="pi pi-minus" class="clientes-btn" @click="removeTelefono(idx)" v-if="form.telefonos.length > 1" />
@@ -106,15 +106,15 @@
             <Button icon="pi pi-plus" class="clientes-btn" @click="addTelefono" />
           </div>
           <div class="field col-12 md:col-6">
-            <label for="correo"><i class="pi pi-envelope" style="margin-right:0.3em;color:#ff4081"></i>Correo:</label>
+            <label for="correo"><i class="pi pi-envelope icon-inline"></i>Correo:</label>
             <InputText id="correo" v-model="form.correo" class="w-full" placeholder="Correo electrónico" />
           </div>
           <div class="field col-12 md:col-6">
-            <label for="direccion"><i class="pi pi-map-marker" style="margin-right:0.3em;color:#ff4081"></i>Ciudad:</label>
+            <label for="direccion"><i class="pi pi-map-marker icon-inline"></i>Ciudad:</label>
             <InputText id="direccion" v-model="form.direccion" class="w-full" placeholder="Ciudad" />
           </div>
           <div class="field col-12 md:col-6">
-            <label><i class="pi pi-user" style="margin-right:0.3em;color:#ff4081"></i>Usuarios:</label>
+            <label><i class="pi pi-user icon-inline"></i>Usuarios:</label>
             <div v-for="(u, idx) in form.usuarios" :key="idx" class="input-row">
               <InputText v-model="form.usuarios[idx]" class="w-full" placeholder="Usuario" />
               <Button icon="pi pi-minus" class="clientes-btn" @click="removeUsuario(idx)" v-if="form.usuarios.length > 1" />
@@ -122,7 +122,7 @@
             <Button icon="pi pi-plus" class="clientes-btn" @click="addUsuario" />
           </div>
           <div class="field col-12 md:col-6">
-            <label><i class="pi pi-globe" style="margin-right:0.3em;color:#ff4081"></i>Plataformas:</label>
+            <label><i class="pi pi-globe icon-inline"></i>Plataformas:</label>
             <div v-for="(p, idx) in form.plataformas" :key="idx" class="input-row">
               <InputText v-model="form.plataformas[idx]" class="w-full" placeholder="Plataforma" />
               <Button icon="pi pi-minus" class="clientes-btn" @click="removePlataforma(idx)" v-if="form.plataformas.length > 1" />
@@ -130,21 +130,21 @@
             <Button icon="pi pi-plus" class="clientes-btn" @click="addPlataforma" />
           </div>
           <div class="field col-12 md:col-6">
-            <label><i class="pi pi-user-edit" style="margin-right:0.3em;color:#ff4081"></i>Atendido por:</label>
+            <label><i class="pi pi-user-edit icon-inline"></i>Atendido por:</label>
             <div class="atendido-row">
               <InputText :value="atendidoPor" class="w-full" disabled />
             </div>
           </div>
           <div class="field col-12 md:col-6">
             <div class="factura-row">
-              <label><i class="pi pi-file-edit" style="margin-right:0.3em;color:#ff4081"></i>Requiere factura:</label>
+              <label><i class="pi pi-file-edit icon-inline"></i>Requiere factura:</label>
               <InputSwitch v-model="requiereFactura" class="factura-switch" />
             </div>
             <div v-if="requiereFactura">
-              <label for="rfc" style="margin-top:0.5em;"><i class="pi pi-id-card" style="margin-right:0.3em;color:#ff4081"></i>RFC:</label>
+              <label for="rfc" style="margin-top:0.5em;"><i class="pi pi-id-card icon-inline"></i>RFC:</label>
               <InputText id="rfc" v-model="rfc.value" class="w-full" placeholder="RFC del cliente" />
             </div>
-            <label for="constanciaFiscal" style="margin-top:0.5em;"><i class="pi pi-paperclip" style="margin-right:0.3em;color:#ff4081"></i>Constancia fiscal:</label>
+            <label for="constanciaFiscal" style="margin-top:0.5em;"><i class="pi pi-paperclip icon-inline"></i>Constancia fiscal:</label>
             <input id="constanciaFiscal" type="file" @change="handleFileChange" class="w-full" />
           </div>
         </div>
@@ -379,14 +379,14 @@ const handleFileChange = (event) => {
 
 <style scoped>
 .clientes-page {
-  background: linear-gradient(135deg,#fff 80%,#ffe6f0 100%);
+  background: linear-gradient(135deg, var(--color-bg) 80%, color-mix(in oklab, var(--color-primary) 12%, var(--color-bg)) 100%);
   min-height: 100vh;
   padding: 2rem 0.5rem;
 }
 .clientes-header-card {
-  background: #fff;
+  background: var(--color-card);
   border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(255,64,129,0.10);
+  box-shadow: var(--shadow-2);
   padding: 1.2rem 2rem 1rem 2rem;
   margin-bottom: 1.5rem;
   display: flex;
@@ -396,7 +396,7 @@ const handleFileChange = (event) => {
 .clientes-title {
   font-size: 2em;
   font-weight: 700;
-  color: #ff4081;
+  color: var(--color-primary, var(--color-title));
   display: flex;
   align-items: center;
   margin-bottom: 0.5em;
@@ -410,14 +410,14 @@ const handleFileChange = (event) => {
 .clientes-btn {
   border-radius: 8px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(255,64,129,0.08);
-  background: linear-gradient(90deg,#fff 60%,#fff 100%);
-  color: #bd3838;
+  box-shadow: var(--shadow-1);
+  background: linear-gradient(90deg, var(--color-card) 60%, var(--color-card) 100%);
+  color: var(--color-title);
 }
 .clientes-table-card {
-  background: #fff;
+  background: var(--color-card);
   border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(255,64,129,0.10);
+  box-shadow: var(--shadow-2);
   padding: 1.2rem 1rem 1rem 1rem;
 }
 .clientes-table {
@@ -432,10 +432,10 @@ const handleFileChange = (event) => {
   border-radius: 7px;
   font-size: 0.97em;
   font-weight: 500;
-  background: #f7f7fa;
-  color: #444;
-  /* border: 1px solid #e0e0e0; */ /* Eliminado el borde */
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  background: var(--color-bg-light);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-1);
   font-family: 'Montserrat', 'Roboto', Arial, sans-serif;
   margin-right: 0.18em;
   margin-bottom: 0.12em;
@@ -448,18 +448,18 @@ const handleFileChange = (event) => {
   opacity: 0.7;
 }
 .chip-usuario {
-  background: #f7f7fa;
-  color: #00695c;
+  background: var(--color-bg-light);
+  color: color-mix(in oklab, var(--color-text) 65%, var(--color-primary));
   /* border-color: #b2ebf2; */ /* Eliminado el borde */
 }
 .chip-plataforma {
-  background: #f7f7fa;
-  color: #795548;
+  background: var(--color-bg-light);
+  color: color-mix(in oklab, var(--color-text) 70%, var(--color-primary));
   /* border-color: #ffe082; */ /* Eliminado el borde */
 }
 .chip-telefono {
-  background: #f7f7fa;
-  color: #4a148c;
+  background: var(--color-bg-light);
+  color: color-mix(in oklab, var(--color-text) 60%, var(--color-primary));
   /* border-color: #e1bee7; */ /* Eliminado el borde */
   font-weight: 500;
   border-radius: 12px;
@@ -467,6 +467,12 @@ const handleFileChange = (event) => {
   margin-right: 0.2em;
   display: inline-block;
 }
+.icon-accent { color: var(--color-primary); font-size: 1.5em; margin-right: 0.5em; }
+.icon-inline { color: var(--color-primary); margin-right: 0.3em; }
+.chip-icon { margin-right: 0.2em; opacity: 0.9; }
+.chip-icon.tel { color: color-mix(in oklab, var(--color-text) 60%, var(--color-primary)); }
+.chip-icon.usr { color: color-mix(in oklab, var(--color-text) 65%, var(--color-primary)); }
+.chip-icon.plat { color: color-mix(in oklab, var(--color-text) 70%, var(--color-primary)); }
 .acciones-col {
   min-width: 120px;
   display: flex;

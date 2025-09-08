@@ -66,10 +66,10 @@
         </div>
       </div>
 
-      <!-- Fila 3: Ubicación -->
+    <!-- Fila 3: Ubicación o Técnico -->
       <div class="ventas-form-header">
         <div class="ventas-form-col">
-          <label>Ubicación</label>
+      <label>Ubicación o Técnico</label>
           <Dropdown
             v-model="venta.ubicacion_id"
             :options="ubicaciones"
@@ -90,7 +90,7 @@
       <div class="ventas-form-header form-grid-4">
         <div class="ventas-form-col">
           <label>Atendido por</label>
-          <InputText v-model="usuarioActual" class="w-full" />
+          <InputText :value="usuarioActual" class="w-full" disabled />
         </div>
         <div class="ventas-form-col">
           <label>Requiere factura</label>
@@ -143,7 +143,7 @@
               <Chip
                 :label="getStockDisponible(slotProps.data.articulo_id, slotProps.data)"
                 class="stock-chip"
-                style="background:#bdbdbd;color:#222;"
+                :style="{ background: 'var(--color-muted-bg)', color: 'var(--color-on-muted)' }"
               />
             </span>
           </template>
@@ -317,7 +317,10 @@ const ubicacionValidaDialog = computed(() => {
   });
 });
 
-const usuarioActual = ref('');
+import { useLoginStore } from '@/stores/loginStore';
+const loginStore = useLoginStore();
+const usuarioActual = computed(() => loginStore.user.username.toUpperCase() || '');
+
 const requiereFactura = ref(false);
 const rfc = ref('XAXX010101000');
 const archivoConstancia = ref(null);
@@ -331,14 +334,47 @@ async function onSeleccionarUbicacion(id) {
     stock: 1,
     articulo_id: 5,
     precio_unitario: 650,
-    nombre: 'Instalacion a Domicilio GDL'
+  nombre: 'Instalacion a Domicilio GDL',
+  tipo: 'Servicio'
   };
   articulosUbicacion.push(instalacionObj);
   articulosDisponibles.value = articulosUbicacion;
-  console.log('Artículos de la cotización:', venta.articulos);
-  console.log('Artículos de la ubicación seleccionada:', articulosDisponibles.value);
-  // Log de stock de la ubicación seleccionada
-  console.log('Stock de la ubicación seleccionada:', articulosUbicacion);
+  // Log enfocado: coincidencias entre cotización y ubicacion
+  logCoincidenciasCotizacionUbicacion();
+}
+
+function logCoincidenciasCotizacionUbicacion() {
+  try {
+    const cotizacionArts = Array.isArray(venta.articulos) ? venta.articulos : [];
+    const ubicacionArts = Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [];
+    const detalle = cotizacionArts.map(a => {
+      const artU = ubicacionArts.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
+      const servicio = esServicio(a.articulo_id);
+      const stock = servicio ? 'NA' : (artU?.stock ?? 0);
+      const requerido = a.cantidad ?? 0;
+      const existe = servicio || !!artU;
+      const stockOK = servicio || (Number(stock) >= Number(requerido));
+      return {
+        articulo_id: a.articulo_id,
+        requerido,
+        stock_disponible: stock,
+        existe_en_ubicacion: existe,
+        stock_suficiente: stockOK
+      };
+    });
+    const totales = {
+      total_articulos_cotizacion: detalle.length,
+      coinciden_en_ubicacion: detalle.filter(d => d.existe_en_ubicacion).length,
+      con_stock_suficiente: detalle.filter(d => d.stock_suficiente).length,
+      ubicacion_valida: ubicacionValida.value && !stockInsuficiente.value
+    };
+    console.groupCollapsed('[Orden Servicio] Coincidencias cotización vs ubicación');
+    console.table(detalle);
+    console.log('Resumen:', totales);
+    console.groupEnd();
+  } catch (_) {
+    // silencio: este log es solo de depuración
+  }
 }
 
 onMounted(async () => {
@@ -355,10 +391,7 @@ onMounted(async () => {
   const usuarios = await getUsuarios();
   vendedores.value = usuarios.filter(u => u.perfil === 'Vendedor');
 
-  // Precargar usuario actual
-  const res = await import('@/services/usuariosService');
-  const usuario = await res.getUsuarioActual?.();
-  usuarioActual.value = usuario?.username || '';
+  // Usuario actual viene del store de login (usuarioActual es computed)
 });
 
 watch(
@@ -532,6 +565,10 @@ function cargarCotizacionEnVenta(cotizacion) {
   venta.ubicacion_id = cotizacion.ubicacion_id || null;
   venta.notas_cliente = cotizacion.notas_cliente || '';
   venta.terminos_condiciones = cotizacion.terminos_condiciones || '';
+  // Log enfocado cuando ya hay ubicación cargada
+  if (venta.ubicacion_id) {
+    logCoincidenciasCotizacionUbicacion();
+  }
 }
 
 function getStockDisponible(articulo_id, row) {

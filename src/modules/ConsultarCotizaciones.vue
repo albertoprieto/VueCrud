@@ -67,7 +67,7 @@
         </Column>
         <Column header="Acciones">
           <template #body="row">
-            <Button label="Tel" icon="pi pi-phone" class="p-button-text"
+            <Button label="Teléfonos" icon="pi pi-phone" class="p-button-text"
               @click="showTelefonosDialog(row.data.telefonos)"
               :disabled="!row.data.telefonos || !row.data.telefonos.length" />
             <Button label="Detalle" icon="pi pi-eye" class="p-button-text" @click="showDetalleDialog(row.data)" />
@@ -499,7 +499,7 @@ function generatePDF(cotizacion) {
 
   const empresa = {
     nombre: 'COMERCIALIZADORA TECNOLOGICA DEL RIO',
-    direccion: 'Mezquite 1272\n44900 Guadalajara Jalisco\nMexico',
+    direccion: 'Fresno 1441 44910 Guadalajara, Jalisco, México',
     rfc: 'CTR1905206K5',
     regimen: '626 - Régimen Simplificado de Confianza',
     telefono: '3325373183',
@@ -519,25 +519,22 @@ function generatePDF(cotizacion) {
   // Calcular subtotal y total antes de usar en docDefinition
   const subtotal = articulosArr.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
   const descuentoMonto = subtotal * ((Number(cotizacion.descuento) || 0) / 100);
-  const total = subtotal - descuentoMonto;
+  const iva = subtotal * 0.16;
+  const total = subtotal - descuentoMonto + iva;
 
   // body debe estar definido antes de usarlo en docDefinition
   const body = [
     [
       { text: '#', style: 'tableHeader' },
-      { text: 'Artículo', style: 'tableHeader' },
-      { text: 'Código del artículo', style: 'tableHeader' },
-      { text: 'Código de unidad', style: 'tableHeader' },
+      { text: 'Artículo & Descripción', style: 'tableHeader' },
       { text: 'Cant.', style: 'tableHeader' },
       { text: 'Tarifa', style: 'tableHeader' },
       { text: 'Importe', style: 'tableHeader' }
     ],
     ...articulosArr.map((a, idx) => [
       idx + 1,
-      `${a.nombre || ''}`,
-      a.sku || '',
-      a.codigoUnidadSat || '',
-      `${a.cantidad} ${a.unidad || ''}`,
+      `${a.nombre || ''}\n${a.descripcion || ''}`,
+      `${a.cantidad}`,
       `$${Number(a.precio_unitario).toFixed(2)}`,
       `$${(Number(a.cantidad) * Number(a.precio_unitario)).toFixed(2)}`
     ])
@@ -553,7 +550,7 @@ function generatePDF(cotizacion) {
           [
             { text: empresa.nombre, style: 'empresaHeader', alignment: 'left' },
             { text: empresa.direccion, style: 'empresaSubheader', alignment: 'left' },
-            { text: `IVA ${empresa.rfc}`, style: 'empresaSubheader', alignment: 'left' },
+            { text: `${empresa.rfc}`, style: 'empresaSubheader', alignment: 'left' },
             { text: `Régimen fiscal: ${empresa.regimen}`, style: 'empresaSubheader', alignment: 'left' },
             { text: empresa.telefono, style: 'empresaSubheader', alignment: 'left' },
             { text: empresa.correo, style: 'empresaSubheader', alignment: 'left' },
@@ -576,7 +573,8 @@ function generatePDF(cotizacion) {
           ],
           [
             { text: `Fecha : ${cotizacion.fecha}`, style: 'clienteLabel', alignment: 'right' },
-            { text: `Vendedor : ${cotizacion.vendedor || ''}`, style: 'clienteLabel', alignment: 'right' }
+            { text: `Vendedor : ${cotizacion.vendedor || ''}`, style: 'clienteLabel', alignment: 'right' },
+            { text: `Teléfono cliente: ${clienteObj.telefonos && clienteObj.telefonos.length ? clienteObj.telefonos[0] : '-'}` , style: 'clienteLabel', alignment: 'right' }
           ]
         ]
       },
@@ -584,7 +582,7 @@ function generatePDF(cotizacion) {
       {
         table: {
           headerRows: 1,
-          widths: [18, 120, 60, 60, 40, 50, 60],
+          widths: [18, '*', 40, 50, 60],
           body
         },
         layout: {
@@ -602,6 +600,8 @@ function generatePDF(cotizacion) {
             table: {
               body: [
                 [{ text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' }],
+                [{ text: 'Descuento', style: 'totalLabel' }, { text: `$${descuentoMonto.toFixed(2)}`, style: 'totalValue' }],
+                [{ text: 'IVA (16%)', style: 'totalLabel' }, { text: `$${iva.toFixed(2)}`, style: 'totalValue' }],
                 [{ text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' }]
               ]
             },
@@ -611,7 +611,7 @@ function generatePDF(cotizacion) {
       },
       { text: '\n' },
       { text: 'Notas', style: 'sectionHeader' },
-      { text: cotizacion.observaciones || 'Si necesita factura el pago sería más IVA.', style: 'notas' },
+      { text: cotizacion.observaciones || 'Si no necesitas factura y tu pago es mediante transferencia podemos descontar el IVA.', style: 'notas' },
       { text: '\n' },
       { text: 'Términos y condiciones', style: 'sectionHeader' },
       { text: 'Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. El tiempo de traslado en el envió de los paquetes depende de la paquetería.', style: 'notas' }
@@ -771,7 +771,7 @@ watch(
 
 <style scoped>
 .consultar-cotizaciones {
-  max-width: 900px;
+  /* max-width: 900px; */
   margin: 2rem auto;
   text-align: center;
   background: var(--color-bg);
