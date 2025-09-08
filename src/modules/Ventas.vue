@@ -140,11 +140,18 @@
           <template #body="slotProps">
             <span v-if="esServicio(slotProps.data.articulo_id)">NA</span>
             <span v-else>
-              <Chip
-                :label="getStockDisponible(slotProps.data.articulo_id, slotProps.data)"
-                class="stock-chip"
-                :style="{ background: 'var(--color-muted-bg)', color: 'var(--color-on-muted)' }"
-              />
+              <div class="stock-chips">
+                <Chip
+                  :label="'Disp: ' + getStockDisponible(slotProps.data.articulo_id, slotProps.data)"
+                  class="stock-chip"
+                  :style="{ background: 'var(--color-muted-bg)', color: 'var(--color-on-muted)' }"
+                />
+                <Chip
+                  v-if="(slotProps.data.cantidad ?? 0) > getStockDisponible(slotProps.data.articulo_id, slotProps.data)"
+                  :label="'Faltan ' + Math.max(0, (slotProps.data.cantidad ?? 0) - getStockDisponible(slotProps.data.articulo_id, slotProps.data))"
+                  class="requerido-chip faltan-chip"
+                />
+              </div>
             </span>
           </template>
         </Column>
@@ -196,8 +203,37 @@
       </div>
 
       <!-- Mensaje de advertencia si falta stock -->
-      <div v-if="stockInsuficiente" class="error-text mb-2">
-        No hay suficiente stock para uno o más artículos en la ubicación seleccionada.
+      <div v-if="stockInsuficiente" class="alerta-stock">
+        <div class="alerta-header">
+          <span class="alerta-titulo">Stock insuficiente en la ubicación seleccionada</span>
+          <div class="alerta-acciones">
+            <Button label="Ajustar a stock" class="p-button-text" @click="ajustarACapacidad" />
+            <Button label="Cambiar ubicación" class="p-button-text" @click="abrirSelectorUbicacion" />
+            <Button v-if="esAdmin" label="Transferir IMEIs" class="p-button-text" @click="irATransferirImeis" />
+          </div>
+        </div>
+        <div class="alerta-tabla">
+          <table>
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Artículo</th>
+                <th>Requiere</th>
+                <th>Hay</th>
+                <th>Faltan</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in detalleFaltantes" :key="d.articulo_id">
+                <td>{{ d.sku }}</td>
+                <td>{{ d.nombre }}</td>
+                <td>{{ d.requerido }}</td>
+                <td>{{ d.stock }}</td>
+                <td class="faltan">{{ d.faltan }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="mb-2 acciones-footer">
@@ -210,6 +246,8 @@
           label="Generar orden"
           class="mb-2"
           @click="guardarVentaConLoading"
+          :title="stockInsuficiente ? 'Completa stock o ajusta cantidades para continuar' : null"
+          v-tooltip.top="stockInsuficiente ? 'Completa stock o ajusta cantidades para continuar' : ''"
           :disabled="!venta.cliente_id || !cotizacionSeleccionada || venta.articulos.length === 0 || loadingGuardar || stockInsuficiente || !ubicacionValida || !venta.terminos_pago"
         />
       </div>
@@ -240,7 +278,7 @@ import { useVentas } from '@/composables/useVentas.js';
 import { getDetalleVenta } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
-import { getUbicaciones } from '@/services/ubicacionesService';
+import { getUbicaciones, getImeisPorUbicacion } from '@/services/ubicacionesService';
 import { getUsuarios } from '@/services/usuariosService';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
@@ -252,7 +290,6 @@ import Calendar from 'primevue/calendar';
 import Checkbox from 'primevue/checkbox';
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
-import { getArticulosStockPorUbicacion } from '@/services/articulosService';
 import { useRouter } from 'vue-router';
 import { registrarMovimiento } from '@/services/inventarioService';
 import { getQuotations, updateQuotation } from '@/services/quotationService';
@@ -302,6 +339,7 @@ const mensajeSinStock = ref('');
 const ubicacionInvalida = ref(false);
 
 const todasCotizaciones = ref([]);
+const articulosCatalog = ref([]);
 
 const mostrarDialogoUbicacion = ref(false);
 const ubicacionSeleccionada = ref(null);
@@ -320,13 +358,24 @@ const ubicacionValidaDialog = computed(() => {
 import { useLoginStore } from '@/stores/loginStore';
 const loginStore = useLoginStore();
 const usuarioActual = computed(() => loginStore.user.username.toUpperCase() || '');
+const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
 
 const requiereFactura = ref(false);
 const rfc = ref('XAXX010101000');
 const archivoConstancia = ref(null);
 
 async function onSeleccionarUbicacion(id) {
-  const articulosUbicacion = await getArticulosStockPorUbicacion(id);
+  // Usar IMEIs como fuente canonical y mapear a stock por artículo
+  let articulosUbicacion = [];
+  try {
+    const imeis = await getImeisPorUbicacion(id);
+    articulosUbicacion = agruparStockDesdeImeis(imeis);
+
+    console.info('[Ubicación] Stock calculado a partir de IMEIs (fuente canonical).');
+  } catch (_) {
+    // si falla IMEIs deja la lista vacía (se añade instalación abajo)
+    articulosUbicacion = [];
+  }
   // Agrega el objeto de instalación a la ubicación seleccionada
   const instalacionObj = {
     cantidad: 1,
@@ -341,6 +390,19 @@ async function onSeleccionarUbicacion(id) {
   articulosDisponibles.value = articulosUbicacion;
   // Log enfocado: coincidencias entre cotización y ubicacion
   logCoincidenciasCotizacionUbicacion();
+  // Log adicional: artículos por SKU en la ubicación seleccionada
+  try {
+    console.groupCollapsed('[Ubicación] Artículos por SKU');
+    const items = (Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : []).map(art => ({
+      sku: getArticuloSkuById(art.id ?? art.articulo_id),
+      id: art.id ?? art.articulo_id,
+      nombre: art.nombre ?? '',
+      stock: art.stock ?? 0,
+      tipo: art.tipo ?? ''
+    }));
+    console.table(items);
+    console.groupEnd();
+  } catch (_) {}
 }
 
 function logCoincidenciasCotizacionUbicacion() {
@@ -355,6 +417,7 @@ function logCoincidenciasCotizacionUbicacion() {
       const existe = servicio || !!artU;
       const stockOK = servicio || (Number(stock) >= Number(requerido));
       return {
+  sku: getArticuloSkuById(a.articulo_id),
         articulo_id: a.articulo_id,
         requerido,
         stock_disponible: stock,
@@ -378,6 +441,10 @@ function logCoincidenciasCotizacionUbicacion() {
 }
 
 onMounted(async () => {
+  // Catálogo de artículos para resolver SKU/nombres en logs
+  try {
+    articulosCatalog.value = await getTodosArticulos();
+  } catch (_) { articulosCatalog.value = []; }
   todasCotizaciones.value = await getQuotations();
   const todosClientes = await getClientes();
   const clientesConPendientes = todosClientes.filter(cliente =>
@@ -519,6 +586,47 @@ const stockInsuficiente = computed(() => {
   });
 });
 
+const detalleFaltantes = computed(() => {
+  if (!venta.ubicacion_id) return [];
+  const detalles = [];
+  for (const a of venta.articulos) {
+    if (esServicio(a.articulo_id)) continue;
+    const artU = articulosDisponibles.value.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
+    const stock = artU ? (artU.stock ?? 0) : 0;
+    const requerido = a.cantidad ?? 0;
+    if (requerido > stock) {
+      detalles.push({
+        articulo_id: a.articulo_id,
+        sku: getArticuloSkuById(a.articulo_id),
+        nombre: getArticuloNombre(a.articulo_id) || (artU?.nombre ?? ''),
+        requerido,
+        stock,
+        faltan: Math.max(0, requerido - stock)
+      });
+    }
+  }
+  return detalles;
+});
+
+function ajustarACapacidad() {
+  // Ajusta cantidades a lo disponible en la ubicación
+  venta.articulos = venta.articulos.map(a => {
+    if (esServicio(a.articulo_id)) return a;
+    const artU = articulosDisponibles.value.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
+    const stock = artU ? (artU.stock ?? 0) : 0;
+    return { ...a, cantidad: Math.min(a.cantidad ?? 0, stock) };
+  });
+}
+
+function abrirSelectorUbicacion() {
+  // simple: enfocarse al dropdown de ubicación
+  toast.add({ severity: 'info', summary: 'Selecciona otra ubicación', detail: 'Abre el selector “Ubicación o Técnico”.', life: 2500 });
+}
+
+function irATransferirImeis() {
+  router.push({ name: 'transferir-imeis' });
+}
+
 const ubicacionValida = computed(() => {
   if (!venta.ubicacion_id) return false;
   if (venta.articulos.length === 0) return true;
@@ -585,7 +693,7 @@ const articulosNombreCache = {};
 async function fetchArticuloNombre(articulo_id) {
   if (articulosNombreCache[articulo_id]) return articulosNombreCache[articulo_id];
   try {
-    const todos = await getTodosArticulos();
+  const todos = articulosCatalog.value?.length ? articulosCatalog.value : await getTodosArticulos();
     const art = todos.find(a => a.id === articulo_id);
     if (art) {
       articulosNombreCache[articulo_id] = art.nombre;
@@ -597,7 +705,7 @@ async function fetchArticuloNombre(articulo_id) {
 
 function getArticuloNombre(articulo_id) {
   const articulos = Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [];
-  const art = articulos.find(a => a.id === articulo_id);
+  const art = articulos.find(a => a.id === articulo_id || a.articulo_id === articulo_id);
   return art ? art.nombre : '';
 }
 
@@ -612,6 +720,91 @@ function getArticuloNombreAsync(articulo_id, row) {
   });
   if (row && row._articulo_nombre) return row._articulo_nombre;
   return articulo_id;
+}
+
+function getArticuloSkuById(articulo_id) {
+  if (!articulo_id && articulo_id !== 0) return '';
+  // Primero intenta desde los artículos de la ubicación (si lo traen)
+  const artU = (Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [])
+    .find(a => a.id === articulo_id || a.articulo_id === articulo_id);
+  if (artU && artU.sku) return String(artU.sku);
+  // Luego intenta desde el catálogo general
+  const artC = (Array.isArray(articulosCatalog.value) ? articulosCatalog.value : [])
+    .find(a => a.id === articulo_id);
+  return artC && artC.sku ? String(artC.sku) : '-';
+}
+
+function normalize(str) {
+  return String(str ?? '').trim().toUpperCase();
+}
+
+function findArticuloInCatalogBySkuOrNombre(sku, nombre) {
+  const catalog = Array.isArray(articulosCatalog.value) ? articulosCatalog.value : [];
+  const nSku = normalize(sku);
+  const nNom = normalize(nombre);
+  let art = null;
+  if (nSku) {
+    art = catalog.find(a => normalize(a.sku) === nSku);
+    if (art) return art;
+  }
+  if (nNom) {
+    art = catalog.find(a => normalize(a.nombre) === nNom);
+    if (art) return art;
+  }
+  return null;
+}
+
+function agruparStockDesdeImeis(imeis = []) {
+  const mapa = new Map();
+  let noResueltos = [];
+  (Array.isArray(imeis) ? imeis : []).forEach(i => {
+    const est = (i.status || i.estado || '').toString();
+    if (est && est.toLowerCase() !== 'disponible') return; // contar solo disponibles
+
+    // Resolver artículo por id directo o por SKU / nombre del IMEI contra el catálogo
+    const resolved = findArticuloInCatalogBySkuOrNombre(i.sku, i.articulo_nombre || i.articuloNombre);
+    const artId = (i.articulo_id ?? i.articuloId ?? i.articuloID) || (resolved ? resolved.id : null);
+    const nombre = (i.articulo_nombre || i.articuloNombre || (resolved ? resolved.nombre : '')) || '';
+    const sku = (i.sku || (resolved ? resolved.sku : '')) || '';
+
+    // Evitar contar servicios aquí; se agrega instalación aparte
+    const isServicioByNombre = normalize(nombre).includes('INSTALACION');
+    if (!artId || isServicioByNombre) {
+      noResueltos.push({ sku: i.sku || '', nombre, imei: i.imei, ubicacion_id: i.ubicacion_id });
+      return;
+    }
+
+    if (!mapa.has(artId)) {
+      mapa.set(artId, {
+        id: artId,
+        articulo_id: artId,
+        nombre,
+        sku,
+        stock: 0,
+        tipo: 'Producto'
+      });
+    }
+    mapa.get(artId).stock += 1;
+  });
+  const lista = Array.from(mapa.values()).map(item => {
+    // Enriquecer nombre/sku desde catálogo si falta
+    if (!item.nombre || !item.sku) {
+      const cat = (Array.isArray(articulosCatalog.value) ? articulosCatalog.value : []).find(a => a.id === item.articulo_id);
+      if (cat) {
+        item.nombre = item.nombre || cat.nombre;
+        item.sku = item.sku || cat.sku;
+      }
+    }
+    return item;
+  });
+  if (noResueltos.length) {
+    try {
+      console.groupCollapsed('[IMEIs] No mapeados al catálogo (revisar SKU/nombre en catálogo)');
+      console.table(noResueltos);
+      console.groupEnd();
+    } catch (_) {}
+  }
+  return lista;
 }
 
 const metodoPagoOptions = [
@@ -764,6 +957,45 @@ const metodoPagoOptions = [
   font-size: 0.95em;
   font-weight: bold;
   border-radius: 8px;
+}
+.faltan-chip {
+  background: rgba(255, 87, 87, 0.15);
+  color: #ff5757;
+}
+.alerta-stock {
+  border: 1px solid var(--color-border);
+  background: rgba(255, 87, 87, 0.08);
+  border-left: 4px solid #ff5757;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin: 0.5rem 0 1rem;
+}
+.alerta-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.alerta-titulo {
+  color: #ff5757;
+  font-weight: 700;
+}
+.alerta-acciones {
+  display: flex;
+  gap: 0.5rem;
+}
+.alerta-tabla table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+.alerta-tabla th, .alerta-tabla td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.alerta-tabla .faltan {
+  color: #ff5757;
+  font-weight: 700;
 }
 @media (max-width: 1000px) {
   .ventas-form-header, .form-grid-4 { grid-template-columns: repeat(2, 1fr); }

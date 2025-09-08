@@ -523,7 +523,8 @@ function descargarPDFCotizacion() {
       },
       { text: '\n' },
       { text: 'Notas', style: 'sectionHeader' },
-      { text: cotizacion.observaciones || 'Si no necesitas factura y tu pago es mediante transferencia podemos descontar el IVA.', style: 'notas' },
+      { text: cotizacion.observaciones , style: 'notas' },
+      { text: 'Si no necesitas factura y tu pago es mediante transferencia podemos descontar el IVA.', style: 'notas' },
       { text: '\n' },
       { text: 'Términos y condiciones', style: 'sectionHeader' },
       { text: 'Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. El tiempo de traslado en el envió de los paquetes depende de la paquetería.', style: 'notas' }
