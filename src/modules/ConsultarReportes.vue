@@ -3,7 +3,7 @@
     <h2 class="consultar-reportes-title">Consultar Reportes de Servicio</h2>
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
       <InputText v-model="filtroCliente" placeholder="Filtrar por cliente" class="filtro-input" clearable />
-      <InputText v-model="filtroSO" placeholder="Filtrar por SO" class="filtro-input" clearable />
+      <InputText v-model="filtroSO" placeholder="Filtrar por Orden de servicio" class="filtro-input" clearable />
       <InputText v-model="filtroVendedor" placeholder="Filtrar por vendedor" class="filtro-input" clearable />
       <InputText v-model="filtroFecha" placeholder="Filtrar por fecha (YYYY-MM-DD)" class="filtro-input" clearable />
       <Dropdown
