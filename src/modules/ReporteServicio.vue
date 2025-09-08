@@ -2,7 +2,7 @@
   <div class="reporte-servicio-container">
     <h2 class="reporte-title">Reporte de Servicio</h2>
     <div v-if="!asignacionIdValido">
-      <div class="alert-existente" style="background:#d32f2f; color:#fff;">
+      <div class="alert-existente error-bg">
         Error: No se recibió un ID de asignación válido.<br>
         Verifica la navegación desde la pantalla anterior.<br>
         Consulta consola para más detalles.
@@ -521,13 +521,17 @@ label {
   z-index: 10;
 }
 .alert-existente {
-  color: #fff;
-  background: #d32f2f;
+  color: var(--color-on-error);
+  background: var(--color-error);
   padding: 1rem;
   border-radius: 8px;
   margin-bottom: 1.5rem;
   text-align: center;
   font-weight: bold;
+}
+.error-bg {
+  color: var(--color-on-error);
+  background: var(--color-error);
 }
 @media (max-width: 900px) {
   .form-row {

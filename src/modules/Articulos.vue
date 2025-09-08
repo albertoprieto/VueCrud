@@ -236,7 +236,7 @@ const exportToExcel = () => {
   <div class="articulos-page">
     <div class="articulos-header-card">
       <h2 class="mb-4 articulos-title">
-        <i class="pi pi-database" style="color:#ff4081; font-size:1.5em; margin-right:0.5em;"></i>
+        <i class="pi pi-database icon-accent"></i>
         Artículos
       </h2>
       <div class="articulos-actions">
@@ -265,7 +265,7 @@ const exportToExcel = () => {
       <div class="dialog-articulo-content">
         <div class="dialog-articulo-header">
           <span class="dialog-articulo-title">
-            <i class="pi pi-box" style="color:#ff4081; font-size:1.5em; margin-right:0.5em;"></i>
+            <i class="pi pi-box icon-accent"></i>
             {{ form.id ? 'Editar artículo' : 'Nuevo artículo' }}
           </span>
         </div>
@@ -273,23 +273,23 @@ const exportToExcel = () => {
           <div class="dialog-articulo-card">
             <div class="formgrid grid grid-responsive">
               <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
-                <label for="nombre"><i class="pi pi-tag" style="margin-right:0.3em;color:#ff4081"></i>Nombre:</label>
+                <label for="nombre"><i class="pi pi-tag icon-inline"></i>Nombre:</label>
                 <InputText id="nombre" v-model="form.nombre" class="w-full" placeholder="Nombre del artículo" />
               </div>
               <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
-                <label for="sku"><i class="pi pi-barcode" style="margin-right:0.3em;color:#ff4081"></i>SKU:</label>
+                <label for="sku"><i class="pi pi-barcode icon-inline"></i>SKU:</label>
                 <InputText id="sku" v-model="form.sku" class="w-full" placeholder="SKU único" />
               </div>
               <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
-                <label for="tipo"><i class="pi pi-cog" style="margin-right:0.3em;color:#ff4081"></i>Tipo:</label>
+                <label for="tipo"><i class="pi pi-cog icon-inline"></i>Tipo:</label>
                 <Dropdown id="tipo" v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecciona tipo" class="w-full" />
               </div>
               <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
-                <label for="precioVenta"><i class="pi pi-dollar" style="margin-right:0.3em;color:#ff4081"></i>Precio Venta:</label>
+                <label for="precioVenta"><i class="pi pi-dollar icon-inline"></i>Precio Venta:</label>
                 <InputText id="precioVenta" v-model.number="form.precioVenta" type="number" class="w-full" placeholder="Precio de venta" />
               </div>
               <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
-                <label for="precioCompra"><i class="pi pi-money-bill" style="margin-right:0.3em;color:#ff4081"></i>Precio Compra:</label>
+                <label for="precioCompra"><i class="pi pi-money-bill icon-inline"></i>Precio Compra:</label>
                 <InputText id="precioCompra" v-model.number="form.precioCompra" type="number" class="w-full" placeholder="Precio de compra" />
               </div>
             </div>
@@ -297,11 +297,11 @@ const exportToExcel = () => {
           <div class="dialog-articulo-card">
             <div class="formgrid grid grid-responsive">
               <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
-                <label for="codigoSat"><i class="pi pi-key" style="margin-right:0.3em;color:#ff4081"></i>Código de artículo del SAT:</label>
+                <label for="codigoSat"><i class="pi pi-key icon-inline"></i>Código de artículo del SAT:</label>
                 <InputText id="codigoSat" v-model="form.codigoSat" class="w-full" placeholder="Código de artículo del SAT" />
               </div>
               <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
-                <label for="unidadSat"><i class="pi pi-hashtag" style="margin-right:0.3em;color:#ff4081"></i>Código de unidad del SAT:</label>
+                <label for="unidadSat"><i class="pi pi-hashtag icon-inline"></i>Código de unidad del SAT:</label>
                 <InputText id="unidadSat" v-model="form.codigoUnidadSat" class="w-full" placeholder="Código de unidad del SAT" />
               </div>
               <!-- <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
@@ -341,14 +341,14 @@ const exportToExcel = () => {
 
 <style scoped>
 .articulos-page {
-  background: linear-gradient(135deg,#fff 80%,#ffe6f0 100%);
+  background: linear-gradient(135deg, var(--color-bg) 80%, color-mix(in oklab, var(--color-primary) 12%, var(--color-bg)) 100%);
   min-height: 100vh;
   padding: 2rem 0.5rem;
 }
 .articulos-header-card {
-  background: #fff;
+  background: var(--color-card);
   border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(255,64,129,0.10);
+  box-shadow: var(--shadow-2);
   padding: 1.2rem 2rem 1rem 2rem;
   margin-bottom: 1.5rem;
   display: flex;
@@ -358,7 +358,7 @@ const exportToExcel = () => {
 .articulos-title {
   font-size: 2em;
   font-weight: 700;
-  color: #ff4081;
+  color: var(--color-primary, var(--color-title));
   display: flex;
   align-items: center;
   margin-bottom: 0.5em;
@@ -371,14 +371,14 @@ const exportToExcel = () => {
 .articulos-btn {
   border-radius: 8px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(255,64,129,0.08);
-  background: linear-gradient(90deg,#fff 60%,#fff 100%);
-  color: #bd3838;
+  box-shadow: var(--shadow-1);
+  background: linear-gradient(90deg, var(--color-card) 60%, var(--color-card) 100%);
+  color: var(--color-title);
 }
 .articulos-table-card {
-  background: #fff;
+  background: var(--color-card);
   border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(255,64,129,0.10);
+  box-shadow: var(--shadow-2);
   padding: 1.2rem 1rem 1rem 1rem;
 }
 .articulos-table {
@@ -394,8 +394,8 @@ const exportToExcel = () => {
   min-width: 420px;
   max-width: 600px;
   border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-  background: linear-gradient(135deg,#fff 80%,#ffe6f0 100%);
+  box-shadow: var(--shadow-3);
+  background: linear-gradient(135deg, var(--color-card) 80%, color-mix(in oklab, var(--color-primary) 10%, var(--color-card)) 100%);
 }
 .dialog-articulo-content {
   padding: .1rem 0.7rem 0.5rem 0.7rem;
@@ -407,7 +407,7 @@ const exportToExcel = () => {
 .dialog-articulo-title {
   font-size: 1.35em;
   font-weight: 600;
-  color: #ff4081;
+  color: var(--color-primary, var(--color-title));
   display: flex;
   align-items: center;
 }
@@ -417,18 +417,20 @@ const exportToExcel = () => {
   gap: 0.7rem;
 }
 .dialog-articulo-card {
-  background: #fff;
+  background: var(--color-card);
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(255,64,129,0.08);
+  box-shadow: var(--shadow-1);
   padding: 0.7rem 0.7rem 0.3rem 0.7rem;
   margin-bottom: 0.2rem;
 }
 .dialog-articulo-card label {
   font-weight: 500;
-  color: #bd3838;
+  color: var(--color-title);
   margin-bottom: 0.3em;
   display: block;
 }
+.icon-accent { color: var(--color-primary); font-size: 1.5em; margin-right: 0.5em; }
+.icon-inline { color: var(--color-primary); margin-right: 0.3em; }
 .dialog-articulo-card .pi {
   vertical-align: middle;
 }

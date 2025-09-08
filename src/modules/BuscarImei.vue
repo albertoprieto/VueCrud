@@ -45,6 +45,7 @@
             icon="pi pi-undo"
             class="p-button-text p-button-warning"
             @click="devolver(slotProps.data.imei)"
+            :disabled="!esAdmin"
           />
           <Button
             v-if="slotProps.data.status === 'Devuelto'"
@@ -58,18 +59,21 @@
             icon="pi pi-exchange"
             class="p-button-text p-button-info ml-2"
             @click="transferir(slotProps.data.imei)"
+            :disabled="!esAdmin"
           />
           <Button
             label="Cambiar Estado"
             icon="pi pi-refresh"
             class="p-button-text p-button-help ml-2"
             @click="abrirDialogoEstado(slotProps.data)"
+            :disabled="!esAdmin"
           />
           <Button
             label="Eliminar"
             icon="pi pi-trash"
             class="p-button-text p-button-danger ml-2"
             @click="eliminar(slotProps.data.imei)"
+            :disabled="!esAdmin"
           />
         </template>
       </Column>
@@ -97,7 +101,7 @@
         />
       </div>
       <div class="modal-actions">
-        <Button label="Transferir" icon="pi pi-exchange" class="p-button-info" @click="transferirConfirmado" :disabled="!ubicacionDestino" />
+  <Button label="Transferir" icon="pi pi-exchange" class="p-button-info" @click="transferirConfirmado" :disabled="!ubicacionDestino || !esAdmin" />
         <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" @click="showTransferDialog = false" />
       </div>
     </Dialog>
@@ -157,6 +161,7 @@ import { devolverIMEI, deleteIMEI, updateIMEI } from '@/services/imeiService';
 import { getUbicaciones, asignarImeisUbicacion } from '@/services/ubicacionesService';
 import { registrarMovimiento } from '@/services/inventarioService';
 import { useToast } from 'primevue/usetoast';
+import { useLoginStore } from '@/stores/loginStore';
 
 const showEstadoDialog = ref(false);
 const imeiAEditarEstado = ref(null);
@@ -167,6 +172,10 @@ const estadosDisponibles = [
   { label: 'Devuelto', value: 'Devuelto' }
 ];
 
+// Roles
+const loginStore = useLoginStore();
+const esAdmin = computed(() => loginStore.user?.perfil === 'Admin');
+
 function abrirDialogoEstado(imeiObj) {
   imeiAEditarEstado.value = imeiObj;
   nuevoEstado.value = imeiObj.status;
@@ -174,6 +183,11 @@ function abrirDialogoEstado(imeiObj) {
 }
 
 async function cambiarEstado() {
+  if (!esAdmin.value) {
+    toast.add({ severity: 'warn', summary: 'Permiso denegado', detail: 'Solo un administrador puede cambiar el estado.', life: 4000 });
+    showEstadoDialog.value = false;
+    return;
+  }
   if (!imeiAEditarEstado.value) return;
   try {
     await updateIMEI(imeiAEditarEstado.value.imei, { status: nuevoEstado.value });
@@ -244,6 +258,11 @@ const devolver = (imei) => {
 };
 
 const confirmarDevolucion = async () => {
+  if (!esAdmin.value) {
+    toast.add({ severity: 'warn', summary: 'Permiso denegado', detail: 'Solo un administrador puede devolver IMEIs.', life: 4000 });
+    showMotivoDialog.value = false;
+    return;
+  }
   try {
     await devolverIMEI(imeiADevolver.value, motivoDevolucion.value);
     await registrarMovimiento({
@@ -278,6 +297,11 @@ const eliminar = (imei) => {
 };
 
 const eliminarConfirmado = async () => {
+  if (!esAdmin.value) {
+    toast.add({ severity: 'warn', summary: 'Permiso denegado', detail: 'Solo un administrador puede eliminar IMEIs.', life: 4000 });
+    showConfirmDelete.value = false;
+    return;
+  }
   if (!imeiAEliminar.value) return;
   try {
     await deleteIMEI(imeiAEliminar.value);
@@ -297,6 +321,11 @@ const transferir = (imei) => {
 };
 
 const transferirConfirmado = async () => {
+  if (!esAdmin.value) {
+    toast.add({ severity: 'warn', summary: 'Permiso denegado', detail: 'Solo un administrador puede transferir IMEIs.', life: 4000 });
+    showTransferDialog.value = false;
+    return;
+  }
   if (!imeiATransferir.value || !ubicacionDestino.value) return;
   try {
     await asignarImeisUbicacion(ubicacionDestino.value.id, [imeiATransferir.value]);
