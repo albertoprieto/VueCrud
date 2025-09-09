@@ -39,6 +39,14 @@ const {
 const articulos = ref([]);
 const vendedores = ref([]);
 
+// Búsqueda por nombre para la selección de cliente
+const clienteFiltro = ref('');
+const clientesFiltrados = computed(() => {
+  const q = (clienteFiltro.value || '').toLowerCase().trim();
+  if (!q) return clientes.value || [];
+  return (clientes.value || []).filter(c => String(c?.nombre || '').toLowerCase().includes(q));
+});
+
 onMounted(async () => {
   articulos.value = await getTodosArticulos();
   const usuarios = await getUsuarios();
@@ -564,8 +572,19 @@ function descargarPDFCotizacion() {
         <div class="form-row">
           <div class="form-group">
             <label>Cliente</label>
-            <Dropdown v-model="cotizacion.cliente_id" :options="clientes" optionLabel="nombre" optionValue="id" 
-              placeholder="Selecciona un cliente" class="w-full" :class="{'p-invalid': !cotizacion.cliente_id}" />
+
+            <Dropdown
+              v-model="cotizacion.cliente_id"
+              :options="clientesFiltrados"
+              optionLabel="nombre"
+              optionValue="id"
+              placeholder="Selecciona un cliente"
+              class="w-full"
+              :class="{'p-invalid': !cotizacion.cliente_id}"
+              filter
+              filterPlaceholder="Filtrar en la lista..."
+              showClear
+            />
           </div>
           <div class="form-group">
             <label>Nuevo</label>

@@ -221,6 +221,22 @@
         </div>
       </form>
     </Dialog>
+
+    <!-- Dialogo Comprobante (obligatorio para marcar como pagado) -->
+    <Dialog v-model:visible="showComprobanteDialog" header="Cargar comprobante" :modal="true" :closable="false">
+      <form @submit.prevent="confirmarPagadoConComprobante">
+        <div class="form-group">
+          <label for="comprobante">Selecciona un archivo de comprobante (obligatorio)</label>
+          <input id="comprobante" type="file" @change="onComprobanteChange" accept="application/pdf,image/*" class="w-full" />
+          <small v-if="!archivoComprobante" style="color:#d32f2f;display:block;margin-top:0.5rem;">Debes cargar un comprobante para continuar.</small>
+          <small v-else style="color:#28a745;display:block;margin-top:0.5rem;">{{ archivoComprobante?.name }}</small>
+        </div>
+        <div class="modal-actions">
+          <Button label="Confirmar" icon="pi pi-check" type="submit" :disabled="!archivoComprobante" />
+          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" type="button" @click="cancelarComprobante" />
+        </div>
+      </form>
+    </Dialog>
   </div>
 </template>
 
@@ -260,6 +276,8 @@ const reporteEditando = ref(null);
 const showConfirmDeleteDialog = ref(false);
 const reporteSeleccionado = ref(null);
 const reporteAEliminar = ref(null);
+const showComprobanteDialog = ref(false);
+const archivoComprobante = ref(null);
 
 const ventaSeleccionada = ref(null);
 const clienteSeleccionado = ref(null);
@@ -560,19 +578,46 @@ onMounted(async () => {
 });
 
 async function marcarComoPagado(reporte) {
+  // Ahora abre el diálogo para cargar comprobante (mock). Solo permite continuar si hay archivo.
+  reporteSeleccionado.value = reporte;
+  archivoComprobante.value = null;
+  showComprobanteDialog.value = true;
+}
+
+function onComprobanteChange(event) {
+  const files = event?.target?.files;
+  archivoComprobante.value = files && files.length ? files[0] : null;
+}
+
+async function confirmarPagadoConComprobante() {
+  if (!archivoComprobante.value) {
+    toast.add({ severity: 'warn', summary: 'Falta comprobante', detail: 'Debes cargar un comprobante.', life: 3000 });
+    return;
+  }
+  // Mock: no se envía el archivo aún; solo marcamos como pagado.
   loading.value = true;
   try {
+    const reporte = reporteSeleccionado.value;
     await axios.put(`${API_URL}/${reporte.id}`, { ...reporte, pagado: true });
     await cargarReportes();
     toast.add({ severity: 'success', summary: 'Pagado', detail: 'El reporte fue marcado como pagado.', life: 3000 });
     messageDialogText.value = 'El reporte fue marcado como pagado.';
     showMessageDialog.value = true;
+    showComprobanteDialog.value = false;
+    archivoComprobante.value = null;
+    reporteSeleccionado.value = null;
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo marcar como pagado.', life: 4000 });
     messageDialogText.value = 'No se pudo marcar como pagado.';
     showMessageDialog.value = true;
   }
   loading.value = false;
+}
+
+function cancelarComprobante() {
+  showComprobanteDialog.value = false;
+  archivoComprobante.value = null;
+  // No se hace nada más; es un mock de carga.
 }
 
 // Nueva función para facturar

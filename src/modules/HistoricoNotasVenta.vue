@@ -136,6 +136,14 @@
         placeholder="Selecciona fecha de servicio"
         class="w-full mb-3"
       />
+      <Calendar
+        v-model="horaServicio"
+        timeOnly
+        hourFormat="24"
+        iconDisplay="input"
+  placeholder="Selecciona hora"
+        class="w-full mb-3"
+      />
       <Button label="Asignar" icon="pi pi-check" @click="asignarTecnico" :disabled="!tecnicoSeleccionado || !fechaServicio" />
       <Button label="Cancelar" icon="pi pi-times" @click="showAsignarDialog = false" class="p-button-secondary ml-2" />
     </Dialog>
@@ -189,6 +197,7 @@ const ventaParaAsignar = ref(null);
 const tecnicos = ref([]);
 const tecnicoSeleccionado = ref(null);
 const fechaServicio = ref(null); // NUEVO: fecha de servicio
+const horaServicio = ref(null); // NUEVO: hora de servicio
 const showResponseDialog = ref(false);
 const responseMessage = ref('');
 const showArticulosDialog = ref(false);
@@ -315,6 +324,7 @@ async function abrirAsignarTecnico(venta) {
   }));
   tecnicoSeleccionado.value = venta.tecnicoAsignado ?? null;
   fechaServicio.value = null; // Limpia la fecha al abrir
+  horaServicio.value = null; // Limpia la hora al abrir
   showAsignarDialog.value = true;
 }
 
@@ -326,7 +336,17 @@ async function asignarTecnico() {
       ? fechaServicio.value.split('T')[0]
       : fechaServicio.value;
 
-  await asignarTecnicoVenta(ventaParaAsignar.value.id, tecnicoSeleccionado.value, fechaFormateada);
+  // Preparar hora en formato HH:mm. Se deja comentada en el payload hasta que el backend esté listo.
+  const horaFormateada = horaServicio.value instanceof Date
+    ? horaServicio.value.toTimeString().slice(0,5)
+    : (typeof horaServicio.value === 'string' && horaServicio.value.match(/^\d{2}:\d{2}/))
+      ? horaServicio.value.slice(0,5)
+      : null;
+
+  // Llamada actual (sin hora) para mantener compatibilidad con el backend existente
+  await asignarTecnicoVenta(ventaParaAsignar.value.id, tecnicoSeleccionado.value, fechaFormateada
+    /* , { hora: horaFormateada } */
+  );
   const tecnico = tecnicos.value.find(t => t.id === tecnicoSeleccionado.value);
   const idx = ventas.value.findIndex(v => v.id === ventaParaAsignar.value.id);
   if (idx !== -1 && tecnico) {
