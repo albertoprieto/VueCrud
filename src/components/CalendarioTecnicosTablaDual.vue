@@ -1,10 +1,10 @@
 <template>
   <div class="vista-dual-container">
     <div class="vista-switcher">
-      <Button :label="vista === 'calendario' ? 'Ver como Tabla' : 'Ver como Calendario'"
+      <!-- <Button :label="vista === 'calendario' ? 'Ver como Tabla' : 'Ver como Calendario'"
               icon="pi pi-exchange"
               class="p-button-sm"
-              @click="toggleVista" />
+              @click="toggleVista" /> -->
     </div>
     <CalendarioAsignaciones :vista="vista" />
   </div>
