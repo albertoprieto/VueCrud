@@ -209,7 +209,7 @@
       <div style="padding:1.5rem; text-align:center;">
         <span>{{ resultMessage }}</span>
       </div>
-      <Button label="Aceptar" icon="pi pi-check" @click="showResultDialog = false" class="mt-3" />
+      <Button label="Aceptar" icon="pi pi-check" @click="onDialogAccept" class="mt-3" />
     </Dialog>
   </div>
 </template>
@@ -224,7 +224,7 @@ import Checkbox from 'primevue/checkbox';
 import Dialog from 'primevue/dialog';
 import { addReporteServicio, getReportePorAsignacion } from '@/services/reportesServicio';
 import { getDetalleVenta } from '@/services/ventasService';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getUsuarios } from '@/services/usuariosService';
 import { getVentas } from '@/services/ventasService';
@@ -234,6 +234,7 @@ import { getImeisPorUbicacion, getUbicaciones } from '@/services/ubicacionesServ
 const emit = defineEmits(['close', 'saved']);
 
 const route = useRoute();
+const router = useRouter();
 const asignacionIdValido = computed(() => Number.isInteger(Number(route.params.asignacionId)) && Number(route.params.asignacionId) > 0);
 const asignacionIdCentral = computed(() => asignacionIdValido.value ? Number(route.params.asignacionId) : null);
 const asignacion = ref(null);
@@ -291,6 +292,8 @@ const loading = ref(false);
 const showResultDialog = ref(false);
 const resultMessage = ref('');
 const reporteExistente = ref(false);
+const saveSuccess = ref(false);
+const imeiUpdateError = ref(false);
 
 const clienteUsuariosOptions = ref([]);
 const clientePlataformasOptions = ref([]);
@@ -305,7 +308,7 @@ async function cargarImeisDeUbicacion(id) {
     const imeisUbicacion = Array.isArray(todos) ? todos.filter(i => Number(i.ubicacion_id) === Number(id)) : [];
     imeisStockRaw.value = imeisUbicacion.filter(i => ['Disponible', 'Devuelto'].includes(i.status));
     // Para Serie (ESPAÑOL) dejamos todo el stock de la ubicación
-    simSerieOptions.value = imeisStockRaw.value.map(i => ({ label: `${i.imei} — ${i.articulo_nombre || ''}`, value: i.imei }));
+  simSerieOptions.value = imeisStockRaw.value.map(i => ({ label: `${i.imei} — ${i.articulo_nombre || ''}`, value: String(i.imei) }));
     try {
       console.group('Reporte de Servicio');
       console.log('Ubicación (ID):', id);
@@ -514,7 +517,7 @@ onMounted(async () => {
 
 function cerrar() {
   emit('close');
-  route.push('/');
+  router.push('/');
 }
 
 async function guardar() {
@@ -525,6 +528,8 @@ async function guardar() {
   }
   loading.value = true;
   try {
+    saveSuccess.value = false;
+    imeiUpdateError.value = false;
     let asignaciones = await getAsignacionesTecnicos();
     const asignacion = asignaciones.find(a => String(a.id) === String(asignacionIdCentral.value) || String(a.venta_id) === String(asignacionIdCentral.value));
     if (!asignacion || !asignacion.venta_id) {
@@ -538,6 +543,8 @@ async function guardar() {
       plataforma: typeof form.value.plataforma === 'object' ? form.value.plataforma.value : form.value.plataforma,
       usuario: typeof form.value.usuario === 'object' ? form.value.usuario.value : form.value.usuario,
       subtotal: String(form.value.subtotal ?? ''),
+      // Enviar siempre sim_serie como string (ESPAÑOL y TELCEL)
+      sim_serie: String(form.value.sim_serie ?? ''),
       asignacion_id: asignacion.id
     };
     // Validación: si proveedor ESPAÑOL requiere seleccionar sim_serie (IMEI)
@@ -547,7 +554,10 @@ async function guardar() {
       showResultDialog.value = true;
       return;
     }
-    await addReporteServicio(payload);
+    const resp = await addReporteServicio(payload);
+    const baseMessage = (resp && typeof resp === 'object' && 'message' in resp)
+      ? String(resp.message)
+      : 'Reporte de servicio creado exitosamente';
     // Si se eligieron IMEIs (en IMEI o en serie cuando proveedor = ESPAÑOL), marcarlos como Vendido
     {
       const setImeis = new Set();
@@ -563,18 +573,33 @@ async function guardar() {
         }
       } catch (e) {
         console.error('Error marcando IMEIs como vendidos:', e);
+        imeiUpdateError.value = true;
       }
     }
-    resultMessage.value = 'Reporte de servicio guardado correctamente.';
+    // Preparar diálogo de resultado y navegación posterior
+    if (!imeiUpdateError.value) {
+      resultMessage.value = `${baseMessage}. Al aceptar te llevaré al inicio.`;
+      saveSuccess.value = true;
+    } else {
+      resultMessage.value = `${baseMessage}, pero hubo un problema actualizando los IMEIs. Puedes revisar el estado en Inventario.`;
+      saveSuccess.value = false;
+    }
     emit('saved');
     await checkReporteExistente();
-    cerrar();
   } catch (e) {
     console.error('Error en guardar:', e);
     resultMessage.value = 'Error al guardar el reporte de servicio.';
+    saveSuccess.value = false;
   } finally {
     loading.value = false;
     showResultDialog.value = true;
+  }
+}
+
+function onDialogAccept() {
+  showResultDialog.value = false;
+  if (saveSuccess.value) {
+    router.push('/');
   }
 }
 
