@@ -119,9 +119,9 @@ async function onReporteGuardado() {
 }
 
 function irAReporte() {
-  console.log('Asignación al abrir reporte:', asignacion.value);
+  //
   // Log justo antes de mostrar el diálogo
-  console.log('*** [DIALOG OPEN] ID de asignación al abrir diálogo de reporte:', asignacion.value?.id, 'Objeto asignación:', asignacion.value);
+  //
   showReporteDialog.value = true;
 }
 

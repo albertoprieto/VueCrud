@@ -118,17 +118,17 @@ const ventaEdit = ref({
   detalle: props.venta.detalle ? JSON.parse(JSON.stringify(props.venta.detalle)) : []
 });
 
-console.log('Fecha inicial recibida:', props.venta.fecha);
-console.log('ventaEdit inicial:', ventaEdit.value);
+//
+//
 
 watch(() => props.venta, (nueva) => {
-  console.log('Prop venta actualizada:', nueva);
+  //
   ventaEdit.value = {
     ...nueva,
     fecha: formatFecha(nueva.fecha),
     detalle: nueva.detalle ? JSON.parse(JSON.stringify(nueva.detalle)) : []
   };
-  console.log('ventaEdit después de update:', ventaEdit.value);
+  //
 });
 
 function guardar() {

@@ -90,10 +90,13 @@ async function generarPDF() {
     ])
   ];
 
-  // Totales
+  // Totales con IVA condicional (si requiere factura)
   const subtotal = props.articulos.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
-  const iva = 0; // Zero Rate (0%)
-  const total = subtotal + iva;
+  const descuento = subtotal * ((Number(props.venta?.descuento) || 0) / 100);
+  const base = subtotal - descuento;
+  const requiereFactura = !!props.venta?.requiereFactura;
+  const iva = requiereFactura ? base * 0.16 : 0;
+  const total = base + iva;
 
   const docDefinition = {
     content: [
@@ -113,7 +116,7 @@ async function generarPDF() {
           [
             { text: empresa.nombre, style: 'empresaHeader', alignment: 'left' },
             { text: empresa.direccion, style: 'empresaSubheader', alignment: 'left' },
-            { text: `IVA ${empresa.rfc}`, style: 'empresaSubheader', alignment: 'left' },
+            { text: `RFC: ${empresa.rfc}`, style: 'empresaSubheader', alignment: 'left' },
             { text: `Régimen fiscal: ${empresa.regimen}`, style: 'empresaSubheader', alignment: 'left' },
             { text: empresa.telefono, style: 'empresaSubheader', alignment: 'left' },
             { text: empresa.correo, style: 'empresaSubheader', alignment: 'left' },
@@ -130,9 +133,7 @@ async function generarPDF() {
           [
             { text: 'Facturar a', style: 'sectionHeader' },
             { text: cliente.nombre || '', style: 'clienteLabel' },
-            { text: cliente.direccion || '', style: 'clienteLabel' },
-            { text: `RFC del receptor ${cliente.rfc || ''}`, style: 'clienteLabel' },
-            { text: `Régimen fiscal: ${cliente.regimen_fiscal || ''}`, style: 'clienteLabel' }
+            { text: cliente.direccion || '', style: 'clienteLabel' }
           ],
           [
             { text: `Fecha del pedido : ${fechaOrden}`, style: 'clienteLabel', alignment: 'right' },
@@ -162,6 +163,8 @@ async function generarPDF() {
             table: {
               body: [
                 [ { text: 'Subtotal', style: 'totalLabel' }, { text: `$${subtotal.toFixed(2)}`, style: 'totalValue' } ],
+                [ { text: 'Descuento', style: 'totalLabel' }, { text: `$${descuento.toFixed(2)}`, style: 'totalValue' } ],
+                ...(requiereFactura ? [[ { text: 'IVA (16%)', style: 'totalLabel' }, { text: `$${iva.toFixed(2)}`, style: 'totalValue' } ]] : []),
                 [ { text: 'Total', style: 'totalLabel' }, { text: `MXN$${total.toFixed(2)}`, style: 'totalValue' } ]
               ]
             },

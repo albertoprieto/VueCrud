@@ -240,6 +240,7 @@
         <div>
           <div><strong>Subtotal:</strong> ${{ subtotalVenta.toFixed(2) }}</div>
           <div><strong>Descuento:</strong> {{ venta.descuento || 0 }}% (${{ descuentoMonto.toFixed(2) }})</div>
+          <div v-if="requiereFactura"><strong>IVA (16%):</strong> ${{ ivaVenta.toFixed(2) }}</div>
           <div><strong>Total (MXN):</strong> ${{ totalVenta.toFixed(2) }}</div>
         </div>
         <Button
@@ -400,7 +401,7 @@ async function onSeleccionarUbicacion(id) {
       stock: art.stock ?? 0,
       tipo: art.tipo ?? ''
     }));
-    console.table(items);
+  //
     console.groupEnd();
   } catch (_) {}
 }
@@ -432,8 +433,8 @@ function logCoincidenciasCotizacionUbicacion() {
       ubicacion_valida: ubicacionValida.value && !stockInsuficiente.value
     };
     console.groupCollapsed('[Orden Servicio] Coincidencias cotización vs ubicación');
-    console.table(detalle);
-    console.log('Resumen:', totales);
+  //
+  //
     console.groupEnd();
   } catch (_) {
     // silencio: este log es solo de depuración
@@ -508,9 +509,10 @@ async function guardarVentaConLoading() {
       vendedor: venta.vendedor,
       almacen: venta.almacen,
       descuento: venta.descuento,
+  requiereFactura: requiereFactura.value,
       notas_cliente: venta.notas_cliente,
       terminos_condiciones: venta.terminos_condiciones,
-      total: totalVenta.value,
+  total: totalVenta.value,
       observaciones: venta.observaciones,
       articulos: articulosLimpios
     });
@@ -571,8 +573,11 @@ const subtotalVenta = computed(() =>
 const descuentoMonto = computed(() =>
   subtotalVenta.value * ((venta.descuento || 0) / 100)
 );
+const ivaVenta = computed(() =>
+  requiereFactura.value ? (subtotalVenta.value - descuentoMonto.value) * 0.16 : 0
+);
 const totalVenta = computed(() =>
-  subtotalVenta.value - descuentoMonto.value
+  subtotalVenta.value - descuentoMonto.value + ivaVenta.value
 );
 
 const stockInsuficiente = computed(() => {
@@ -800,7 +805,7 @@ function agruparStockDesdeImeis(imeis = []) {
   if (noResueltos.length) {
     try {
       console.groupCollapsed('[IMEIs] No mapeados al catálogo (revisar SKU/nombre en catálogo)');
-      console.table(noResueltos);
+  //
       console.groupEnd();
     } catch (_) {}
   }
@@ -808,8 +813,10 @@ function agruparStockDesdeImeis(imeis = []) {
 }
 
 const metodoPagoOptions = [
-  { label: 'Transferencia', value: 'transferencia' },
-  { label: 'Depósito', value: 'deposito' }
+  { label: 'Pago en efectivo con el técnico', value: 'efectivo_tecnico' },
+  { label: 'Pago con Tarjeta de Crédito', value: 'tarjeta_credito' },
+  { label: 'Pago con Tarjeta de Débito', value: 'tarjeta_debito' },
+  { label: 'Transferencia', value: 'transferencia' }
 ];
 </script>
 

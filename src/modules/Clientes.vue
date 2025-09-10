@@ -180,7 +180,7 @@ const constanciaFiscal = ref(null);
 const rfcVisible = ref(false);
 
 watch(requiereFactura, (val) => {
-  console.log('watch requiereFactura:', val);
+  //
   
   rfcVisible.value = !!val.value;
   if (!val.value) {

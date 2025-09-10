@@ -91,9 +91,11 @@
         </table>
         <div class="detalle-venta-footer">
           <div><strong>Observaciones:</strong> {{ ventaDetalle?.observaciones || 'Sin observaciones' }}</div>
-          <div class="detalle-total">
-            <strong>Total:</strong>
-            {{ formatoMoneda(detalleVenta.reduce((acc, item) => acc + (item.cantidad * item.precio_unitario), 0)) }}
+          <div class="detalle-totales">
+            <div><strong>Subtotal:</strong> {{ formatoMoneda(subtotalDetalle) }}</div>
+            <div><strong>Descuento:</strong> {{ (ventaDetalle?.descuento || 0) }}% ({{ formatoMoneda(descuentoDetalle) }})</div>
+            <div v-if="ventaDetalle?.requiereFactura"><strong>IVA (16%):</strong> {{ formatoMoneda(ivaDetalle) }}</div>
+            <div class="detalle-total"><strong>Total:</strong> {{ formatoMoneda(totalDetalle) }}</div>
           </div>
         </div>
       </div>
@@ -133,6 +135,22 @@ const showDetalle = ref(false);
 const ventaDetalle = ref(null);
 const ventaEditando = ref(null);
 const reloadKey = ref('');
+
+// Totales del detalle con IVA condicional
+const subtotalDetalle = computed(() =>
+  (detalleVenta.value || []).reduce((acc, item) => acc + (Number(item.cantidad) * Number(item.precio_unitario)), 0)
+);
+const descuentoDetalle = computed(() =>
+  subtotalDetalle.value * ((Number(ventaDetalle.value?.descuento) || 0) / 100)
+);
+const ivaDetalle = computed(() => {
+  const requiere = !!ventaDetalle.value?.requiereFactura;
+  const base = subtotalDetalle.value - descuentoDetalle.value;
+  return requiere ? base * 0.16 : 0;
+});
+const totalDetalle = computed(() =>
+  subtotalDetalle.value - descuentoDetalle.value + ivaDetalle.value
+);
 
 const ventasFiltradas = computed(() => {
   return ventas.value.filter(v => {

@@ -121,6 +121,7 @@
     <Dialog v-model:visible="showDialog" header="Nota de Venta" :modal="true" class="historico-dialog">
       <Button label="Cerrar" icon="pi pi-times" @click="showDialog = false" class="mt-3" />
     </Dialog>
+    
     <Dialog v-model:visible="showAsignarDialog" header="Asignar Técnico" :modal="true">
       <Dropdown
         v-model="tecnicoSeleccionado"
@@ -203,6 +204,8 @@ const responseMessage = ref('');
 const showArticulosDialog = ref(false);
 const articulosDialogList = ref([]);
 
+// Debug removido
+
 // Filtros
 const filtroFolio = ref('');
 const filtroCliente = ref('');
@@ -216,7 +219,6 @@ const filtroImei = ref('');
 onMounted(async () => {
   loading.value = true;
   const ventasRaw = await getVentas();
-  console.log(ventasRaw)
   // Para cada venta, consulta el técnico asignado
   const ventasConTecnico = await Promise.all(
     ventasRaw.map(async v => {
@@ -230,7 +232,6 @@ onMounted(async () => {
     })
   );
   ventas.value = ventasConTecnico;
-  console.log(ventas.value);
   
   loading.value = false;
 });
@@ -305,13 +306,9 @@ async function descargarPDF(venta) {
       nombre: art.nombre
     };
   });
+  const payload = { venta, cliente, articulos: articulosSeleccionados, empresa };
   loading.value = false;
-  await generarNotaVentaPDF({
-    venta,
-    cliente,
-    articulos: articulosSeleccionados,
-    empresa
-  });
+  await generarNotaVentaPDF(payload);
 }
 
 async function abrirAsignarTecnico(venta) {

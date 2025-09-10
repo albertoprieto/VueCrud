@@ -13,7 +13,7 @@ export const usePaymentsStore = defineStore('payments', {
       return this.payments;
     },
     getPaymentById(id) {
-      console.log(id,'id',this.payments)
+  //
       return this.payments.find(payment => payment.id === id);
     },
     updateStatus(id, status) {

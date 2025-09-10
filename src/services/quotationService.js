@@ -3,7 +3,7 @@ import axios from 'axios';
 const API_URL = import.meta.env.VITE_API_URL;
 
 export const addQuotation = async (quotationData) => {
-  console.log('Datos de la cotización a agregar:', quotationData);
+  //
   const response = await axios.post(`${API_URL}/cotizaciones`, quotationData);
   return response.data;
 };

@@ -169,7 +169,7 @@ const removeTelefono = (idx) => form.value.telefonos.splice(idx, 1);
 const cargarUbicaciones = async () => {
   loading.value = true;
   ubicaciones.value = await getUbicaciones();
-  console.log('Ubicaciones recibidas:', ubicaciones.value);
+  //
   // Trae todos los IMEIs y cuenta por ubicacion_id
   const imeis = await getIMEIs();
   const conteo = {};

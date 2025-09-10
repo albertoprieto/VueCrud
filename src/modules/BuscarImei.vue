@@ -240,7 +240,7 @@ onMounted(async () => {
 
 const imeisFiltrados = computed(() => {
   if (!filtro.value) return imeis.value;
-  console.log(imeis.value)
+  //
   const f = filtro.value.toLowerCase();
   return imeis.value.filter(i =>
     i.imei?.toLowerCase().includes(f) ||
