@@ -288,11 +288,12 @@ def add_movimiento_dinero(mov: MovimientoDinero):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
-    cursor.execute(
-        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia) VALUES (%s, %s, %s, %s, %s)",
-        (mov.fecha, mov.tipo, mov.concepto, mov.monto, mov.referencia)
-    )
-    db.commit()
+    # --- Inserción temporalmente deshabilitada ---
+    # cursor.execute(
+    #     "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia) VALUES (%s, %s, %s, %s, %s)",
+    #     (mov.fecha, mov.tipo, mov.concepto, mov.monto, mov.referencia)
+    # )
+    # db.commit()
     cursor.close()
     db.close()
     return {"message": "Movimiento registrado"}
