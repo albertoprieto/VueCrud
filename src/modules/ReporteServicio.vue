@@ -73,8 +73,32 @@
               </div>
               <h4 class="section-title">Datos SIM (uso interno)</h4>
               <div class="form-group">
-                <InputText v-model="form.sim_proveedor" placeholder="Proveedor" class="w-full mb-2" />
-                <InputText v-model="form.sim_serie" placeholder="Serie" class="w-full mb-2" />
+                <Dropdown
+                  v-model="form.sim_proveedor"
+                  :options="proveedoresSim"
+                  placeholder="Proveedor"
+                  class="w-full mb-2"
+                  optionLabel="label"
+                  optionValue="value"
+                  showClear
+                />
+                <!-- Serie: ESPAÑOL -> Dropdown de IMEIs de la ubicación; TELCEL -> captura manual -->
+                <template v-if="form.sim_proveedor === 'ESPAÑOL'">
+                  <Dropdown
+                    v-model="form.sim_serie"
+                    :options="simSerieOptions"
+                    placeholder="Serie"
+                    class="w-full mb-2"
+                    optionLabel="label"
+                    optionValue="value"
+                    :filter="true"
+                    :disabled="!ubicacionId"
+                    showClear
+                  />
+                </template>
+                <template v-else>
+                  <InputNumber v-model="form.sim_serie" class="w-full mb-2" placeholder="Serie" :useGrouping="false" />
+                </template>
                 <InputText :value="tecnicoNombre" placeholder="Técnico asignado" class="w-full mb-2" disabled />
                 <!-- <InputText :value="tecnicoTelefono" placeholder="Teléfono del técnico" class="w-full mb-2" disabled /> -->
               </div>
@@ -95,7 +119,17 @@
               <h4 class="section-title">Datos del equipo</h4>
               <div class="form-group">
                 <InputText v-model="form.equipo_plan" placeholder="Equipo/Plan" class="w-full mb-2" />
-                <InputText v-model="form.imei" placeholder="IMEI" class="w-full mb-2" />
+                <Dropdown
+                  v-model="form.imei"
+                  :options="imeiOptions"
+                  placeholder="IMEI"
+                  class="w-full mb-2"
+                  optionLabel="label"
+                  optionValue="value"
+                  :filter="true"
+                  :disabled="!ubicacionId"
+                  showClear
+                />
                 <InputText v-model="form.serie" placeholder="Serie" class="w-full mb-2" />
                 <InputText v-model="form.accesorios" placeholder="Accesorios adicionales" class="w-full mb-2" />
               </div>
@@ -195,6 +229,7 @@ import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { getUsuarios } from '@/services/usuariosService';
 import { getVentas } from '@/services/ventasService';
 import InputNumber from 'primevue/inputnumber';
+import { getImeisPorUbicacion, getUbicaciones } from '@/services/ubicacionesService';
 
 const emit = defineEmits(['close', 'saved']);
 
@@ -209,6 +244,12 @@ const formasPago = ['Efectivo Entregado al tecnico', 'Transferencia', 'Depósito
 
 const tecnicoNombre = ref('');
 const tecnicoTelefono = ref('');
+const proveedoresSim = [ { label: 'TELCEL', value: 'TELCEL' }, { label: 'ESPAÑOL', value: 'ESPAÑOL' } ];
+const imeiOptions = ref([]); // Para IMEI (filtrado por artículos de la orden)
+const simSerieOptions = ref([]); // Para Serie (todo el stock de la ubicación)
+const allowedArticuloIds = ref(new Set());
+const allowedArticuloNames = ref(new Set());
+const ubicacionId = ref(null);
 
 const form = ref({
   tipo_servicio: '',
@@ -254,6 +295,41 @@ const reporteExistente = ref(false);
 const clienteUsuariosOptions = ref([]);
 const clientePlataformasOptions = ref([]);
 const pagos = ref([]);
+const imeisStockRaw = ref([]);
+
+async function cargarImeisDeUbicacion(id) {
+  try {
+    // Preferir /imeis completo y filtrar por ubicacion_id si la API pública es esa que compartiste
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/imeis`);
+    const todos = await res.json();
+    const imeisUbicacion = Array.isArray(todos) ? todos.filter(i => Number(i.ubicacion_id) === Number(id)) : [];
+    imeisStockRaw.value = imeisUbicacion.filter(i => ['Disponible', 'Devuelto'].includes(i.status));
+    // Para Serie (ESPAÑOL) dejamos todo el stock de la ubicación
+    simSerieOptions.value = imeisStockRaw.value.map(i => ({ label: `${i.imei} — ${i.articulo_nombre || ''}`, value: i.imei }));
+    try {
+      console.group('Reporte de Servicio');
+      console.log('Ubicación (ID):', id);
+      console.log('Stock de la ubicación (IMEIs):', imeisStockRaw.value);
+      console.groupEnd();
+    } catch (_) {}
+  } catch (e) {
+    console.error('Error cargando IMEIs (stock) desde /imeis:', e);
+  }
+}
+
+function buildImeiOptions() {
+  try {
+    const byArticle = (r) => {
+      const okId = r.articulo_id && allowedArticuloIds.value.has(Number(r.articulo_id));
+      const okName = r.articulo_nombre && allowedArticuloNames.value.has(String(r.articulo_nombre).toLowerCase());
+      return okId || okName;
+    };
+    const filtered = imeisStockRaw.value.filter(byArticle);
+    imeiOptions.value = filtered.map(i => ({ label: `${i.imei} — ${i.articulo_nombre || ''}`, value: i.imei }));
+  } catch (_) {
+    imeiOptions.value = imeisStockRaw.value.map(i => ({ label: `${i.imei} — ${i.articulo_nombre || ''}`, value: i.imei }));
+  }
+}
 
 async function cargarPagos() {
   pagos.value = [];
@@ -311,8 +387,7 @@ async function cargarDatosCliente() {
       const ventas = await getVentas();
       const venta = ventas.find(v => v.id == asignacion.value.venta_id);
       if (venta) {
-  //
-        
+        console.log('Venta encontrada para la asignación:', venta);
         form.value.subtotal = venta.total || '';
         form.value.total = venta.total || '';
         form.value.forma_pago = venta.terminos_pago || '';
@@ -329,8 +404,57 @@ async function cargarDatosCliente() {
             form.value.numero_economico = art.numero_economico || '';
             form.value.accesorios = art.accesorios || '';
           }
+          // Construir conjuntos de artículos permitidos para filtrar IMEIs
+          try {
+            const ids = new Set();
+            const names = new Set();
+            for (const d of detalle || []) {
+              if (d.articulo_id) ids.add(Number(d.articulo_id));
+              if (d.articulo_nombre) names.add(String(d.articulo_nombre).toLowerCase());
+            }
+            allowedArticuloIds.value = ids;
+            allowedArticuloNames.value = names;
+          } catch (_) {}
         } catch (e) {
           console.error('Error en getDetalleVenta:', e);
+        }
+        // Determinar ubicacion_id: 1) por nombre de almacén; 2) por campo venta.ubicacion_id; 3) deducir por IMEI
+        try {
+          const ubicaciones = await getUbicaciones();
+          const uMatch = ubicaciones.find(u => String(u.nombre || '').toLowerCase() === String(venta.almacen || '').toLowerCase());
+          if (uMatch?.id) {
+            ubicacionId.value = uMatch.id;
+          }
+        } catch (e) {
+          // ignora
+        }
+        if (!ubicacionId.value) {
+          ubicacionId.value = venta.ubicacion_id || null;
+        }
+        if (ubicacionId.value) {
+          await cargarImeisDeUbicacion(ubicacionId.value);
+          buildImeiOptions();
+        } else {
+          // Intentar deducir la ubicación a partir del IMEI existente en el detalle
+          const imeiBase = form.value.imei;
+          if (imeiBase) {
+            try {
+              const res = await fetch(`${import.meta.env.VITE_API_URL}/buscar-imei?digitos=${encodeURIComponent(String(imeiBase))}`);
+              const resultados = await res.json();
+              const ubicacionNombre = Array.isArray(resultados) && resultados[0]?.ubicacion ? resultados[0].ubicacion : null;
+              if (ubicacionNombre) {
+                const ubicaciones = await getUbicaciones();
+                const ubic = ubicaciones.find(u => (u.nombre || '').toLowerCase() === String(ubicacionNombre).toLowerCase());
+                if (ubic?.id) {
+                  ubicacionId.value = ubic.id;
+                  await cargarImeisDeUbicacion(ubicacionId.value);
+                  buildImeiOptions();
+                }
+              }
+            } catch (e) {
+              console.error('No se pudo deducir la ubicación desde IMEI:', e);
+            }
+          }
         }
       }
     }
@@ -390,6 +514,7 @@ onMounted(async () => {
 
 function cerrar() {
   emit('close');
+  route.push('/');
 }
 
 async function guardar() {
@@ -415,7 +540,31 @@ async function guardar() {
       subtotal: String(form.value.subtotal ?? ''),
       asignacion_id: asignacion.id
     };
+    // Validación: si proveedor ESPAÑOL requiere seleccionar sim_serie (IMEI)
+    if (payload.sim_proveedor === 'ESPAÑOL' && !payload.sim_serie) {
+      resultMessage.value = 'Selecciona la Serie (IMEI) del SIM cuando el proveedor es ESPAÑOL.';
+      loading.value = false;
+      showResultDialog.value = true;
+      return;
+    }
     await addReporteServicio(payload);
+    // Si se eligieron IMEIs (en IMEI o en serie cuando proveedor = ESPAÑOL), marcarlos como Vendido
+    {
+      const setImeis = new Set();
+      if (payload.imei) setImeis.add(payload.imei);
+      if (payload.sim_proveedor === 'ESPAÑOL' && payload.sim_serie) setImeis.add(payload.sim_serie);
+      try {
+        for (const imei of Array.from(setImeis)) {
+          await fetch(`${import.meta.env.VITE_API_URL}/imeis/${encodeURIComponent(imei)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Vendido' })
+          });
+        }
+      } catch (e) {
+        console.error('Error marcando IMEIs como vendidos:', e);
+      }
+    }
     resultMessage.value = 'Reporte de servicio guardado correctamente.';
     emit('saved');
     await checkReporteExistente();
