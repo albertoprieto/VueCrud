@@ -284,7 +284,7 @@ async function descargarNota(asignacion) {
 }
 
 function modificarOrden(asignacion) {
-  console.log('Modificar orden de servicio:', asignacion);
+  //
 }
 
 function abrirTecladoBusquedaCliente() {

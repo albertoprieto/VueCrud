@@ -268,7 +268,7 @@ async function cargarDatosTecnico() {
       u.username?.toLowerCase() === asignacion.value.tecnico?.toLowerCase() ||
       u.nombre?.toLowerCase() === asignacion.value.tecnico?.toLowerCase()
     );
-    console.log('Datos del técnico:', tecnico);
+  //
     
     if (tecnico) {
       tecnicoNombre.value = tecnico.username || tecnico.nombre || '';
@@ -294,7 +294,7 @@ async function cargarDatosCliente() {
     const clientes = await getClientes();
     const cliente = clientes.find(c => c.id == asignacion.value.cliente_id);
     if (cliente) {
-      console.log('Datos del cliente:', cliente);
+  //
       
       form.value.nombre_cliente = cliente.nombre || '';
       form.value.telefono_cliente = cliente.telefonos?.join(', ') || '';
@@ -304,14 +304,14 @@ async function cargarDatosCliente() {
       clientePlataformasOptions.value = Array.isArray(cliente.plataformas)
         ? cliente.plataformas.map(p => ({ label: p, value: p }))
         : [];
-      console.log('Plataformas del cliente:', clientePlataformasOptions.value);
+  //
       
     }
     if (asignacion.value.venta_id) {
       const ventas = await getVentas();
       const venta = ventas.find(v => v.id == asignacion.value.venta_id);
       if (venta) {
-        console.log('Datos de la venta:', venta);
+  //
         
         form.value.subtotal = venta.total || '';
         form.value.total = venta.total || '';
@@ -346,7 +346,7 @@ async function checkReporteExistente() {
       return;
     }
     const reporte = await getReportePorAsignacion(Number(asignacionIdCentral.value));
-    console.log('Reporte existente:', reporte);
+  //
     reporteExistente.value = !!reporte;
   } catch (e) {
     console.error('Error en checkReporteExistente:', e);
@@ -357,14 +357,14 @@ async function checkReporteExistente() {
 
 onMounted(async () => {
   loading.value = true;
-  console.log('route:', route);
-  console.log('asignacionIdCentral:', asignacionIdCentral.value);
+  //
+  //
   try {
   const asignaciones = await getAsignacionesTecnicos();
-  console.log('Asignaciones recibidas:', asignaciones);
+  //
   // Si asignacionIdCentral.value es venta_id, buscar por venta_id, si es id de asignación, buscar por id
   asignacion.value = asignaciones.find(a => String(a.id) === String(asignacionIdCentral.value) || String(a.venta_id) === String(asignacionIdCentral.value));
-  console.log('Asignación encontrada:', asignacion.value?.id);
+  //
     if (!asignacion.value) {
       loading.value = false;
       resultMessage.value = 'No se encontró la asignación para el ID proporcionado.';
@@ -375,7 +375,7 @@ onMounted(async () => {
     await checkReporteExistente();
     await cargarDatosTecnico();
     await cargarDatosCliente();
-    console.log('Datos del formulario cargados:', form.value);
+  //
     try {
       await cargarPagos();
     } catch (e) {

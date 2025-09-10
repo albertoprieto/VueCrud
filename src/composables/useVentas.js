@@ -268,7 +268,7 @@ export function useVentas() {
     (nuevosImeis, viejosImeis) => {
       nuevosImeis.forEach((imei, idx) => {
         if (imei && imei !== viejosImeis[idx]) {
-          console.log('IMEI asignado a payload:', imei, 'en artículo', venta.articulos[idx]);
+          //
         }
       });
     }

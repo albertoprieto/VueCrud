@@ -15,9 +15,11 @@ import { getUsuarios } from '@/services/usuariosService';
 
 const toast = useToast();
 const showDialog = ref(false);
+const showRedirectDialog = ref(false);
 const showNuevoClienteDialog = ref(false);
 const cotizacionGeneradaNumero = ref(null);
 const router = useRouter();
+const mensajeDialogo = ref('');
 const cotizacion = ref({
   id: null,
   cliente_id: null,
@@ -131,13 +133,15 @@ const guardarCotizacion = async () => {
       fecha: fechaCompleta
     };
     const cotizacionCreada = await addQuotation(objetoCotizacion);
-    let mensajeDialogo = '';
+    mensajeDialogo.value = '';
     if (cotizacionCreada.message) {
-      mensajeDialogo = cotizacionCreada.message;
+      mensajeDialogo.value = cotizacionCreada.message;
     } else {
-      mensajeDialogo = 'Cotización registrada.';
+      mensajeDialogo.value = 'Cotización registrada.';
     }
     cotizacionBDRef.value = { ...objetoCotizacion, ...cotizacionCreada };
+    // Establece el número/folio generado para mostrarlo en los mensajes
+    cotizacionGeneradaNumero.value = (cotizacionBDRef.value && (cotizacionBDRef.value.folio || (cotizacionBDRef.value.id ? `COTIZACION-${String(cotizacionBDRef.value.id).padStart(5,'0')}` : null))) || null;
     showDialog.value = true;
 
     try {
@@ -154,9 +158,10 @@ const guardarCotizacion = async () => {
       });
       if (cotizacionBD) {
         cotizacionBDRef.value = cotizacionBD;
+  cotizacionGeneradaNumero.value = (cotizacionBD.folio || (cotizacionBD.id ? `COTIZACION-${String(cotizacionBD.id).padStart(5,'0')}` : null));
       } else {
         return;
-        console.log('No se encontró la cotización recién creada en la base de datos.');
+  //
       }
       dialogVisible.value = true;
     } catch (e) {
@@ -238,9 +243,7 @@ const guardarCotizacion = async () => {
             [
               { text: 'Facturar a', style: 'sectionHeader' },
               { text: clienteObj.nombre || '', style: 'clienteLabel' },
-              { text: clienteObj.direccion || '', style: 'clienteLabel' },
-              { text: `RFC del receptor ${clienteObj.rfc || ''}`, style: 'clienteLabel' },
-              { text: `Régimen fiscal: ${clienteObj.regimen_fiscal || ''}`, style: 'clienteLabel' }
+              { text: clienteObj.direccion || '', style: 'clienteLabel' }
             ],
             [
               { text: `Fecha : ${cotizacion.value.fecha}`, style: 'clienteLabel', alignment: 'right' },
@@ -321,7 +324,21 @@ const guardarCotizacion = async () => {
 
 
 const closeDialog = () => {
+  // Cierra el primer diálogo y muestra confirmación antes de redirigir
   showDialog.value = false;
+  showRedirectDialog.value = true;
+};
+const confirmRedirectHome = () => {
+  showRedirectDialog.value = false;
+  router.push('/');
+};
+const consultarCotizacionRecienCreada = () => {
+  if (cotizacionBDRef.value) {
+    const folio = cotizacionBDRef.value.folio || (cotizacionBDRef.value.id ? `COTIZACION-${String(cotizacionBDRef.value.id).padStart(5,'0')}` : undefined);
+    router.push({ path: '/consultar-cotizaciones', query: { folio, id: cotizacionBDRef.value.id } });
+  } else {
+    router.push('/consultar-cotizaciones');
+  }
 };
 const cotizacionEmail = ref('');
 const clienteEmails = computed(() => {
@@ -487,9 +504,7 @@ function descargarPDFCotizacion() {
           [
             { text: 'Facturar a', style: 'sectionHeader' },
             { text: clienteObj.nombre || '', style: 'clienteLabel' },
-            { text: clienteObj.direccion || '', style: 'clienteLabel' },
-            { text: `RFC del receptor ${clienteObj.rfc || ''}`, style: 'clienteLabel' },
-            { text: `Régimen fiscal: ${clienteObj.regimen_fiscal || ''}`, style: 'clienteLabel' }
+            { text: clienteObj.direccion || '', style: 'clienteLabel' }
           ],
           [
             { text: `Fecha : ${cotizacion.fecha}`, style: 'clienteLabel', alignment: 'right' },
@@ -711,12 +726,25 @@ function descargarPDFCotizacion() {
         </div>
       </form>
       
-      <Dialog v-model:visible="showDialog" header="Cotización Guardada" :modal="true" class="mobile-dialog">
+      <Dialog v-model:visible="showDialog" header="Cotización Guardada" :modal="true" class="mobile-dialog" :closable="false">
         <p>{{ mensajeDialogo }}</p>
         <div class="dialog-actions" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
           <Button label="Descargar PDF" icon="pi pi-file-pdf" class="p-button-success mobile-button" @click="descargarPDFCotizacion" v-if="cotizacionBDRef" />
           <Button label="Aceptar" icon="pi pi-check" class="mobile-button" @click="closeDialog" />
         </div>
+      </Dialog>
+
+      <Dialog v-model:visible="showRedirectDialog" header="Siguiente paso" :modal="true" class="mobile-dialog" :closable="false">
+        <p>
+          Serás redirigido a la pantalla de inicio. También puedes descargar la cotización o consultarla ahora mismo.
+          <br />
+          Número: <strong>{{ cotizacionGeneradaNumero || (cotizacionBDRef && (cotizacionBDRef.folio || (cotizacionBDRef.id ? `COTIZACION-${String(cotizacionBDRef.id).padStart(5,'0')}` : ''))) }}</strong>
+        </p>
+        <template #footer>
+          <Button label="Descargar PDF" icon="pi pi-file-pdf" class="p-button-success mobile-button" @click="descargarPDFCotizacion" :disabled="!cotizacionBDRef" />
+          <Button label="Consultar" icon="pi pi-search" class="mobile-button" @click="consultarCotizacionRecienCreada" :disabled="!cotizacionBDRef" />
+          <Button label="OK" icon="pi pi-check" class="mobile-button" @click="confirmRedirectHome" />
+        </template>
       </Dialog>
     </div>
   </div>

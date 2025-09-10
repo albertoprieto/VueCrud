@@ -166,8 +166,8 @@ const saveArticulo = async () => {
       descripcion: '',
     };
     
-    console.log('Form ID antes de enviar:', form.value.id);
-    console.log('Payload a enviar:', articuloPayload);
+  //
+  //
     
     if (form.value.id) {
       await updateArticulo(form.value.id, articuloPayload);

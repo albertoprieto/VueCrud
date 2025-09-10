@@ -553,7 +553,7 @@ function obtenerSO(reporte) {
   if (asignacion && asignacion.venta_id && Array.isArray(window.ventasGlobal)) {
     const venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
     if (venta && venta.folio) {
-      console.log('SO encontrado para reporte', reporte.id, ':', venta.folio);
+  //
       return venta.folio;
     }
   }

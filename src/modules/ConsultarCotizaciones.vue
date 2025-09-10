@@ -386,7 +386,7 @@ function closeCotizacionesDialog() {
 }
 
 function showDetalleDialog(cotizacion) {
-  console.log(cotizacion);
+  //
 
   selectedCotizacion.value = cotizacion;
   try {
@@ -579,9 +579,7 @@ function generatePDF(cotizacion) {
           [
             { text: 'Facturar a', style: 'sectionHeader' },
             { text: clienteObj.nombre || '', style: 'clienteLabel' },
-            { text: clienteObj.direccion || '', style: 'clienteLabel' },
-            { text: `RFC del receptor ${clienteObj.rfc || ''}`, style: 'clienteLabel' },
-            { text: `Régimen fiscal: ${clienteObj.regimen_fiscal || ''}`, style: 'clienteLabel' }
+            { text: clienteObj.direccion || '', style: 'clienteLabel' }
           ],
           [
             { text: `Fecha : ${cotizacion.fecha}`, style: 'clienteLabel', alignment: 'right' },

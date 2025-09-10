@@ -99,7 +99,7 @@ async function listSubAccounts(accessToken) {
         const urls = [];
         for (const item of response.result) {
             if (item.account === 'Confitados' || item.account === 'confitados') {
-                console.log(`Processing sub-account: ${item.account}`);
+                //
                 const deviceUrls = await listDevices(accessToken, item.account);
                 urls.push(...deviceUrls);
             }
@@ -136,13 +136,13 @@ async function listDevices(accessToken, targetAccount) {
     }
 
     const response = await sendPost(OPENAPI_URL, assemblyHeader(headerMap), paramMap);
-    console.log(`Devices for sub-account ${targetAccount}:`, response);
+    //
 
     if (response.code === 0) {
         const urls = [];
         for (const device of response.result) {
             // if (device.imei === '862798052222789') {
-                console.log('Procesando-----------');
+                //
                 const url = await sendCommand(accessToken, device.imei);
                 if (url) {
                     urls.push({ imei: device.imei, url });
@@ -181,7 +181,7 @@ async function sendCommand(accessToken, imei) {
     }
 
     const response = await sendPost(OPENAPI_URL, assemblyHeader(headerMap), paramMap);
-    console.log(response.result);
+    //
 
     return response.result;
 }

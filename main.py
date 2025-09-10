@@ -953,6 +953,8 @@ class Venta(BaseModel):
     descuento: Optional[float] = 0
     notas_cliente: Optional[str] = ""
     terminos_condiciones: Optional[str] = ""
+    # Indica si el cliente requiere factura (para IVA en PDF/consultas)
+    requiereFactura: Optional[bool] = False
     total: float
     observaciones: Optional[str] = ""
     articulos: list[DetalleVenta]
@@ -985,13 +987,13 @@ def crear_venta(venta: Venta):
     cursor.execute(
         """
         INSERT INTO ventas
-        (cliente_id, fecha, folio, referencia, fecha_envio, terminos_pago, metodo_entrega, vendedor, almacen, descuento, notas_cliente, terminos_condiciones, total, observaciones)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        (cliente_id, fecha, folio, referencia, fecha_envio, terminos_pago, metodo_entrega, vendedor, almacen, descuento, notas_cliente, terminos_condiciones, total, observaciones, requiere_factura)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             venta.cliente_id, fecha, new_folio, venta.referencia, venta.fecha_envio, venta.terminos_pago,
             venta.metodo_entrega, venta.vendedor, venta.almacen, venta.descuento, venta.notas_cliente,
-            venta.terminos_condiciones, venta.total, venta.observaciones
+            venta.terminos_condiciones, venta.total, venta.observaciones, int(1 if getattr(venta, "requiereFactura", False) else 0)
         )
     )
     venta_id = cursor.lastrowid
@@ -1058,6 +1060,12 @@ def listar_ventas():
         ORDER BY v.fecha DESC
     """)
     ventas = cursor.fetchall()
+    # Normaliza el flag a camelCase esperado por el frontend
+    for v in ventas:
+        try:
+            v["requiereFactura"] = bool(v.get("requiere_factura", 0))
+        except Exception:
+            v["requiereFactura"] = False
     cursor.close()
     db.close()
     return ventas

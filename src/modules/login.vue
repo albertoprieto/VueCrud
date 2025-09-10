@@ -50,7 +50,7 @@ const handleSubmit = async () => {
   loading.value = true;
   try {
     const result = await loginUsuario(username.value, password.value);
-    console.log('Login result:', result);
+  //
     
     if (result.access_token && result.user) {
       localStorage.setItem('access_token', result.access_token);

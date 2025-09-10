@@ -34,7 +34,7 @@ const loginStore = useLoginStore();
 const user = computed(() => loginStore.user || {});
 
 function goTo(route) {
-  console.log('Navegando a:', route); // <-- Agrega esto
+  //
   router.push(route);
 }
 
