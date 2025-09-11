@@ -1375,8 +1375,26 @@ def sincronizar_stock_articulos():
 
 @app.post("/ventas/{venta_id}/asignar-tecnico")
 def asignar_tecnico_venta(venta_id: int, data: dict = Body(...)):
+    """
+    Acepta payload extendido:
+    {
+      tecnico_id, fecha_servicio, hora_servicio?, direccion?, cp?, link_ubicacion?, cliente_info?{telefonos,usuario,plataforma,descripcion}
+    }
+    Guarda lo que haya disponible. Si la tabla no tiene aún las columnas nuevas, intenta insert básico.
+    """
     tecnico_id = data.get("tecnico_id")
     fecha_servicio = data.get("fecha_servicio")
+    hora_servicio = data.get("hora_servicio")
+    direccion = data.get("direccion")
+    cp = data.get("cp")
+    link_ubicacion = data.get("link_ubicacion")
+    cliente_info = data.get("cliente_info") or {}
+    # Serializar cliente_info si existe
+    cliente_info_json = json.dumps(cliente_info) if cliente_info else None
+
+    if not tecnico_id or not fecha_servicio:
+        raise HTTPException(status_code=400, detail="tecnico_id y fecha_servicio son obligatorios")
+
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -1384,14 +1402,28 @@ def asignar_tecnico_venta(venta_id: int, data: dict = Body(...)):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    # UPSERT (clave única en venta_id)
     cursor.execute(
-        "INSERT INTO venta_tecnico (venta_id, tecnico_id, fecha_servicio) VALUES (%s, %s, %s)",
-        (venta_id, tecnico_id, fecha_servicio)
+        """
+        INSERT INTO venta_tecnico
+            (venta_id, tecnico_id, fecha_servicio, hora_servicio, direccion, cp, link_ubicacion, cliente_info)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+        ON DUPLICATE KEY UPDATE
+            tecnico_id=VALUES(tecnico_id),
+            fecha_servicio=VALUES(fecha_servicio),
+            hora_servicio=VALUES(hora_servicio),
+            direccion=VALUES(direccion),
+            cp=VALUES(cp),
+            link_ubicacion=VALUES(link_ubicacion),
+            cliente_info=VALUES(cliente_info),
+            fecha_asignacion=NOW()
+        """,
+        (venta_id, tecnico_id, fecha_servicio, hora_servicio, direccion, cp, link_ubicacion, cliente_info_json)
     )
     db.commit()
     cursor.close()
     db.close()
-    return {"message": "Técnico asignado a la venta"}
+    return {"message": "Técnico asignado/actualizado", "upsert": True, "extended": bool(hora_servicio or direccion or cp or link_ubicacion or cliente_info)}
 
 @app.get("/ventas/{venta_id}/tecnico")
 def get_tecnico_venta(venta_id: int):
@@ -1438,7 +1470,17 @@ def get_asignaciones_tecnicos():
     )
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
-        SELECT vt.id, vt.fecha_servicio, vt.venta_id, v.cliente_id, u.username as tecnico, v.fecha as fecha_venta
+        SELECT vt.id,
+               vt.fecha_servicio,
+               vt.hora_servicio,
+               vt.direccion,
+               vt.cp,
+               vt.link_ubicacion,
+               vt.cliente_info,
+               vt.venta_id,
+               v.cliente_id,
+               u.username as tecnico,
+               v.fecha as fecha_venta
         FROM venta_tecnico vt
         JOIN usuarios u ON vt.tecnico_id = u.id
         JOIN ventas v ON vt.venta_id = v.id

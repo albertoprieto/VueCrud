@@ -122,7 +122,28 @@
       <Button label="Cerrar" icon="pi pi-times" @click="showDialog = false" class="mt-3" />
     </Dialog>
     
-    <Dialog v-model:visible="showAsignarDialog" header="Asignar Técnico" :modal="true">
+  <Dialog v-model:visible="showAsignarDialog" header="Asignar Técnico" :modal="true" :closable="false" class="asignar-dialog">
+      <!-- Datos de la orden / cliente (solo lectura) -->
+      <div class="grid-info">
+        <div class="field">
+          <label>Teléfonos</label>
+          <div class="field-read">{{ ordenClienteInfo.telefonos || '-' }}</div>
+        </div>
+        <div class="field">
+          <label>Usuario(s)</label>
+          <div class="field-read">{{ ordenClienteInfo.usuario || '-' }}</div>
+        </div>
+        <div class="field">
+          <label>Plataforma(s)</label>
+          <div class="field-read">{{ ordenClienteInfo.plataforma || '-' }}</div>
+        </div>
+        <div class="field field-full">
+          <label>Descripción</label>
+          <Textarea v-model="ordenClienteInfo.descripcion" rows="2" class="w-full" />
+        </div>
+      </div>
+      <Divider />
+      <!-- Campos para asignación -->
       <Dropdown
         v-model="tecnicoSeleccionado"
         :options="tecnicos"
@@ -131,20 +152,27 @@
         placeholder="Selecciona técnico"
         class="w-full mb-3"
       />
-      <Calendar
-        v-model="fechaServicio"
-        dateFormat="yy-mm-dd"
-        placeholder="Selecciona fecha de servicio"
-        class="w-full mb-3"
-      />
-      <Calendar
-        v-model="horaServicio"
-        timeOnly
-        hourFormat="24"
-        iconDisplay="input"
-  placeholder="Selecciona hora"
-        class="w-full mb-3"
-      />
+      <div class="flex gap-3 mb-3 flex-wrap">
+        <Calendar
+          v-model="fechaServicio"
+          dateFormat="yy-mm-dd"
+          placeholder="Fecha servicio"
+          class="flex-1 min-w-40"
+        />
+        <Calendar
+          v-model="horaServicio"
+          timeOnly
+          hourFormat="24"
+          iconDisplay="input"
+          placeholder="Hora"
+          class="flex-1 min-w-40"
+        />
+      </div>
+      <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;">
+        <input v-model="direccionServicio" placeholder="Dirección" style="padding:.5rem; border:1px solid #666; border-radius:4px; background:#111; color:#fff;" />
+        <input v-model="cpServicio" placeholder="Código Postal" style="padding:.5rem; border:1px solid #666; border-radius:4px; background:#111; color:#fff;" />
+        <input v-model="linkUbicacion" placeholder="Link Ubicación (Maps)" style="padding:.5rem; border:1px solid #666; border-radius:4px; background:#111; color:#fff;" />
+      </div>
       <Button label="Asignar" icon="pi pi-check" @click="asignarTecnico" :disabled="!tecnicoSeleccionado || !fechaServicio" />
       <Button label="Cancelar" icon="pi pi-times" @click="showAsignarDialog = false" class="p-button-secondary ml-2" />
     </Dialog>
@@ -169,13 +197,15 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, nextTick } from 'vue';
 import DataTable from 'primevue/datatable';
 import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import Textarea from 'primevue/textarea';
+import Divider from 'primevue/divider';
 import { getVentas, getDetalleVenta, asignarTecnicoVenta, getTecnicoVenta, deleteAsignacionTecnico } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
@@ -199,6 +229,26 @@ const tecnicos = ref([]);
 const tecnicoSeleccionado = ref(null);
 const fechaServicio = ref(null); // NUEVO: fecha de servicio
 const horaServicio = ref(null); // NUEVO: hora de servicio
+// Nuevos campos adicionales
+const direccionServicio = ref('');
+const cpServicio = ref('');
+const linkUbicacion = ref('');
+// Eliminados coordLat y coordLng (mapa removido)
+// Datos cliente/orden mostrados en dialog (solo lectura)
+const ordenClienteInfo = ref({ telefonos: '', usuario: '', plataforma: '', descripcion: '' });
+
+function buildOrdenClienteInfo(venta, cliente) {
+  const telefonos = Array.isArray(cliente?.telefonos) ? cliente.telefonos.filter(Boolean).join(', ') : (cliente?.telefono || '');
+  const usuariosArr = Array.isArray(cliente?.usuarios) ? cliente.usuarios.filter(Boolean) : [];
+  const usuario = cliente?.usuario || (usuariosArr.length ? usuariosArr.join(', ') : (cliente?.username || ''));
+  const plataformas = Array.isArray(cliente?.plataformas) ? cliente.plataformas.filter(Boolean).join(', ') : (cliente?.plataforma || '');
+  const descripcion = venta?.descripcion || venta?.observaciones || venta?.notas_cliente || cliente?.descripcion || '';
+  const info = { telefonos, usuario, plataforma: plataformas, descripcion };
+  console.log('[DEBUG buildOrdenClienteInfo] info:', info, { venta, cliente });
+  return info;
+}
+
+// Funciones de mapa eliminadas
 const showResponseDialog = ref(false);
 const responseMessage = ref('');
 const showArticulosDialog = ref(false);
@@ -322,7 +372,22 @@ async function abrirAsignarTecnico(venta) {
   tecnicoSeleccionado.value = venta.tecnicoAsignado ?? null;
   fechaServicio.value = null; // Limpia la fecha al abrir
   horaServicio.value = null; // Limpia la hora al abrir
+  direccionServicio.value = '';
+  cpServicio.value = '';
+  linkUbicacion.value = '';
+  // Intentar obtener info cliente desde la propia venta o refetch de clientes
+  try {
+    const clientes = await getClientes();
+    const cliente = clientes.find(c => String(c.id) === String(venta.cliente_id)) || {};
+    // Ya no autocompletamos direccion / cp: el usuario los ingresará manualmente.
+    ordenClienteInfo.value = buildOrdenClienteInfo(venta, cliente);
+    console.log('[DEBUG abrirAsignarTecnico] cliente encontrado?', !!cliente.id);
+  } catch (e) {
+    console.warn('No se pudo cargar info cliente para dialog', e);
+  }
   showAsignarDialog.value = true;
+  await nextTick();
+  console.log('[DEBUG DOM check] Telefonos mostrados:', ordenClienteInfo.value.telefonos);
 }
 
 async function asignarTecnico() {
@@ -333,17 +398,32 @@ async function asignarTecnico() {
       ? fechaServicio.value.split('T')[0]
       : fechaServicio.value;
 
-  // Preparar hora en formato HH:mm. Se deja comentada en el payload hasta que el backend esté listo.
   const horaFormateada = horaServicio.value instanceof Date
     ? horaServicio.value.toTimeString().slice(0,5)
-    : (typeof horaServicio.value === 'string' && horaServicio.value.match(/^\d{2}:\d{2}/))
+    : (typeof horaServicio.value === 'string' && horaServicio.value.match(/^[0-9]{2}:[0-9]{2}/))
       ? horaServicio.value.slice(0,5)
       : null;
 
-  // Llamada actual (sin hora) para mantener compatibilidad con el backend existente
-  await asignarTecnicoVenta(ventaParaAsignar.value.id, tecnicoSeleccionado.value, fechaFormateada
-    /* , { hora: horaFormateada } */
-  );
+  const payloadExtendido = {
+    tecnico_id: tecnicoSeleccionado.value,
+    fecha_servicio: fechaFormateada,
+    hora_servicio: horaFormateada || null,
+    direccion: direccionServicio.value?.trim() || null,
+    cp: cpServicio.value?.trim() || null,
+    link_ubicacion: linkUbicacion.value?.trim() || null,
+    cliente_info: ordenClienteInfo.value
+  };
+  console.log('[ASIGNAR] Payload a enviar =>', payloadExtendido);
+  try {
+    const resp = await asignarTecnicoVenta(ventaParaAsignar.value.id, tecnicoSeleccionado.value, fechaFormateada, payloadExtendido);
+    console.log('[ASIGNAR] Respuesta API', resp?.data ?? resp);
+  } catch (err) {
+    const apiMsg = err?.response?.data || err.message;
+    console.error('[ASIGNAR] Error API', apiMsg, err);
+    responseMessage.value = 'Error asignando técnico: ' + (typeof apiMsg === 'string' ? apiMsg : JSON.stringify(apiMsg));
+    showResponseDialog.value = true;
+    return; // No continuar con actualización local si falló
+  }
   const tecnico = tecnicos.value.find(t => t.id === tecnicoSeleccionado.value);
   const idx = ventas.value.findIndex(v => v.id === ventaParaAsignar.value.id);
   if (idx !== -1 && tecnico) {
@@ -434,3 +514,4 @@ async function verArticulos(venta) {
   border: 1px solid var(--color-text, #795548);
 }
 </style>
+<!-- estilos de ubicación removidos -->

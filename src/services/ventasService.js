@@ -17,11 +17,12 @@ export const getDetalleVenta = async (ventaId) => {
   return res.data;
 };
 
-export const asignarTecnicoVenta = async (ventaId, tecnicoId, fecha_servicio) => {
-  return await axios.post(`${API_URL}/${ventaId}/asignar-tecnico`, {
-    tecnico_id: tecnicoId,
-    fecha_servicio
-  });
+export const asignarTecnicoVenta = async (ventaId, tecnicoId, fecha_servicio, extraPayload = null) => {
+  const base = { tecnico_id: tecnicoId, fecha_servicio };
+  // Aseguramos que base no pise campos extra y permitimos override si extraPayload redefine tecnico_id / fecha_servicio
+  const body = extraPayload ? { ...base, ...extraPayload } : base;
+  console.log('[ventasService] POST asignar-tecnico body ->', body);
+  return await axios.post(`${API_URL}/${ventaId}/asignar-tecnico`, body);
 };
 
 export const getTecnicoVenta = async (ventaId) => {

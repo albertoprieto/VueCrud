@@ -20,6 +20,28 @@
           <div class="dialog-section">
             <strong>Descripcion:</strong> {{ selectedEvent.extendedProps?.descripcion || 'Sin descripción' }}
           </div>
+          <div class="dialog-section" v-if="selectedEvent.extendedProps?.hora_servicio">
+            <strong>Hora Servicio:</strong> {{ selectedEvent.extendedProps.hora_servicio }}
+          </div>
+          <div class="dialog-section" v-if="selectedEvent.extendedProps?.direccion">
+            <strong>Dirección:</strong> {{ selectedEvent.extendedProps.direccion }}
+          </div>
+          <div class="dialog-section" v-if="selectedEvent.extendedProps?.cp">
+            <strong>CP:</strong> {{ selectedEvent.extendedProps.cp }}
+          </div>
+          <div class="dialog-section" v-if="selectedEvent.extendedProps?.link_ubicacion">
+            <strong>Link:</strong>
+            <a :href="selectedEvent.extendedProps.link_ubicacion" target="_blank">Abrir</a>
+          </div>
+          <div class="dialog-section" v-if="parsedClienteInfo">
+            <strong>Cliente Info:</strong>
+            <ul style="margin:.25rem 0 0 .75rem; padding:0; list-style:disc;">
+              <li v-if="parsedClienteInfo.telefonos">Tel: {{ parsedClienteInfo.telefonos }}</li>
+              <li v-if="parsedClienteInfo.usuario">Usuario: {{ parsedClienteInfo.usuario }}</li>
+              <li v-if="parsedClienteInfo.plataforma">Plataforma: {{ parsedClienteInfo.plataforma }}</li>
+              <li v-if="parsedClienteInfo.descripcion">Desc: {{ parsedClienteInfo.descripcion }}</li>
+            </ul>
+          </div>
           <div class="dialog-actions" style="display:flex; gap:1rem; margin-top:1.5rem;">
             <Button label="Agregar Reporte" icon="pi pi-plus" class="p-button-success p-button-sm" @click="irReporteServicio(selectedEvent.extendedProps)" />
             <Button label="Descargar Orden" icon="pi pi-file-pdf" class="p-button-secondary p-button-sm" @click="descargarNota(selectedEventData)" v-if="selectedEventData.venta_id" />
@@ -140,6 +162,16 @@ function handleEventClick(info) {
   selectedEvent.value = info.event;
   dialogTitle.value = info.event.title;
   selectedEventData.value = info.event.extendedProps;
+  const raw = info.event.extendedProps?.cliente_info;
+  if (raw) {
+    try {
+      parsedClienteInfo.value = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch (e) {
+      parsedClienteInfo.value = null;
+    }
+  } else {
+    parsedClienteInfo.value = null;
+  }
   showDialog.value = true;
 }
 
@@ -163,6 +195,7 @@ const showDialog = ref(false);
 const selectedEvent = ref(null);
 const dialogTitle = ref('Detalle de Asignación');
 const selectedEventData = ref({});
+const parsedClienteInfo = ref(null);
 
 const loginStore = useLoginStore();
 const user = computed(() => loginStore.user || {});
