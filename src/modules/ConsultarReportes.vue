@@ -23,19 +23,18 @@
     <DataTable :value="reportesFiltrados" responsiveLayout="scroll" :loading="loading">
       <Column field="tipo_servicio" header="Tipo" />
       <Column field="nombre_cliente" header="Cliente" />
-      <Column field="folio" header="Orden">
+      <Column header="Orden">
         <template #body="slotProps">
-          <span v-if="slotProps.data.folio">
-            {{ slotProps.data.folio }}
-          </span>
-          <span v-else>
-            {{ obtenerSO(slotProps.data) }}
+          <span>
+            {{ slotProps.data.folio  }}
           </span>
         </template>
       </Column>
-      <Column field="vendedor" header="Vendedor">
+      <Column header="Vendedor">
         <template #body="slotProps">
-          {{ slotProps.data.vendedor || '-' }}
+          <span>
+            {{ slotProps.data.vendedor || '-' }}
+          </span>
         </template>
       </Column>
       <Column field="fecha" header="Fecha">
@@ -129,20 +128,56 @@
     <Dialog v-model:visible="showEditDialog" header="Editar Reporte de Servicio" :modal="true">
       <form @submit.prevent="guardarEdicion">
         <div v-if="reporteEditando">
-          <div class="form-group" v-for="(value, key) in camposReporte" :key="key">
-            <label :for="key">{{ value.label }}</label>
-            <template v-if="value.type === 'textarea'">
-              <textarea v-model="reporteEditando[key]" class="w-full" :id="key" />
-            </template>
-            <template v-else-if="value.type === 'select'">
-              <select v-model="reporteEditando[key]" class="w-full" :id="key">
-                <option :value="true">Sí</option>
-                <option :value="false">No</option>
-              </select>
-            </template>
-            <template v-else>
-              <input v-model="reporteEditando[key]" class="w-full" :id="key" />
-            </template>
+          <div class="form-group">
+            <label>Tipo de Servicio</label>
+            <InputText v-model="reporteEditando.tipo_servicio" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Lugar / Centro de instalación</label>
+            <InputText v-model="reporteEditando.lugar_instalacion" class="w-full" />
+          </div>
+          <h4 class="section-title">Datos del vehículo</h4>
+          <div class="form-group">
+            <InputText v-model="reporteEditando.marca" placeholder="Marca" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.submarca" placeholder="Submarca" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.modelo" placeholder="Modelo" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.placas" placeholder="Placa" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.color" placeholder="Color" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.numero_economico" placeholder="Número económico" class="w-full mb-2" />
+          </div>
+          <h4 class="section-title">Datos del dispositivo</h4>
+          <div class="form-group">
+            <InputText v-model="reporteEditando.modelo_gps" placeholder="Modelo GPS" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.imei" placeholder="IMEI" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.sim_serie" placeholder="SIM" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.accesorios" placeholder="Accesorios adicionales" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.ubicacion_gps" placeholder="Ubicación del GPS" class="w-full mb-2" />
+            <InputText v-model="reporteEditando.ubicacion_bloqueo" placeholder="Ubicación del Bloqueo" class="w-full mb-2" />
+          </div>
+          <div class="form-group">
+            <label>Observaciones</label>
+            <InputText v-model="reporteEditando.observaciones" class="w-full" />
+          </div>
+          <h4 class="section-title">Datos del cobro</h4>
+          <div class="form-group">
+            <label>Subtotal (orden de servicio)</label>
+            <InputText v-model="reporteEditando.subtotal" class="w-full mb-2" disabled />
+          </div>
+          <div class="form-group">
+            <label>Total a cobrar</label>
+            <InputText v-model="reporteEditando.total" class="w-full mb-2" />
+          </div>
+          <div class="form-group">
+            <label>Método de pago</label>
+            <InputText v-model="reporteEditando.forma_pago" class="w-full mb-2" disabled />
+          </div>
+          <div class="form-group">
+            <label>Monto cobrado por el técnico</label>
+            <InputText v-model="reporteEditando.monto_tecnico" type="number" class="w-full mb-2" />
+          </div>
+          <div class="form-group">
+            <label>Viáticos</label>
+            <InputText v-model="reporteEditando.viaticos" type="number" class="w-full mb-2" />
           </div>
         </div>
         <div class="modal-actions">
@@ -259,6 +294,7 @@ import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { useToast } from 'primevue/usetoast';
 import { generarReporteServicioPDF } from '@/services/reporteServicioPdfService.js';
 import { useLoginStore } from '@/stores/loginStore';
+import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
 
@@ -366,17 +402,34 @@ async function cargarReportes() {
     const res = await axios.get(`${API_URL}-todos`);
     reportes.value = res.data;
     asignaciones = await getAsignacionesTecnicos();
-    if (Array.isArray(window.ventasGlobal)) {
-      reportes.value = reportes.value.map(r => {
-        const asignacion = asignaciones.find(a => a.id == r.asignacion_id);
-        let vendedor = '-';
-        if (asignacion && asignacion.venta_id) {
-          const venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
-          if (venta && venta.vendedor) vendedor = venta.vendedor;
+    const ventasGlobal = Array.isArray(window.ventasGlobal) ? window.ventasGlobal : await getVentas();
+    const clientesGlobal = await getClientes();
+    reportes.value = reportes.value.map(r => {
+      const asignacion = asignaciones.find(a => a.id == r.asignacion_id);
+      let folio = r.folio;
+      let vendedor = r.vendedor;
+      let nombre_cliente = r.nombre_cliente;
+      let nombre_instalador = r.nombre_instalador;
+      let monto_tecnico = r.monto_tecnico;
+      let viaticos = r.viaticos;
+      let total = r.total;
+      let venta = null;
+      if (asignacion && asignacion.venta_id && Array.isArray(ventasGlobal)) {
+        venta = ventasGlobal.find(v => v.id == asignacion.venta_id);
+        if (venta) {
+          folio = venta.folio || (venta.id ? `SO-${String(venta.id).padStart(5, '0')}` : folio);
+          vendedor = venta.vendedor || vendedor;
+          const cliente = clientesGlobal.find(c => c.id === venta.cliente_id);
+          if (cliente) {
+            nombre_cliente = cliente.nombre;
+          }
         }
-        return { ...r, vendedor };
-      });
-    }
+        if (asignacion.tecnico) {
+          nombre_instalador = asignacion.tecnico;
+        }
+      }
+      return { ...r, folio, vendedor, nombre_cliente, nombre_instalador, monto_tecnico, viaticos, total };
+    });
   } catch (e) {
     reportes.value = [];
     asignaciones = [];
@@ -456,8 +509,15 @@ async function eliminarReporteConfirmado() {
   loading.value = true;
   try {
     await axios.delete(`${API_URL}/${reporteAEliminar.value.id}`);
+    // Eliminar movimiento de dinero relacionado
+    const movimientos = await getMovimientosDineroPorReferencia(reporteAEliminar.value.folio || `ReporteServicio-${reporteAEliminar.value.id}`);
+    if (Array.isArray(movimientos) && movimientos.length > 0) {
+      for (const mov of movimientos) {
+        await axios.delete(`${import.meta.env.VITE_API_URL}/movimientos-dinero/${mov.id}`);
+      }
+    }
     await cargarReportes();
-    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Reporte eliminado correctamente.', life: 3000 });
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Reporte y movimiento de dinero eliminados correctamente.', life: 3000 });
     messageDialogText.value = 'Reporte eliminado correctamente.';
     showMessageDialog.value = true;
   } catch (e) {
@@ -524,11 +584,34 @@ async function descargarReporteServicio(reporte) {
       const clientes = await getClientes();
       cliente = venta ? (clientes.find(c => c.id === venta.cliente_id) || {}) : {};
     }
-    const folio = venta?.folio || venta?.id || 'SO-XXXXX';
-    const nombreNota = `${folio}-NOTA-DE-VENTA.pdf`;
-    const nombreReporte = `${folio}-REPORTE-DE-SERVICIO.pdf`;
+    // Solo los campos que existen en el backend/modelo/SQL
+    const reporteCampos = {
+      tipo_servicio: reporte.tipo_servicio,
+      lugar_instalacion: reporte.lugar_instalacion,
+      marca: reporte.marca,
+      submarca: reporte.submarca,
+      modelo: reporte.modelo,
+      placas: reporte.placas,
+      color: reporte.color,
+      numero_economico: reporte.numero_economico,
+      modelo_gps: reporte.modelo_gps,
+      imei: reporte.imei,
+      sim_serie: reporte.sim_serie,
+      accesorios: reporte.accesorios,
+      ubicacion_gps: reporte.ubicacion_gps,
+      ubicacion_bloqueo: reporte.ubicacion_bloqueo,
+      observaciones: reporte.observaciones,
+      subtotal: reporte.subtotal,
+      total: reporte.total,
+      forma_pago: reporte.forma_pago,
+      monto_tecnico: reporte.monto_tecnico,
+      viaticos: reporte.viaticos,
+      pagado: reporte.pagado,
+      nombre_cliente: reporte.nombre_cliente,
+      nombre_instalador: reporte.nombre_instalador
+    };
     await generarReporteServicioPDF({
-      reporte,
+      reporte: reporteCampos,
       venta,
       cliente,
       empresa
@@ -552,9 +635,8 @@ function obtenerSO(reporte) {
   const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
   if (asignacion && asignacion.venta_id && Array.isArray(window.ventasGlobal)) {
     const venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
-    if (venta && venta.folio) {
-  //
-      return venta.folio;
+    if (venta) {
+      return venta.folio || (venta.id ? `SO-${String(venta.id).padStart(5, '0')}` : '-');
     }
   }
   return '-';
@@ -563,17 +645,39 @@ function obtenerSO(reporte) {
 // Carga ventas globalmente para acceso rápido en la tabla
 onMounted(async () => {
   window.ventasGlobal = await getVentas();
+  const clientesGlobal = await getClientes();
+  asignaciones = await getAsignacionesTecnicos();
   await cargarReportes();
-  // Mapea vendedor a cada reporte después de cargar
+  // Mapea folio, vendedor, nombre_cliente y nombre_instalador a cada reporte
   reportes.value = reportes.value.map(r => {
+    let folio = r.folio;
+    let vendedor = r.vendedor;
+    let nombre_cliente = r.nombre_cliente;
+    let nombre_instalador = r.nombre_instalador;
+    // Mantén los valores originales, no los fuerces a string
+    let monto_tecnico = r.monto_tecnico;
+    let viaticos = r.viaticos;
+    let total = r.total;
     // Busca la asignación y la venta asociada
     const asignacion = asignaciones.find(a => a.id == r.asignacion_id);
-    let vendedor = '-';
+    let venta = null;
     if (asignacion && asignacion.venta_id && Array.isArray(window.ventasGlobal)) {
-      const venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
-      if (venta && venta.vendedor) vendedor = venta.vendedor;
+      venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
+      if (venta) {
+        folio = venta.folio || (venta.id ? `SO-${String(venta.id).padStart(5, '0')}` : folio);
+        vendedor = venta.vendedor || vendedor;
+        // Busca el cliente
+        const cliente = clientesGlobal.find(c => c.id === venta.cliente_id);
+        if (cliente) {
+          nombre_cliente = cliente.nombre;
+        }
+      }
+      // Busca el técnico
+      if (asignacion.tecnico) {
+        nombre_instalador = asignacion.tecnico;
+      }
     }
-    return { ...r, vendedor };
+    return { ...r, folio, vendedor, nombre_cliente, nombre_instalador, monto_tecnico, viaticos, total };
   });
 });
 
@@ -594,13 +698,20 @@ async function confirmarPagadoConComprobante() {
     toast.add({ severity: 'warn', summary: 'Falta comprobante', detail: 'Debes cargar un comprobante.', life: 3000 });
     return;
   }
-  // Mock: no se envía el archivo aún; solo marcamos como pagado.
   loading.value = true;
   try {
     const reporte = reporteSeleccionado.value;
     await axios.put(`${API_URL}/${reporte.id}`, { ...reporte, pagado: true });
+    // Registrar movimiento de dinero
+    await registrarAbonoDinero({
+      fecha: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      tipo: 'Ingreso',
+      concepto: `Servicio: ${reporte.tipo_servicio || ''}`,
+      monto: Number(reporte.total) || 0,
+      referencia: reporte.folio || `ReporteServicio-${reporte.id}`
+    });
     await cargarReportes();
-    toast.add({ severity: 'success', summary: 'Pagado', detail: 'El reporte fue marcado como pagado.', life: 3000 });
+    toast.add({ severity: 'success', summary: 'Pagado', detail: 'El reporte fue marcado como pagado y el movimiento registrado.', life: 3000 });
     messageDialogText.value = 'El reporte fue marcado como pagado.';
     showMessageDialog.value = true;
     showComprobanteDialog.value = false;

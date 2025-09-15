@@ -33,3 +33,9 @@ export const getTecnicoVenta = async (ventaId) => {
 export const deleteAsignacionTecnico = async (ventaId) => {
   return await axios.delete(`${API_URL}/${ventaId}/asignar-tecnico`);
 };
+
+export const eliminarOrdenServicio = async (ventaId) => {
+  // DELETE /ventas/:id
+  const res = await axios.delete(`${API_URL}/${ventaId}`);
+  return res.data;
+};

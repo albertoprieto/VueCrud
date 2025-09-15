@@ -1,208 +1,66 @@
 <template>
   <div class="reporte-servicio-container">
     <h2 class="reporte-title">Reporte de Servicio</h2>
-    <div v-if="!asignacionIdValido">
-      <div class="alert-existente error-bg">
-        Error: No se recibió un ID de asignación válido.<br>
-        Verifica la navegación desde la pantalla anterior.<br>
-        Consulta consola para más detalles.
-      </div>
-    </div>
-    <form v-else class="reporte-form" @submit.prevent="guardar">
-      <!-- <div class="abonos-section" v-if="form.total">
-        <h4 class="section-title">Pagos y abonos</h4>
-        <div v-if="pagos.length === 0" class="abonos-vacio">No hay pagos registrados para este servicio.</div>
-        <div v-else>
-          <table class="abonos-table">
-            <thead>
-              <tr><th>Fecha</th><th>Monto</th><th>Referencia</th><th>Concepto</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="p in pagos" :key="p.id">
-                <td>{{ formatearFecha(p.fecha) }}</td>
-                <td>{{ formatoMoneda(p.monto) }}</td>
-                <td>{{ p.referencia }}</td>
-                <td>{{ p.concepto }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="abonos-resumen">
-          <span><b>Total servicio:</b> {{ formatoMoneda(Number(form.total)||0) }}</span>
-          <span><b>Pagado:</b> {{ formatoMoneda(totalPagado) }}</span>
-          <span :style="{color: saldoPendiente > 0 ? '#e53935' : '#43a047'}"><b>Saldo pendiente:</b> {{ formatoMoneda(saldoPendiente) }}</span>
-        </div>
-        <form class="abono-form" @submit.prevent="registrarAbono">
+    <form class="reporte-form" @submit.prevent="guardar">
+      <div class="form-row">
+        <div class="form-col">
           <div class="form-group">
-            <label>Nuevo abono</label>
-            <InputNumber v-model="nuevoAbono" mode="currency" currency="MXN" locale="es-MX" :min="1" :step="0.01" placeholder="Monto del abono" class="w-full mb-2" required />
+            <label>Tipo de servicio</label>
+            <Dropdown v-model="form.tipo_servicio" :options="tiposServicio" placeholder="Selecciona" class="w-full" />
           </div>
           <div class="form-group">
-            <InputText v-model="nuevaReferencia" placeholder="Referencia (opcional)" class="w-full mb-2" />
+            <label>Lugar / Centro de instalación</label>
+            <InputText v-model="form.lugar_instalacion" class="w-full" placeholder="Opcional" />
           </div>
-          <Button type="submit" label="Registrar abono" icon="pi pi-plus" class="p-button-success" />
-        </form>
-      </div> -->
-
-      <div v-if="loading" class="loader-overlay">
-        <Loader />
+          <h4 class="section-title">Datos del vehículo</h4>
+          <div class="form-group">
+            <InputText v-model="form.marca" placeholder="Marca" class="w-full mb-2" />
+            <InputText v-model="form.submarca" placeholder="Submarca" class="w-full mb-2" />
+            <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" />
+            <InputText v-model="form.placas" placeholder="Placa" class="w-full mb-2" />
+            <InputText v-model="form.color" placeholder="Color" class="w-full mb-2" />
+            <InputText v-model="form.numero_economico" placeholder="Número económico" class="w-full mb-2" />
+          </div>
+          <h4 class="section-title">Datos del dispositivo</h4>
+          <div class="form-group">
+            <InputText v-model="form.modelo_gps" placeholder="Modelo GPS" class="w-full mb-2" />
+            <Dropdown v-model="form.imei" :options="imeiOptions" placeholder="IMEI (stock)" class="w-full mb-2" optionLabel="label" optionValue="value" :filter="true" />
+            <Dropdown v-model="form.sim_serie" :options="simSerieOptions" placeholder="SIM (stock)" class="w-full mb-2" optionLabel="label" optionValue="value" :filter="true" />
+            <InputText v-model="form.accesorios" placeholder="Accesorios adicionales (Botón/Micro/Etc.)" class="w-full mb-2" />
+            <InputText v-model="form.ubicacion_gps" placeholder="Ubicación del GPS" class="w-full mb-2" />
+            <InputText v-model="form.ubicacion_bloqueo" placeholder="Ubicación del Bloqueo (Bomba/Switch/Ignición/Etc.)" class="w-full mb-2" />
+          </div>
+          <div class="form-group">
+            <label>Observaciones</label>
+            <Textarea v-model="form.observaciones" rows="2" class="w-full" />
+          </div>
+          <h4 class="section-title">Datos del cobro</h4>
+          <div class="form-group">
+            <label>Subtotal (orden de servicio)</label>
+            <InputText v-model="form.subtotal" placeholder="Subtotal" class="w-full mb-2" :disabled="true" />
+          </div>
+          <div class="form-group">
+            <label>Total a cobrar</label>
+            <InputNumber v-model="form.total" placeholder="Total a cobrar" class="w-full mb-2" />
+            <small>El instalador puede modificar este valor si hay algún ajuste.</small>
+          </div>
+          <div class="form-group">
+            <label>Método de pago</label>
+            <InputText v-model="form.forma_pago" placeholder="Método de pago" class="w-full mb-2" :disabled="true" />
+          </div>
+          <div class="form-group">
+            <label>Monto cobrado por el técnico</label>
+            <InputText v-model="form.monto_tecnico" type="number" class="w-full mb-2" />
+          </div>
+          <div class="form-group">
+            <label>Viáticos</label>
+            <InputText v-model="form.viaticos" type="number" class="w-full mb-2" />
+          </div>
+        </div>
       </div>
-      <div v-else>
-        <div v-if="reporteExistente" class="alert-existente">
-          Ya existe un reporte de servicio para esta asignación. Elimínalo antes de crear uno nuevo.
-        </div>
-        <div v-else>
-          <div class="form-row">
-            <div class="form-col">
-              <div class="form-group">
-                <label>Tipo de servicio</label>
-                <Dropdown v-model="form.tipo_servicio" :options="tiposServicio" placeholder="Selecciona" class="w-full" />
-              </div>
-              <div class="form-group">
-                <label>Lugar/Centro de instalación</label>
-                <InputText v-model="form.lugar_instalacion" class="w-full" placeholder="Opcional" />
-              </div>
-              <h4 class="section-title">Datos del vehículo</h4>
-              <div class="form-group">
-                <InputText v-model="form.marca" placeholder="Marca" class="w-full mb-2" />
-                <InputText v-model="form.submarca" placeholder="Submarca" class="w-full mb-2" />
-                <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" />
-                <InputText v-model="form.placas" placeholder="Placas" class="w-full mb-2" />
-                <InputText v-model="form.color" placeholder="Color" class="w-full mb-2" />
-                <InputText v-model="form.numero_economico" placeholder="Número económico" class="w-full mb-2" />
-              </div>
-              <h4 class="section-title">Datos SIM (uso interno)</h4>
-              <div class="form-group">
-                <Dropdown
-                  v-model="form.sim_proveedor"
-                  :options="proveedoresSim"
-                  placeholder="Proveedor"
-                  class="w-full mb-2"
-                  optionLabel="label"
-                  optionValue="value"
-                  showClear
-                />
-                <!-- Serie: ESPAÑOL -> Dropdown de IMEIs de la ubicación; TELCEL -> captura manual -->
-                <template v-if="form.sim_proveedor === 'ESPAÑOL'">
-                  <Dropdown
-                    v-model="form.sim_serie"
-                    :options="simSerieOptions"
-                    placeholder="Serie"
-                    class="w-full mb-2"
-                    optionLabel="label"
-                    optionValue="value"
-                    :filter="true"
-                    :disabled="!ubicacionId"
-                    showClear
-                  />
-                </template>
-                <template v-else>
-                  <InputNumber v-model="form.sim_serie" class="w-full mb-2" placeholder="Serie" :useGrouping="false" />
-                </template>
-                <InputText :value="tecnicoNombre" placeholder="Técnico asignado" class="w-full mb-2" disabled />
-                <!-- <InputText :value="tecnicoTelefono" placeholder="Teléfono del técnico" class="w-full mb-2" disabled /> -->
-              </div>
-              <h4 class="section-title">Aviso</h4>
-              <div class="form-group">
-                <label>Nombre del cliente</label>
-                <InputText :value="form.nombre_cliente" placeholder="Nombre del cliente" class="w-full mb-2" disabled />
-              </div>
-              <div class="form-group">
-                <label>Teléfono del cliente</label>
-                <InputText :value="form.telefono_cliente" placeholder="Teléfono" class="w-full mb-2" disabled />
-              </div>
-              <!-- <div class="form-group">
-                <InputText :value="tecnicoNombre" placeholder="Nombre del instalador" class="w-full mb-2" disabled />
-              </div> -->
-            </div>
-            <div class="form-col">
-              <h4 class="section-title">Datos del equipo</h4>
-              <div class="form-group">
-                <InputText v-model="form.equipo_plan" placeholder="Equipo/Plan" class="w-full mb-2" />
-                <Dropdown
-                  v-model="form.imei"
-                  :options="imeiOptions"
-                  placeholder="IMEI"
-                  class="w-full mb-2"
-                  optionLabel="label"
-                  optionValue="value"
-                  :filter="true"
-                  :disabled="!ubicacionId"
-                  showClear
-                />
-                <InputText v-model="form.serie" placeholder="Serie" class="w-full mb-2" />
-                <InputText v-model="form.accesorios" placeholder="Accesorios adicionales" class="w-full mb-2" />
-              </div>
-              <h4 class="section-title">Datos de conexión y corte</h4>
-              <div class="form-group">
-                <InputText v-model="form.bateria" placeholder="Batería" class="w-full mb-2" />
-                <InputText v-model="form.ignicion" placeholder="Ignición" class="w-full mb-2" />
-                <InputText v-model="form.corte" placeholder="Corte bomba/switch" class="w-full mb-2" />
-                <InputText v-model="form.ubicacion_corte" placeholder="Ubicación" class="w-full mb-2" />
-              </div>
-              <div class="form-group">
-                <label>Observaciones de la unidad</label>
-                <Textarea v-model="form.observaciones" rows="2" class="w-full" />
-              </div>
-              <h4 class="section-title">Plataforma y usuario</h4>
-              <div class="form-group">
-                <label>Plataformas del cliente</label>
-                <Dropdown
-                  v-model="form.plataforma"
-                  :options="clientePlataformasOptions"
-                  placeholder="Selecciona plataforma"
-                  class="w-full mb-2"
-                  optionLabel="label"
-                  :disabled="false"
-                />
-              </div>
-              <div class="form-group">
-                <label>Usuarios del cliente</label>
-                <Dropdown
-                  v-model="form.usuario"
-                  :options="clienteUsuariosOptions"
-                  placeholder="Selecciona usuario"
-                  class="w-full mb-2"
-                  optionLabel="label"
-                  :disabled="false"
-                />
-              </div>
-              <h4 class="section-title">Venta y pago</h4>
-              <div class="form-group">
-                <label>Subtotal (orden de servicio)</label>
-                <InputText v-model="form.subtotal" placeholder="Subtotal" class="w-full mb-2" :disabled="true" />
-              </div>
-              <div class="form-group">
-                <label>Total a cobrar</label>
-                <InputNumber v-model="form.total" placeholder="Total a cobrar" class="w-full mb-2" />
-                <small>El instalador puede modificar este valor si hay algún ajuste.</small>
-              </div>
-              <!-- Método de pago (display-only) -->
-              <div class="form-group">
-                <label>Método de pago</label>
-                <InputText v-if="form.value" v-model="form.value.forma_pago" disabled class="w-full" />
-                <InputText v-else :value="''" disabled class="w-full" />
-              </div>
-              <div class="form-group">
-                <label>Observaciones de la unidad o ajuste de cobro</label>
-                <Textarea v-model="form.observaciones" rows="2" class="w-full" />
-                <small>Si el total difiere del subtotal, explica aquí el motivo.</small>
-              </div>
-              <div class="form-group">
-                <label>Monto cobrado por el técnico</label>
-                <InputText v-model="form.monto_tecnico" type="number" class="w-full mb-2" />
-              </div>
-              <div class="form-group">
-                <label>Viáticos</label>
-                <InputText v-model="form.viaticos" type="number" class="w-full mb-2" />
-              </div>
-            </div>
-          </div>
-          <div class="modal-actions">
-            <Button label="Guardar" icon="pi pi-save" type="submit" />
-            <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" type="button" @click="cerrar" />
-          </div>
-        </div>
+      <div class="modal-actions">
+        <Button label="Guardar" icon="pi pi-save" type="submit" />
+        <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" type="button" @click="cerrar" />
       </div>
     </form>
     <Dialog v-model:visible="showResultDialog" header="Resultado" :modal="true" :closable="false">
@@ -291,7 +149,6 @@ const form = ref({
 const loading = ref(false);
 const showResultDialog = ref(false);
 const resultMessage = ref('');
-const reporteExistente = ref(false);
 const saveSuccess = ref(false);
 const imeiUpdateError = ref(false);
 
@@ -466,22 +323,6 @@ async function cargarDatosCliente() {
   }
 }
 
-async function checkReporteExistente() {
-  try {
-    if (!asignacionIdValido.value) {
-      reporteExistente.value = false;
-      return;
-    }
-    const reporte = await getReportePorAsignacion(Number(asignacionIdCentral.value));
-  //
-    reporteExistente.value = !!reporte;
-  } catch (e) {
-    console.error('Error en checkReporteExistente:', e);
-    reporteExistente.value = false;
-  }
-}
-
-
 onMounted(async () => {
   loading.value = true;
   //
@@ -499,7 +340,6 @@ onMounted(async () => {
       return;
     }
     form.value.asignacion_id = asignacion.value.id;
-    await checkReporteExistente();
     await cargarDatosTecnico();
     await cargarDatosCliente();
   //
@@ -539,30 +379,53 @@ async function guardar() {
       return;
     }
     const payload = {
-      ...form.value,
-      plataforma: typeof form.value.plataforma === 'object' ? form.value.plataforma.value : form.value.plataforma,
-      usuario: typeof form.value.usuario === 'object' ? form.value.usuario.value : form.value.usuario,
+      asignacion_id: asignacion.id,
+      tipo_servicio: form.value.tipo_servicio || '',
+      lugar_instalacion: form.value.lugar_instalacion || '',
+      marca: form.value.marca || '',
+      submarca: form.value.submarca || '',
+      modelo: form.value.modelo || '',
+      placas: form.value.placas || '',
+      color: form.value.color || '',
+      numero_economico: form.value.numero_economico || '',
+      equipo_plan: form.value.equipo_plan || '',
+      imei: form.value.imei || '',
+      serie: form.value.serie || '',
+      accesorios: form.value.accesorios || '',
+      sim_proveedor: form.value.sim_proveedor || '',
+      sim_serie: form.value.sim_serie || '',
+      sim_instalador: form.value.sim_instalador || '',
+      sim_telefono: form.value.sim_telefono || '',
+      bateria: form.value.bateria || '',
+      ignicion: form.value.ignicion || '',
+      corte: form.value.corte || '',
+      ubicacion_corte: form.value.ubicacion_corte || '',
+      observaciones: form.value.observaciones || '',
+      plataforma: form.value.plataforma || '',
+      usuario: form.value.usuario || '',
       subtotal: String(form.value.subtotal ?? ''),
-      // Enviar siempre sim_serie como string (ESPAÑOL y TELCEL)
-      sim_serie: String(form.value.sim_serie ?? ''),
-      asignacion_id: asignacion.id
+      forma_pago: form.value.forma_pago || '',
+      pagado: !!form.value.pagado,
+      nombre_cliente: form.value.nombre_cliente || '',
+      firma_cliente: form.value.firma_cliente || '',
+      nombre_instalador: form.value.nombre_instalador || '',
+      firma_instalador: form.value.firma_instalador || '',
+      total: Number(form.value.total) || 0,
+      monto_tecnico: Number(form.value.monto_tecnico) || 0,
+      viaticos: Number(form.value.viaticos) || 0,
+      modelo_gps: form.value.modelo_gps || '',
+      ubicacion_gps: form.value.ubicacion_gps || '',
+      ubicacion_bloqueo: form.value.ubicacion_bloqueo || ''
     };
-    // Validación: si proveedor ESPAÑOL requiere seleccionar sim_serie (IMEI)
-    if (payload.sim_proveedor === 'ESPAÑOL' && !payload.sim_serie) {
-      resultMessage.value = 'Selecciona la Serie (IMEI) del SIM cuando el proveedor es ESPAÑOL.';
-      loading.value = false;
-      showResultDialog.value = true;
-      return;
-    }
     const resp = await addReporteServicio(payload);
     const baseMessage = (resp && typeof resp === 'object' && 'message' in resp)
       ? String(resp.message)
       : 'Reporte de servicio creado exitosamente';
-    // Si se eligieron IMEIs (en IMEI o en serie cuando proveedor = ESPAÑOL), marcarlos como Vendido
+    // Marcar IMEI y SIM como vendidos si se seleccionaron
     {
       const setImeis = new Set();
       if (payload.imei) setImeis.add(payload.imei);
-      if (payload.sim_proveedor === 'ESPAÑOL' && payload.sim_serie) setImeis.add(payload.sim_serie);
+      if (payload.sim_serie) setImeis.add(payload.sim_serie);
       try {
         for (const imei of Array.from(setImeis)) {
           await fetch(`${import.meta.env.VITE_API_URL}/imeis/${encodeURIComponent(imei)}`, {
@@ -576,7 +439,6 @@ async function guardar() {
         imeiUpdateError.value = true;
       }
     }
-    // Preparar diálogo de resultado y navegación posterior
     if (!imeiUpdateError.value) {
       resultMessage.value = `${baseMessage}. Al aceptar te llevaré al inicio.`;
       saveSuccess.value = true;
@@ -585,7 +447,6 @@ async function guardar() {
       saveSuccess.value = false;
     }
     emit('saved');
-    await checkReporteExistente();
   } catch (e) {
     console.error('Error en guardar:', e);
     resultMessage.value = 'Error al guardar el reporte de servicio.';
@@ -619,53 +480,53 @@ function formatoMoneda(valor) {
 </script>
 
 <style scoped>
+@import '@/assets/main.css';
 .reporte-servicio-container {
-  max-width: 900px;
-  margin: 2.5rem auto;
+  max-width: 600px;
+  margin: 2rem auto;
   background: var(--color-card);
   color: var(--color-text);
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.13);
-  padding: 2.5rem 2rem;
+  border-radius: 10px;
+  box-shadow: var(--shadow-1);
+  padding: 2rem 1rem;
 }
 .reporte-title {
-  color: var(--color-title, #ff4081);
+  color: var(--color-title);
   text-align: center;
   margin-bottom: 2rem;
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: bold;
-  letter-spacing: 1px;
 }
 .reporte-form {
   width: 100%;
 }
 .form-row {
   display: flex;
-  gap: 2.5rem;
+  flex-direction: column;
+  gap: 1.2rem;
   margin-bottom: 1.2rem;
 }
 .form-col {
   flex: 1 1 0;
-  min-width: 320px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
 .section-title {
-  color: var(--color-title, #ff4081);
-  margin-top: 2rem;
+  color: var(--color-title);
+  margin-top: 1.5rem;
   margin-bottom: 1rem;
-  font-size: 1.15rem;
+  font-size: 1rem;
   font-weight: 600;
-  letter-spacing: 0.5px;
 }
 .form-group {
-  margin-bottom: 1.2rem;
+  margin-bottom: 1rem;
 }
 label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: bold;
-  color: var(--color-title, #ff4081);
+  color: var(--color-title);
 }
 .w-full {
   width: 100%;
@@ -673,52 +534,16 @@ label {
 .mb-2 {
   margin-bottom: 0.7rem;
 }
-.checkbox-group {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
   margin-top: 2rem;
 }
-.loader-overlay {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-.alert-existente {
-  color: var(--color-on-error);
-  background: var(--color-error);
-  padding: 1rem;
-  border-radius: 8px;
-  margin-bottom: 1.5rem;
-  text-align: center;
-  font-weight: bold;
-}
-.error-bg {
-  color: var(--color-on-error);
-  background: var(--color-error);
-}
-@media (max-width: 900px) {
-  .form-row {
-    flex-direction: column;
-    gap: 1.2rem;
-  }
-  .form-col {
-    min-width: 0;
-  }
-}
 @media (max-width: 700px) {
   .reporte-servicio-container {
     padding: 1rem 0.5rem;
+    max-width: 100vw;
   }
 }
 </style>

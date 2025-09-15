@@ -288,17 +288,29 @@ def add_movimiento_dinero(mov: MovimientoDinero):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
-    # --- Inserción temporalmente deshabilitada ---
-    # cursor.execute(
-    #     "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia) VALUES (%s, %s, %s, %s, %s)",
-    #     (mov.fecha, mov.tipo, mov.concepto, mov.monto, mov.referencia)
-    # )
-    # db.commit()
+    cursor.execute(
+        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia) VALUES (%s, %s, %s, %s, %s)",
+        (mov.fecha, mov.tipo, mov.concepto, mov.monto, mov.referencia)
+    )
+    db.commit()
     cursor.close()
     db.close()
     return {"message": "Movimiento registrado"}
 
-
+@app.delete("/movimientos-dinero/{movimiento_id}")
+def delete_movimiento_dinero(movimiento_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM movimientos_dinero WHERE id=%s", (movimiento_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Movimiento de dinero eliminado"}
 
 
 # MODELO COTIZACION
@@ -1023,24 +1035,6 @@ def crear_venta(venta: Venta):
         if tipo == "servicio":
             continue
 
-
-
-    # Registrar movimiento de dinero (Ingreso) automáticamente
-    try:
-        cursor = db.cursor()
-        cursor.execute(
-            "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia) VALUES (%s, %s, %s, %s, %s)",
-            (
-                fecha,
-                "Ingreso",
-                f"Venta {venta_id}",
-                venta.total,
-                venta.referencia or f"Venta #{venta_id}"
-            )
-        )
-        db.commit()
-    except Exception as e:
-        print(f"Error al registrar movimiento de dinero: {e}")
     cursor.close()
     db.close()
     return {"message": "Venta registrada exitosamente", "venta_id": venta_id, "folio": new_folio}
@@ -1105,6 +1099,39 @@ def get_todos_articulos():
     cursor.close()
     db.close()
     return articulos
+
+@app.delete("/ventas/{venta_id}")
+def eliminar_venta(venta_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    try:
+        # 1. Eliminar reportes_servicio relacionados
+        cursor.execute("SELECT id FROM venta_tecnico WHERE venta_id = %s", (venta_id,))
+        asignaciones = cursor.fetchall()
+        asignacion_ids = [row[0] for row in asignaciones]
+        if asignacion_ids:
+            format_strings = ','.join(['%s'] * len(asignacion_ids))
+            cursor.execute(f"DELETE FROM reportes_servicio WHERE asignacion_id IN ({format_strings})", tuple(asignacion_ids))
+        # 2. Eliminar detalle_venta
+        cursor.execute("DELETE FROM detalle_venta WHERE venta_id = %s", (venta_id,))
+        # 3. Eliminar venta_tecnico
+        cursor.execute("DELETE FROM venta_tecnico WHERE venta_id = %s", (venta_id,))
+        # 4. Eliminar venta principal
+        cursor.execute("DELETE FROM ventas WHERE id = %s", (venta_id,))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar venta: {str(e)}")
+    cursor.close()
+    db.close()
+    return {"message": f"Venta {venta_id} eliminada correctamente"}
 
 # MODELO UBICACION
 class Ubicacion(BaseModel):
@@ -1491,6 +1518,11 @@ def get_asignaciones_tecnicos():
     return asignaciones
 
 class ReporteServicio(BaseModel):
+    # ...existing code...
+    modelo_gps: str = ""
+    ubicacion_gps: str = ""
+    ubicacion_bloqueo: str = ""
+    # ...existing code...
     asignacion_id: int
     tipo_servicio: str
     lugar_instalacion: str = ""
@@ -1522,6 +1554,7 @@ class ReporteServicio(BaseModel):
     firma_cliente: str = ""
     nombre_instalador: str = ""
     firma_instalador: str = ""
+    total: float = 0
     monto_tecnico: float = 0
     viaticos: float = 0
 
@@ -1535,18 +1568,19 @@ def add_reporte_servicio(reporte: ReporteServicio):
     )
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO reportes_servicio (asignacion_id, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico, equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria, ignicion, corte, ubicacion_corte, observaciones, plataforma, usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador, monto_tecnico, viaticos) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-        (
-            reporte.asignacion_id, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
-            reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
-            reporte.imei, reporte.serie, reporte.accesorios, reporte.sim_proveedor, reporte.sim_serie,
-            reporte.sim_instalador, reporte.sim_telefono, reporte.bateria, reporte.ignicion, reporte.corte,
-            reporte.ubicacion_corte, reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
-            reporte.forma_pago, int(reporte.pagado), reporte.nombre_cliente, reporte.firma_cliente,
-            reporte.nombre_instalador, reporte.firma_instalador, reporte.monto_tecnico,
-            reporte.viaticos
-        )
+    "INSERT INTO reportes_servicio (asignacion_id, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico, equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria, ignicion, corte, ubicacion_corte, modelo_gps, ubicacion_gps, ubicacion_bloqueo, observaciones, plataforma, usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador, total, monto_tecnico, viaticos) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+    (
+        reporte.asignacion_id, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
+        reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
+        reporte.imei, reporte.serie, reporte.accesorios, reporte.sim_proveedor, reporte.sim_serie,
+        reporte.sim_instalador, reporte.sim_telefono, reporte.bateria, reporte.ignicion, reporte.corte,
+        reporte.ubicacion_corte, reporte.modelo_gps, reporte.ubicacion_gps, reporte.ubicacion_bloqueo,
+        reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
+        reporte.forma_pago, int(reporte.pagado), reporte.nombre_cliente, reporte.firma_cliente,
+        reporte.nombre_instalador, reporte.firma_instalador, reporte.total,
+        reporte.monto_tecnico, reporte.viaticos
     )
+)
     db.commit()
     cursor.close()
     db.close()
@@ -1902,3 +1936,29 @@ def delete_usuario(usuario_id: int):
     cursor.close()
     db.close()
     return {"message": "Usuario eliminado"}
+
+@app.get("/ventas/{venta_id}/asignacion")
+def get_asignacion_venta(venta_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT venta_id, tecnico_id, fecha_servicio, hora_servicio, direccion, cp, link_ubicacion, cliente_info, fecha_asignacion
+        FROM venta_tecnico
+        WHERE venta_id = %s
+        ORDER BY fecha_asignacion DESC LIMIT 1
+    """, (venta_id,))
+    asignacion = cursor.fetchone()
+    cursor.close()
+    db.close()
+    # Deserializar cliente_info si existe
+    if asignacion and asignacion.get('cliente_info'):
+        try:
+            asignacion['cliente_info'] = json.loads(asignacion['cliente_info'])
+        except Exception:
+            asignacion['cliente_info'] = None
+    return asignacion or {}
