@@ -24,6 +24,16 @@
         <Column field="concepto" header="Concepto" sortable />
         <Column field="monto" header="Monto" :body="formatoMoneda" sortable />
         <Column field="referencia" header="Referencia" />
+        <Column header="Acciones">
+          <template #body="slotProps">
+            <Button
+              icon="pi pi-trash"
+              class="p-button-sm p-button-danger"
+              label="Eliminar"
+              @click="eliminarMovimiento(slotProps.data)"
+            />
+          </template>
+        </Column>
         <template #empty>
           <div class="dinero-empty">No hay movimientos registrados.</div>
         </template>
@@ -36,6 +46,7 @@
 import { ref, computed, onMounted } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
+import Button from 'primevue/button';
 import axios from 'axios';
 
 const movimientos = ref([]);
@@ -57,6 +68,19 @@ const cargarMovimientos = async () => {
   } catch (e) {
     movimientos.value = [];
     error.value = "No se pudo cargar la información. Intenta más tarde.";
+  }
+  cargando.value = false;
+};
+
+const eliminarMovimiento = async (movimiento) => {
+  cargando.value = true;
+  try {
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    await axios.delete(`${apiUrl}/movimientos-dinero/${movimiento.id}`);
+    await cargarMovimientos();
+    error.value = '';
+  } catch (e) {
+    error.value = 'No se pudo eliminar el movimiento.';
   }
   cargando.value = false;
 };

@@ -94,6 +94,14 @@
           <Button text raised label="Ver Artículos" icon="pi pi-list" class="p-button-sm p-button-info" @click="verArticulos(slotProps.data)" />
         </template>
       </Column>
+      <Column header="Fecha/Hora Servicio">
+        <template #body="slotProps">
+          <span v-if="slotProps.data.status === 'Asignado'">
+            <AsyncAsignacionCell :ventaId="slotProps.data.id" @edit="abrirEditarAsignacion" />
+          </span>
+          <span v-else>-</span>
+        </template>
+      </Column>
       <Column header="Acciones">
         <template #body="slotProps">
           <Button
@@ -110,10 +118,17 @@
             @click="eliminarAsignacion(slotProps.data)"
           />
           <Button
+            v-if="slotProps.data.status === 'Asignado'"
             icon="pi pi-file-pdf"
             label="PDF"
             class="p-button-sm p-button-success ml-2"
             @click="descargarPDF(slotProps.data)"
+          />
+          <Button
+            icon="pi pi-times"
+            label="Eliminar orden"
+            class="p-button-sm p-button-danger ml-2"
+            @click="confirmarEliminarOrden(slotProps.data)"
           />
         </template>
       </Column>
@@ -193,6 +208,19 @@
       <span v-else>No hay artículos para esta venta.</span>
       <Button label="Cerrar" icon="pi pi-times" @click="showArticulosDialog = false" class="mt-3" />
     </Dialog>
+    <Dialog v-model:visible="showEliminarDialog" header="¿Eliminar orden de servicio?" :modal="true">
+      <div style="padding:1.5rem; text-align:center;">
+        <span>¿Seguro que deseas eliminar la orden <b>{{ ventaAEliminar?.folio || ventaAEliminar?.id }}</b>?</span>
+      </div>
+      <Button label="Eliminar" icon="pi pi-trash" class="p-button-danger mt-3" @click="eliminarOrdenConfirmada" />
+      <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary mt-3 ml-2" @click="showEliminarDialog = false" />
+    </Dialog>
+    <Dialog v-model:visible="showEliminarResultado" header="Resultado" :modal="true">
+      <div style="padding:1.5rem; text-align:center;">
+        <span>{{ eliminarResultado }}</span>
+      </div>
+      <Button label="Aceptar" icon="pi pi-check" @click="showEliminarResultado = false" class="mt-3" />
+    </Dialog>
   </div>
 </template>
 
@@ -206,11 +234,13 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import Textarea from 'primevue/textarea';
 import Divider from 'primevue/divider';
-import { getVentas, getDetalleVenta, asignarTecnicoVenta, getTecnicoVenta, deleteAsignacionTecnico } from '@/services/ventasService';
+import { getVentas, getDetalleVenta, asignarTecnicoVenta, getTecnicoVenta, deleteAsignacionTecnico, eliminarOrdenServicio } from '@/services/ventasService';
 import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getUsuarios } from '@/services/usuariosService';
 import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
+import { getAsignacionVenta } from '@/services/asignacionesService';
+import AsyncAsignacionCell from '@/components/AsyncAsignacionCell.vue';
 
 const ventas = ref([]);
 const loading = ref(true);
@@ -344,6 +374,7 @@ const ventasFiltradas = computed(() => {
 
 async function descargarPDF(venta) {
   loading.value = true;
+  // 1. Obtener detalle de venta y cliente
   const detalle = await getDetalleVenta(venta.id);
   const clientes = await getClientes();
   const cliente = clientes.find(c => c.id === venta.cliente_id) || {};
@@ -356,7 +387,21 @@ async function descargarPDF(venta) {
       nombre: art.nombre
     };
   });
-  const payload = { venta, cliente, articulos: articulosSeleccionados, empresa };
+  // 2. Obtener asignación actual desde backend
+  let asignacion = null;
+  try {
+    asignacion = await getAsignacionVenta(venta.id);
+    console.log('[DEBUG asignacion backend]', asignacion);
+  } catch (e) {
+    console.warn('No se pudo obtener asignación actual', e);
+  }
+  // 3. Construir payload para PDF usando asignacion si existe
+  const payload = {
+    venta: { ...venta, ...(asignacion || {}) },
+    cliente,
+    articulos: articulosSeleccionados,
+    empresa
+  };
   loading.value = false;
   await generarNotaVentaPDF(payload);
 }
@@ -461,6 +506,42 @@ async function verArticulos(venta) {
     };
   });
   showArticulosDialog.value = true;
+}
+
+function abrirEditarAsignacion({ ventaId, asignacion }) {
+  // Reutiliza el diálogo de asignación, precargando los datos actuales
+  const venta = ventas.value.find(v => v.id === ventaId);
+  if (!venta) return;
+  ventaParaAsignar.value = venta;
+  tecnicoSeleccionado.value = asignacion.tecnico_id || venta.tecnicoAsignado || null;
+  fechaServicio.value = asignacion.fecha_servicio || null;
+  horaServicio.value = asignacion.hora_servicio || null;
+  direccionServicio.value = asignacion.direccion || '';
+  cpServicio.value = asignacion.cp || '';
+  linkUbicacion.value = asignacion.link_ubicacion || '';
+  ordenClienteInfo.value = asignacion.cliente_info || {};
+  showAsignarDialog.value = true;
+}
+
+const showEliminarDialog = ref(false);
+const showEliminarResultado = ref(false);
+const ventaAEliminar = ref(null);
+const eliminarResultado = ref('');
+function confirmarEliminarOrden(venta) {
+  ventaAEliminar.value = venta;
+  showEliminarDialog.value = true;
+}
+async function eliminarOrdenConfirmada() {
+  if (!ventaAEliminar.value) return;
+  showEliminarDialog.value = false;
+  try {
+    await eliminarOrdenServicio(ventaAEliminar.value.id);
+    eliminarResultado.value = 'Orden eliminada correctamente.';
+    ventas.value = ventas.value.filter(v => v.id !== ventaAEliminar.value.id);
+  } catch (e) {
+    eliminarResultado.value = 'Error eliminando orden: ' + (e?.response?.data || e.message);
+  }
+  showEliminarResultado.value = true;
 }
 </script>
 

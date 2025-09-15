@@ -69,10 +69,17 @@ export async function generarNotaVentaPDF({ venta, cliente, articulos, empresa }
       {
         columns: [
           [
-            { text: 'Facturar a', style: 'sectionHeader' },
-            { text: cliente.nombre || '', style: 'clienteLabel' },
-            { text: cliente.direccion || '', style: 'clienteLabel' },
-            // Se omite mostrar RFC y Régimen fiscal del cliente en el PDF
+            { text: 'Cliente', style: 'sectionHeader' },
+            { text: `Nombre cliente: ${cliente.nombre || cliente.cliente_nombre || '-'}` , style: 'clienteLabel' },
+            { text: `Teléfonos: ${cliente.telefonos ? (Array.isArray(cliente.telefonos) ? cliente.telefonos.filter(Boolean).join(', ') : cliente.telefonos) : (cliente.telefono || '-')}` , style: 'clienteLabel' },
+            { text: `Fecha: ${venta.fecha_servicio || venta.fecha ? (typeof (venta.fecha_servicio || venta.fecha) === 'string' ? (venta.fecha_servicio || venta.fecha).split(/[ T]/)[0] : (venta.fecha_servicio || venta.fecha)) : '-'}` , style: 'clienteLabel' },
+            { text: `Hora: ${venta.hora_servicio || venta.hora || '-'}` , style: 'clienteLabel' },
+            { text: `Dirección: ${venta.direccion || venta.direccion_servicio || venta.direccionServicio || '-'}` , style: 'clienteLabel' },
+            { text: `CP: ${venta.cp || venta.cp_servicio || venta.cpServicio || '-'}` , style: 'clienteLabel' },
+            { text: `Link de ubicación: ${venta.link_ubicacion || venta.linkUbicacion || venta.link_ubicacion_servicio || '-'}` , style: 'clienteLabel' },
+            { text: `Usuario: ${cliente.usuario || (cliente.usuarios ? (Array.isArray(cliente.usuarios) ? cliente.usuarios.filter(Boolean).join(', ') : cliente.usuarios) : (cliente.username || '-') )}` , style: 'clienteLabel' },
+            { text: `Plataforma: ${cliente.plataforma || (cliente.plataformas ? (Array.isArray(cliente.plataformas) ? cliente.plataformas.filter(Boolean).join(', ') : cliente.plataformas) : '-')}` , style: 'clienteLabel' },
+            { text: `Descripción: ${venta.descripcion || venta.observaciones || venta.notas_cliente || cliente.descripcion || '-'}` , style: 'clienteLabel' }
           ],
           [
             { text: `Fecha del pedido : ${fechaOrden}`, style: 'clienteLabel', alignment: 'right' },
