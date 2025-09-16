@@ -981,62 +981,88 @@ def crear_venta(venta: Venta):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
-    fecha = venta.fecha or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # --- FOLIO GENERATION (SAFE, UNIQUE) ---
-    cursor.execute("LOCK TABLES ventas WRITE")
-    cursor.execute("SELECT folio FROM ventas WHERE folio LIKE 'SERVICIO-%' ORDER BY id DESC LIMIT 1")
-    last_folio_row = cursor.fetchone()
-    if last_folio_row and last_folio_row[0]:
-        import re
-        match = re.match(r"SERVICIO-(\d+)", last_folio_row[0])
-        last_num = int(match.group(1)) if match else 0
-    else:
-        last_num = 0
-    new_folio = f"SERVICIO-{str(last_num + 1).zfill(5)}"
-    cursor.execute("UNLOCK TABLES")
-    # --- END FOLIO GENERATION ---
+    # Normaliza fecha a formato MySQL DATETIME
+    try:
+        if venta.fecha:
+            fecha = str(venta.fecha).replace("T", " ")[:19]
+        else:
+            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    cursor.execute(
-        """
-        INSERT INTO ventas
-        (cliente_id, fecha, folio, referencia, fecha_envio, terminos_pago, metodo_entrega, vendedor, almacen, descuento, notas_cliente, terminos_condiciones, total, observaciones, requiere_factura)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (
-            venta.cliente_id, fecha, new_folio, venta.referencia, venta.fecha_envio, venta.terminos_pago,
-            venta.metodo_entrega, venta.vendedor, venta.almacen, venta.descuento, venta.notas_cliente,
-            venta.terminos_condiciones, venta.total, venta.observaciones, int(1 if getattr(venta, "requiereFactura", False) else 0)
-        )
-    )
-    venta_id = cursor.lastrowid
-
-    for item in venta.articulos:
-        # Obtener el tipo de artículo
-        cursor.execute("SELECT tipo FROM articulos WHERE id=%s", (item.articulo_id,))
-        tipo_row = cursor.fetchone()
-        tipo = tipo_row[0].lower() if tipo_row and tipo_row[0] else ""
-
-        # Validar duplicado de IMEI solo si no es servicio y tiene IMEI
-        if tipo != "servicio" and getattr(item, "imei", None):
-            cursor.execute("SELECT COUNT(*) FROM detalle_venta WHERE imei=%s", (item.imei,))
-            if cursor.fetchone()[0] > 0:
-                db.rollback()
-                cursor.close()
-                db.close()
-                raise HTTPException(status_code=400, detail=f"El IMEI {item.imei} ya fue vendido.")
+    try:
+        # --- FOLIO GENERATION (SAFE, UNIQUE) ---
+        cursor.execute("LOCK TABLES ventas WRITE")
+        cursor.execute("SELECT folio FROM ventas WHERE folio LIKE 'SERVICIO-%' ORDER BY id DESC LIMIT 1")
+        last_folio_row = cursor.fetchone()
+        if last_folio_row and last_folio_row[0]:
+            import re
+            match = re.match(r"SERVICIO-(\d+)", last_folio_row[0])
+            last_num = int(match.group(1)) if match else 0
+        else:
+            last_num = 0
+        new_folio = f"SERVICIO-{str(last_num + 1).zfill(5)}"
+        cursor.execute("UNLOCK TABLES")
+        # --- END FOLIO GENERATION ---
 
         cursor.execute(
-            "INSERT INTO detalle_venta (venta_id, articulo_id, cantidad, precio_unitario, subtotal, imei) VALUES (%s, %s, %s, %s, %s, %s)",
-            (venta_id, item.articulo_id, item.cantidad, item.precio_unitario, item.cantidad * item.precio_unitario, getattr(item, "imei", None))
+            """
+            INSERT INTO ventas
+            (cliente_id, fecha, folio, referencia, fecha_envio, terminos_pago, metodo_entrega, vendedor, almacen, descuento, notas_cliente, terminos_condiciones, total, observaciones, requiere_factura)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                venta.cliente_id, fecha, new_folio, venta.referencia, venta.fecha_envio, venta.terminos_pago,
+                venta.metodo_entrega, venta.vendedor, venta.almacen, venta.descuento, venta.notas_cliente,
+                venta.terminos_condiciones, venta.total, venta.observaciones, int(1 if getattr(venta, "requiereFactura", False) else 0)
+            )
         )
+        venta_id = cursor.lastrowid
 
-        # Si es servicio, NO descontar stock ni validar stock ni IMEI
-        if tipo == "servicio":
-            continue
+        for item in venta.articulos:
+            # Obtener el tipo de artículo
+            cursor.execute("SELECT tipo FROM articulos WHERE id=%s", (item.articulo_id,))
+            tipo_row = cursor.fetchone()
+            tipo = tipo_row[0].lower() if tipo_row and tipo_row[0] else ""
 
-    cursor.close()
-    db.close()
+            # Validar duplicado de IMEI solo si no es servicio y tiene IMEI
+            if tipo != "servicio" and getattr(item, "imei", None):
+                cursor.execute("SELECT COUNT(*) FROM detalle_venta WHERE imei=%s", (item.imei,))
+                if cursor.fetchone()[0] > 0:
+                    raise HTTPException(status_code=400, detail=f"El IMEI {item.imei} ya fue vendido.")
+
+            cursor.execute(
+                "INSERT INTO detalle_venta (venta_id, articulo_id, cantidad, precio_unitario, subtotal, imei) VALUES (%s, %s, %s, %s, %s, %s)",
+                (venta_id, item.articulo_id, item.cantidad, item.precio_unitario, item.cantidad * item.precio_unitario, getattr(item, "imei", None))
+            )
+
+        # Confirma la transacción
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        cursor.close()
+        db.close()
+        raise
+    except Exception as e:
+        db.rollback()
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=500, detail=f"Error al crear venta: {str(e)}")
+    finally:
+        try:
+            cursor.execute("UNLOCK TABLES")
+        except Exception:
+            pass
+        try:
+            cursor.close()
+        except Exception:
+            pass
+        try:
+            db.close()
+        except Exception:
+            pass
+
     return {"message": "Venta registrada exitosamente", "venta_id": venta_id, "folio": new_folio}
 
 @app.get("/ventas")
@@ -1048,19 +1074,20 @@ def listar_ventas():
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT v.*, c.nombre as cliente_nombre
         FROM ventas v
-        JOIN clientes c ON v.cliente_id = c.id
+        LEFT JOIN clientes c ON v.cliente_id = c.id
         ORDER BY v.fecha DESC
-    """)
+        """
+    )
     ventas = cursor.fetchall()
-    # Normaliza el flag a camelCase esperado por el frontend
     for v in ventas:
         try:
             v["requiereFactura"] = bool(v.get("requiere_factura", 0))
         except Exception:
-            v["requiereFactura"] = False
+            pass
     cursor.close()
     db.close()
     return ventas
