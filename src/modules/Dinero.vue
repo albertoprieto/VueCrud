@@ -26,6 +26,14 @@
         <Column field="referencia" header="Referencia" />
         <Column header="Acciones">
           <template #body="slotProps">
+            <!-- Ver comprobante si existe para esta referencia -->
+            <a v-if="urlComprobanteMovimiento(slotProps.data)" :href="urlComprobanteMovimiento(slotProps.data)" target="_blank" rel="noopener noreferrer">
+              <Button
+                icon="pi pi-download"
+                class="p-button-sm p-button-secondary mr-2"
+                label="Ver comprobante"
+              />
+            </a>
             <Button
               icon="pi pi-trash"
               class="p-button-sm p-button-danger"
@@ -48,6 +56,9 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import axios from 'axios';
+import { getTodosReportes } from '@/services/reportesServicio.js';
+import { getAsignacionesTecnicos } from '@/services/asignacionesService.js';
+import { getVentas } from '@/services/ventasService.js';
 
 const movimientos = ref([]);
 const cargando = ref(false);
@@ -85,7 +96,84 @@ const eliminarMovimiento = async (movimiento) => {
   cargando.value = false;
 };
 
-onMounted(cargarMovimientos);
+const comprobantesMap = ref({});
+const reportesCache = ref([]);
+
+const cargarComprobantesMap = async () => {
+  try {
+    const [reportes, asignaciones, ventas] = await Promise.all([
+      getTodosReportes(),
+      getAsignacionesTecnicos(),
+      getVentas()
+    ]);
+    reportesCache.value = Array.isArray(reportes) ? reportes : [];
+    const map = {};
+    for (const r of reportesCache.value) {
+      if (r && r.comprobante_path) {
+        const path = r.comprobante_path;
+        map[`ReporteServicio-${r.id}`] = path;
+        map[String(r.id)] = path;
+        const asig = asignaciones.find(a => a.id == r.asignacion_id);
+        if (asig && asig.venta_id) {
+          const v = Array.isArray(ventas) ? ventas.find(x => x.id == asig.venta_id) : null;
+          const folioVenta = v ? (v.folio || (v.id ? `SO-${String(v.id).padStart(5, '0')}` : '')) : '';
+          if (folioVenta) map[folioVenta] = path;
+        }
+        const parts = String(path).split('/');
+        if (parts.length >= 3) {
+          const folioServicio = parts[2];
+          if (folioServicio) map[folioServicio] = path;
+        }
+      }
+    }
+    comprobantesMap.value = map;
+  } catch (e) {
+    // Silencio
+  }
+};
+
+const apiOrigin = (() => {
+  try {
+    const u = new URL(import.meta.env.VITE_API_URL || window.location.origin);
+    return u.origin;
+  } catch {
+    return '';
+  }
+})();
+
+const urlComprobanteMovimiento = (mov) => {
+  const ref = (mov && mov.referencia ? String(mov.referencia) : '').trim();
+  if (!ref) return '';
+  let path = comprobantesMap.value[ref];
+  if (!path) {
+    const lowerRef = ref.toLowerCase();
+    const key = Object.keys(comprobantesMap.value).find(k => k && k.toLowerCase() === lowerRef);
+    if (key) path = comprobantesMap.value[key];
+  }
+  if (!path) {
+    const key = Object.keys(comprobantesMap.value).find(k => {
+      const a = (k || '').toLowerCase();
+      const b = ref.toLowerCase();
+      return a && (a.includes(b) || b.includes(a));
+    });
+    if (key) path = comprobantesMap.value[key];
+  }
+  // Fallback: buscar por substring en cualquier comprobante_path
+  if (!path && Array.isArray(reportesCache.value)) {
+    const encontrado = reportesCache.value.find(r => String(r.comprobante_path || '').toLowerCase().includes(ref.toLowerCase()));
+    if (encontrado) path = encontrado.comprobante_path;
+  }
+  if (!path) return '';
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${apiOrigin}${p}`;
+};
+
+onMounted(async () => {
+  await Promise.all([
+    cargarMovimientos(),
+    cargarComprobantesMap()
+  ]);
+});
 
 const totalIngresos = computed(() => movimientos.value.filter(m => m.tipo === 'Ingreso').reduce((acc, m) => acc + Number(m.monto), 0));
 const totalEgresos = computed(() => movimientos.value.filter(m => m.tipo === 'Egreso').reduce((acc, m) => acc + Number(m.monto), 0));

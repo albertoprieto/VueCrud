@@ -10,3 +10,9 @@ export const getReportePorAsignacion = async (asignacion_id) => {
   const res = await axios.get(`${API_URL}?asignacion_id=${asignacion_id}`);
   return res.data;
 };
+
+// Nuevo: obtener todos los reportes (incluye campos de comprobante)
+export const getTodosReportes = async () => {
+  const res = await axios.get(`${API_URL}-todos`);
+  return res.data || [];
+};
