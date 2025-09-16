@@ -60,8 +60,8 @@
       </Column>
       <Column field="pagado" header="¿Pagado?">
         <template #body="slotProps">
-          <span :style="{ color: slotProps.data.pagado ? '#28a745' : '#d32f2f', fontWeight: 'bold' }">
-            {{ slotProps.data.pagado ? 'Sí' : 'No' }}
+          <span :style="{ color: slotProps.data.pagado ? '#28a745' : (slotProps.data.comprobante_estado==='pendiente' ? '#f0ad4e' : '#d32f2f'), fontWeight: 'bold' }">
+            {{ slotProps.data.pagado ? 'Sí' : (slotProps.data.comprobante_estado==='pendiente' ? 'En revisión' : 'No') }}
           </span>
         </template>
       </Column>
@@ -81,31 +81,40 @@
             label="Eliminar"
             @click="confirmarEliminarReporte(slotProps.data)"
           />
-          <!-- <Button
-            icon="pi pi-file-pdf"
-            class="p-button-sm p-button-success ml-2"
-            label="Orden de servicio"
-            @click="descargarOrdenVenta(slotProps.data)"
-          /> -->
           <Button
             icon="pi pi-file-pdf"
             class="p-button-sm p-button-warning ml-2"
             label="Reporte de servicio"
             @click="descargarReporteServicio(slotProps.data)"
           />
+          <!-- Ver comprobante cuando existe -->
+          <a v-if="slotProps.data.comprobante_path" :href="urlComprobante(slotProps.data)" target="_blank" rel="noopener noreferrer">
+            <Button
+              icon="pi pi-download"
+              class="p-button-sm p-button-secondary ml-2"
+              label="Ver comprobante"
+            />
+          </a>
           <Button
-            v-if="!slotProps.data.pagado"
-            icon="pi pi-check-circle"
+            v-if="!slotProps.data.pagado && !slotProps.data.comprobante_path"
+            icon="pi pi-upload"
             class="p-button-sm p-button-success ml-2"
             label="Marcar como pagado"
             @click="marcarComoPagado(slotProps.data)"
           />
           <Button
-            v-if="slotProps.data.pagado"
-            icon="pi pi-credit-card"
-            class="p-button-sm p-button-help ml-2"
-            label="Facturar"
-            @click="abrirFacturaDialog(slotProps.data)"
+            v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
+            icon="pi pi-check-circle"
+            class="p-button-sm p-button-success ml-2"
+            label="Aprobar comprobante"
+            @click="aprobarComprobante(slotProps.data)"
+          />
+          <Button
+            v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
+            icon="pi pi-times-circle"
+            class="p-button-sm p-button-danger ml-2"
+            label="Rechazar comprobante"
+            @click="rechazarComprobante(slotProps.data)"
           />
         </template>
       </Column>
@@ -267,7 +276,7 @@
           <small v-else style="color:#28a745;display:block;margin-top:0.5rem;">{{ archivoComprobante?.name }}</small>
         </div>
         <div class="modal-actions">
-          <Button label="Confirmar" icon="pi pi-check" type="submit" :disabled="!archivoComprobante" />
+          <Button label="Subir y enviar a revisión" icon="pi pi-check" type="submit" :disabled="!archivoComprobante" />
           <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" type="button" @click="cancelarComprobante" />
         </div>
       </form>
@@ -376,9 +385,8 @@ const filtroPagado = ref('');
 const reportesFiltrados = computed(() => {
   let lista = reportes.value;
   // Si es técnico y NO es admin, filtra solo sus reportes
-  if (user.value.perfil === 'Tecnico') {
+  if (user.value && user.value.perfil === 'Tecnico') {
     lista = lista.filter(r => {
-      // nombre_instalador puede ser username o nombre
       return (
         (r.nombre_instalador && r.nombre_instalador.toLowerCase() === (user.value.username || '').toLowerCase())
       );
@@ -681,8 +689,7 @@ onMounted(async () => {
   });
 });
 
-async function marcarComoPagado(reporte) {
-  // Ahora abre el diálogo para cargar comprobante (mock). Solo permite continuar si hay archivo.
+function marcarComoPagado(reporte) {
   reporteSeleccionado.value = reporte;
   archivoComprobante.value = null;
   showComprobanteDialog.value = true;
@@ -694,15 +701,46 @@ function onComprobanteChange(event) {
 }
 
 async function confirmarPagadoConComprobante() {
-  if (!archivoComprobante.value) {
-    toast.add({ severity: 'warn', summary: 'Falta comprobante', detail: 'Debes cargar un comprobante.', life: 3000 });
-    return;
+  if (!archivoComprobante.value || !reporteSeleccionado.value) {
+    return toast.add({ severity: 'warn', summary: 'Falta comprobante', detail: 'Debes cargar un comprobante.', life: 3000 });
   }
   loading.value = true;
   try {
-    const reporte = reporteSeleccionado.value;
-    await axios.put(`${API_URL}/${reporte.id}`, { ...reporte, pagado: true });
-    // Registrar movimiento de dinero
+    // 1) Subir archivo a backend
+    const fd = new FormData();
+    fd.append('archivo', archivoComprobante.value);
+    await axios.post(`${API_URL}/${reporteSeleccionado.value.id}/comprobante`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    // 2) No marcamos pagado aún. Queda en revisión.
+    await axios.put(`${API_URL}/${reporteSeleccionado.value.id}`, { comprobante_estado: 'pendiente' });
+    await cargarReportes();
+    toast.add({ severity: 'success', summary: 'En revisión', detail: 'Comprobante enviado. Pendiente de aprobación.', life: 3000 });
+    showComprobanteDialog.value = false;
+    archivoComprobante.value = null;
+    reporteSeleccionado.value = null;
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo subir el comprobante.', life: 4000 });
+  }
+  loading.value = false;
+}
+
+function cancelarComprobante() {
+  showComprobanteDialog.value = false;
+  archivoComprobante.value = null;
+}
+
+async function aprobarComprobante(reporte) {
+  if (user.value?.perfil !== 'Admin') {
+    return toast.add({ severity: 'warn', summary: 'Permiso', detail: 'Solo Admin puede aprobar.', life: 3000 });
+  }
+  loading.value = true;
+  try {
+    const token = localStorage.getItem('access_token') || '';
+    await axios.put(`${API_URL}/${reporte.id}/aprobar-comprobante`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    // Registrar movimiento de dinero al aprobar
     await registrarAbonoDinero({
       fecha: new Date().toISOString().slice(0, 19).replace('T', ' '),
       tipo: 'Ingreso',
@@ -711,24 +749,11 @@ async function confirmarPagadoConComprobante() {
       referencia: reporte.folio || `ReporteServicio-${reporte.id}`
     });
     await cargarReportes();
-    toast.add({ severity: 'success', summary: 'Pagado', detail: 'El reporte fue marcado como pagado y el movimiento registrado.', life: 3000 });
-    messageDialogText.value = 'El reporte fue marcado como pagado.';
-    showMessageDialog.value = true;
-    showComprobanteDialog.value = false;
-    archivoComprobante.value = null;
-    reporteSeleccionado.value = null;
+    toast.add({ severity: 'success', summary: 'Aprobado', detail: 'Comprobante aprobado. Reporte pagado.', life: 3000 });
   } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo marcar como pagado.', life: 4000 });
-    messageDialogText.value = 'No se pudo marcar como pagado.';
-    showMessageDialog.value = true;
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo aprobar el comprobante.', life: 4000 });
   }
   loading.value = false;
-}
-
-function cancelarComprobante() {
-  showComprobanteDialog.value = false;
-  archivoComprobante.value = null;
-  // No se hace nada más; es un mock de carga.
 }
 
 // Nueva función para facturar
@@ -895,6 +920,31 @@ async function enviarFactura() {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Error al facturar.', life: 4000 });
     messageDialogText.value = 'Error al facturar.';
     showMessageDialog.value = true;
+  }
+  loading.value = false;
+}
+
+function urlComprobante(reporte) {
+  if (!reporte?.comprobante_path) return '#';
+  const base = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
+  const path = reporte.comprobante_path.startsWith('/') ? reporte.comprobante_path : `/${reporte.comprobante_path}`;
+  return `${base}${path}`;
+}
+
+async function rechazarComprobante(reporte) {
+  if (!(user.value && user.value.perfil === 'Admin')) {
+    return toast.add({ severity: 'warn', summary: 'Permiso', detail: 'Solo Admin puede rechazar.', life: 3000 });
+  }
+  loading.value = true;
+  try {
+    const token = localStorage.getItem('access_token') || '';
+    await axios.put(`${API_URL}/${reporte.id}/rechazar-comprobante`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    await cargarReportes();
+    toast.add({ severity: 'success', summary: 'Rechazado', detail: 'Comprobante rechazado.', life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo rechazar el comprobante.', life: 4000 });
   }
   loading.value = false;
 }

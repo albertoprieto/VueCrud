@@ -25,6 +25,8 @@ from email.mime.text import MIMEText
 from fastapi import APIRouter
 from twilio.rest import Client
 from fastapi import Request
+from fastapi import UploadFile, File
+from fastapi.staticfiles import StaticFiles
 
 
 app = FastAPI()
@@ -41,6 +43,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Servir archivos de comprobantes
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 
@@ -1654,7 +1660,9 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
     cursor = db.cursor()
     # Lista de columnas válidas según DESCRIBE reportes_servicio
     valid_columns = [
-        "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos"
+        "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos",
+        # nuevas columnas para comprobantes
+        "comprobante_path", "comprobante_estado", "aprobado_por", "aprobado_fecha"
     ]
     campos = []
     valores = []
@@ -1989,3 +1997,142 @@ def get_asignacion_venta(venta_id: int):
         except Exception:
             asignacion['cliente_info'] = None
     return asignacion or {}
+
+@app.post("/reportes-servicio/{reporte_id}/comprobante")
+def subir_comprobante_reporte(reporte_id: int, archivo: UploadFile = File(...), request: Request = None):
+    """Sube un comprobante de pago para un reporte de servicio.
+    Guarda bajo uploads/servicios/<folio>/ y marca comprobante_estado='pendiente'.
+    """
+    # Validar reporte y obtener asignacion_id
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, asignacion_id FROM reportes_servicio WHERE id=%s", (reporte_id,))
+    rep = cursor.fetchone()
+    if not rep:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+
+    # Obtener folio de la venta asociada a la asignación
+    folio = None
+    try:
+        cursor.execute("SELECT venta_id FROM venta_tecnico WHERE id=%s", (rep["asignacion_id"],))
+        row = cursor.fetchone()
+        if row and row.get("venta_id"):
+            cursor.execute("SELECT folio FROM ventas WHERE id=%s", (row["venta_id"],))
+            v = cursor.fetchone()
+            folio = v.get("folio") if v else None
+    except Exception:
+        folio = None
+    if not folio:
+        # fallback
+        folio = f"ReporteServicio-{reporte_id}"
+
+    # Crear carpeta y guardar archivo
+    import pathlib, shutil
+    safe_folio = ''.join(c for c in folio if c.isalnum() or c in ('-', '_'))
+    base_dir = os.path.join("uploads", "servicios", safe_folio)
+    os.makedirs(base_dir, exist_ok=True)
+    filename = archivo.filename or "comprobante"
+    # sanitizar nombre
+    filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
+    dest_path = os.path.join(base_dir, filename)
+    with open(dest_path, "wb") as out:
+        shutil.copyfileobj(archivo.file, out)
+
+    # Guardar en DB ruta y estado pendiente
+    rel_path = os.path.relpath(dest_path, start=".")  # relativo al proyecto
+    cursor2 = db.cursor()
+    try:
+        cursor2.execute(
+            "UPDATE reportes_servicio SET comprobante_path=%s, comprobante_estado=%s WHERE id=%s",
+            (rel_path, "pendiente", reporte_id)
+        )
+        db.commit()
+    finally:
+        cursor2.close()
+        cursor.close()
+        db.close()
+
+    base_url = str(request.base_url) if request else ""
+    file_url = f"{base_url}uploads/servicios/{safe_folio}/{filename}" if base_url else rel_path
+    return {"message": "Comprobante subido", "comprobante_path": rel_path, "comprobante_url": file_url, "estado": "pendiente"}
+
+@app.put("/reportes-servicio/{reporte_id}/aprobar-comprobante")
+def aprobar_comprobante_reporte(reporte_id: int, current=Depends(get_current_user)):
+    """Aprueba el comprobante de un reporte. Requiere rol Admin. Marca pagado=1."""
+    # Obtener perfil del usuario
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    user = cursor.fetchone()
+    if not user or user.get("perfil") != "Admin":
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    # Verificar que exista un comprobante cargado
+    cursor.execute("SELECT comprobante_path, comprobante_estado FROM reportes_servicio WHERE id=%s", (reporte_id,))
+    rep = cursor.fetchone()
+    if not rep:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+    if not rep.get("comprobante_path"):
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=400, detail="No hay comprobante para aprobar")
+
+    # Aprobar
+    cursor2 = db.cursor()
+    try:
+        cursor2.execute(
+            "UPDATE reportes_servicio SET comprobante_estado=%s, aprobado_por=%s, aprobado_fecha=NOW(), pagado=1 WHERE id=%s",
+            ("aprobado", user.get("username"), reporte_id)
+        )
+        db.commit()
+    finally:
+        cursor2.close()
+        cursor.close()
+        db.close()
+    return {"message": "Comprobante aprobado y reporte marcado como pagado"}
+
+@app.put("/reportes-servicio/{reporte_id}/rechazar-comprobante")
+def rechazar_comprobante_reporte(reporte_id: int, current=Depends(get_current_user)):
+    """Rechaza el comprobante de un reporte. Requiere rol Admin."""
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    user = cursor.fetchone()
+    if not user or user.get("perfil") != "Admin":
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    cursor2 = db.cursor()
+    try:
+        cursor2.execute(
+            "UPDATE reportes_servicio SET comprobante_estado=%s WHERE id=%s",
+            ("rechazado", reporte_id)
+        )
+        db.commit()
+    finally:
+        cursor2.close()
+        cursor.close()
+        db.close()
+    return {"message": "Comprobante rechazado"}
