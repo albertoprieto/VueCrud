@@ -59,8 +59,17 @@
                 <li v-if="parsedClienteInfo.descripcion">Desc: {{ parsedClienteInfo.descripcion }}</li>
               </ul>
             </div>
-            <div class="dialog-actions" style="display:flex; gap:1rem; margin-top:1.5rem;">
-              <Button label="Agregar Reporte" icon="pi pi-plus" class="p-button-success p-button-sm" @click="irReporteServicio(selectedEvent.extendedProps)" />
+            <div class="dialog-actions" style="display:flex; gap:1rem; margin-top:1.5rem; flex-wrap:wrap;">
+              <template v-if="!reporteDeAsignacion(selectedEventData.value)">
+                <Button label="Agregar Reporte" icon="pi pi-plus" class="p-button-success p-button-sm" @click="irReporteServicio(selectedEvent.extendedProps)" />
+              </template>
+              <template v-else>
+                <Button label="Consultar Reporte" icon="pi pi-file-pdf" class="p-button-warning p-button-sm" @click="consultarReporte(selectedEventData.value)" />
+                <a v-if="reporteDeAsignacion(selectedEventData.value)?.comprobante_path" :href="urlComprobante(reporteDeAsignacion(selectedEventData.value))" target="_blank" rel="noopener noreferrer">
+                  <Button label="Ver Comprobante" icon="pi pi-download" class="p-button-secondary p-button-sm" />
+                </a>
+                <Button label="Eliminar Reporte" icon="pi pi-trash" class="p-button-danger p-button-sm" @click="eliminarReporte(selectedEventData.value)" />
+              </template>
               <Button label="Descargar Orden" icon="pi pi-file-pdf" class="p-button-secondary p-button-sm" @click="descargarNota(selectedEventData)" v-if="selectedEventData.venta_id" />
             </div>
           </div>
@@ -105,12 +114,35 @@
           <Column field="direccion" header="Dirección" />
           <Column header="Acciones">
             <template #body="slotProps">
-              <Button
-                label="Agregar Reporte"
-                icon="pi pi-plus"
-                class="p-button-success mr-2"
-                @click="irReporteServicio(slotProps.data)"
-              />
+              <template v-if="!reporteDeAsignacion(slotProps.data)">
+                <Button
+                  label="Agregar Reporte"
+                  icon="pi pi-plus"
+                  class="p-button-success mr-2"
+                  @click="irReporteServicio(slotProps.data)"
+                />
+              </template>
+              <template v-else>
+                <Button
+                  label="Consultar Reporte"
+                  icon="pi pi-file-pdf"
+                  class="p-button-warning mr-2"
+                  @click="consultarReporte(slotProps.data)"
+                />
+                <a v-if="reporteDeAsignacion(slotProps.data)?.comprobante_path" :href="urlComprobante(reporteDeAsignacion(slotProps.data))" target="_blank" rel="noopener noreferrer">
+                  <Button
+                    label="Ver Comprobante"
+                    icon="pi pi-download"
+                    class="p-button-secondary mr-2"
+                  />
+                </a>
+                <Button
+                  label="Eliminar Reporte"
+                  icon="pi pi-trash"
+                  class="p-button-danger mr-2"
+                  @click="eliminarReporte(slotProps.data)"
+                />
+              </template>
               <Button
                 label="Descargar Orden"
                 icon="pi pi-file-pdf"
@@ -146,6 +178,9 @@ import { getTodosArticulos } from '@/services/articulosService';
 import { generarNotaVentaPDF } from '@/services/NotaVentaPdfService.js';
 import Dialog from 'primevue/dialog';
 import { useLoginStore } from '@/stores/loginStore';
+import axios from 'axios'
+import { getTodosReportes } from '@/services/reportesServicio.js'
+import { generarReporteServicioPDF } from '@/services/reporteServicioPdfService.js'
 
 const props = defineProps({
   vista: {
@@ -222,6 +257,94 @@ const asignacionesFiltradasOrdenadas = computed(() => {
   return lista;
 });
 
+const reportes = ref([])
+const reportesPorAsignacion = ref({})
+
+async function cargarReportesServicios() {
+  try {
+    const data = await getTodosReportes()
+    reportes.value = Array.isArray(data) ? data : []
+    const map = {}
+    for (const r of reportes.value) {
+      if (r.asignacion_id != null) {
+        map[r.asignacion_id] = r
+      }
+    }
+    reportesPorAsignacion.value = map
+  } catch (e) {
+    // silent
+  }
+}
+
+function reporteDeAsignacion(asignacion) {
+  if (!asignacion) return null
+  return reportesPorAsignacion.value[asignacion.id]
+}
+
+function urlComprobante(rep) {
+  if (!rep?.comprobante_path) return '#'
+  const base = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
+  const path = rep.comprobante_path.startsWith('/') ? rep.comprobante_path : `/${rep.comprobante_path}`
+  return `${base}${path}`
+}
+
+async function consultarReporte(asignacion) {
+  const rep = reporteDeAsignacion(asignacion)
+  if (!rep) return
+  try {
+    // Obtener venta y cliente asociados (opcional)
+    let venta = null, cliente = null
+    if (asignacion.venta_id) {
+      const ventas = await getVentas()
+      venta = ventas.find(v => v.id === asignacion.venta_id)
+      if (venta) {
+        const clientes = await getClientes()
+        cliente = clientes.find(c => c.id === venta.cliente_id) || null
+      }
+    }
+    const reporteCampos = {
+      tipo_servicio: rep.tipo_servicio,
+      lugar_instalacion: rep.lugar_instalacion,
+      marca: rep.marca,
+      submarca: rep.submarca,
+      modelo: rep.modelo,
+      placas: rep.placas,
+      color: rep.color,
+      numero_economico: rep.numero_economico,
+      modelo_gps: rep.modelo_gps,
+      imei: rep.imei,
+      sim_serie: rep.sim_serie,
+      accesorios: rep.accesorios,
+      ubicacion_gps: rep.ubicacion_gps,
+      ubicacion_bloqueo: rep.ubicacion_bloqueo,
+      observaciones: rep.observaciones,
+      subtotal: rep.subtotal,
+      total: rep.total,
+      forma_pago: rep.forma_pago,
+      monto_tecnico: rep.monto_tecnico,
+      viaticos: rep.viaticos,
+      pagado: rep.pagado,
+      nombre_cliente: rep.nombre_cliente,
+      nombre_instalador: rep.nombre_instalador
+    }
+    await generarReporteServicioPDF({ reporte: reporteCampos, venta, cliente, empresa: { nombre: 'GPSubicacion.com' } })
+  } catch (e) {
+    window.toast && window.toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF', life: 4000 })
+  }
+}
+
+async function eliminarReporte(asignacion) {
+  const rep = reporteDeAsignacion(asignacion)
+  if (!rep) return
+  if (!confirm('¿Eliminar reporte?')) return
+  try {
+    await axios.delete(`${import.meta.env.VITE_API_URL}/reportes-servicio/${rep.id}`)
+    await cargarReportesServicios()
+  } catch (e) {
+    window.toast && window.toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar', life: 4000 })
+  }
+}
+
 onMounted(async () => {
   loading.value = true;
   const [asignacionesRaw, clientesRaw, ventasRaw] = await Promise.all([
@@ -259,6 +382,7 @@ onMounted(async () => {
     ...a
   }));
   calendarOptions.value.events = events.value;
+  await cargarReportesServicios()
 });
 
 function buscarTecnico(event) {

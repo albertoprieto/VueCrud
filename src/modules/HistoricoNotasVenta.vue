@@ -120,7 +120,7 @@
           <Button
             v-if="slotProps.data.status === 'Asignado'"
             icon="pi pi-file-pdf"
-            label="PDF"
+            label="Orden de Servicio"
             class="p-button-sm p-button-success ml-2"
             @click="descargarPDF(slotProps.data)"
           />
