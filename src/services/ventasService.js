@@ -39,3 +39,19 @@ export const eliminarOrdenServicio = async (ventaId) => {
   const res = await axios.delete(`${API_URL}/${ventaId}`);
   return res.data;
 };
+
+export const uploadConstanciaVenta = async (ventaId, file, rfc = null) => {
+  const form = new FormData();
+  form.append('archivo', file);
+  if (rfc) form.append('rfc', rfc);
+  const res = await axios.post(`${API_URL}/${ventaId}/constancia`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return res.data;
+};
+
+// Nueva función: eliminar constancia fiscal asociada a una venta
+export const deleteConstanciaVenta = async (ventaId) => {
+  const res = await axios.delete(`${API_URL}/${ventaId}/constancia`);
+  return res.data;
+};

@@ -124,6 +124,16 @@
             class="p-button-sm p-button-success ml-2"
             @click="descargarPDF(slotProps.data)"
           />
+          <!-- Nueva acción: visualizar constancia fiscal -->
+          <Button
+            v-if="slotProps.data.constancia_url"
+            icon="pi pi-file-pdf"
+            label="Constancia Fiscal"
+            class="p-button-sm p-button-warning ml-2"
+            :title="slotProps.data.rfc ? 'Constancia RFC ' + slotProps.data.rfc : 'Ver constancia fiscal'"
+            @click="verConstancia(slotProps.data)"
+          />
+          <i v-else class="pi pi-file-pdf ml-2" style="opacity:0.25" :title="'Sin constancia'" />
           <Button
             icon="pi pi-times"
             label="Eliminar orden"
@@ -220,6 +230,21 @@
         <span>{{ eliminarResultado }}</span>
       </div>
       <Button label="Aceptar" icon="pi pi-check" @click="showEliminarResultado = false" class="mt-3" />
+    </Dialog>
+    <Dialog v-model:visible="showConstanciaDialog" header="Constancia Fiscal" :modal="true" class="constancia-dialog">
+      <div v-if="constanciaSeleccionada && esPdf(constanciaSeleccionada.constancia_url)" class="pdf-wrapper">
+        <iframe :src="constanciaSeleccionada.constancia_url" frameborder="0"></iframe>
+      </div>
+      <div v-else-if="constanciaSeleccionada">
+        <img :src="constanciaSeleccionada.constancia_url" alt="Constancia" class="constancia-img" />
+      </div>
+      <div v-else>
+        <span>No disponible.</span>
+      </div>
+      <div class="dialog-actions">
+        <a v-if="constanciaSeleccionada" :href="constanciaSeleccionada.constancia_url" target="_blank" download class="p-button p-button-sm p-button-outlined">Descargar</a>
+        <Button label="Cerrar" class="p-button-text" @click="showConstanciaDialog=false" />
+      </div>
     </Dialog>
   </div>
 </template>
@@ -543,6 +568,15 @@ async function eliminarOrdenConfirmada() {
   }
   showEliminarResultado.value = true;
 }
+
+// Nuevos refs para constancia fiscal
+const showConstanciaDialog = ref(false);
+const constanciaSeleccionada = ref(null);
+function verConstancia(v) {
+  constanciaSeleccionada.value = v;
+  showConstanciaDialog.value = true;
+}
+function esPdf(url) { return url && url.toLowerCase().includes('.pdf'); }
 </script>
 
 <style scoped>
@@ -594,5 +628,10 @@ async function eliminarOrdenConfirmada() {
   color: var(--color-text, #795548);
   border: 1px solid var(--color-text, #795548);
 }
+.constancia-dialog { width:70vw; max-width:900px; }
+.pdf-wrapper { height:70vh; }
+.pdf-wrapper iframe { width:100%; height:100%; }
+.constancia-img { max-width:100%; height:auto; display:block; margin:0 auto; }
+.dialog-actions { display:flex; justify-content:space-between; align-items:center; margin-top:1rem; }
 </style>
 <!-- estilos de ubicación removidos -->
