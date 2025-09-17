@@ -104,7 +104,7 @@
         </div>
         <div class="ventas-form-col">
           <label>Constancia fiscal</label>
-          <input type="file" class="file-input" @change="e => archivoConstancia.value = e.target.files[0]" :disabled="!requiereFactura" />
+          <input type="file" class="file-input" @change="onConstanciaFileChange" :disabled="!requiereFactura" />
         </div>
       </div>
 
@@ -207,7 +207,6 @@
         <div class="alerta-header">
           <span class="alerta-titulo">Stock insuficiente en la ubicación seleccionada</span>
           <div class="alerta-acciones">
-            <Button label="Ajustar a stock" class="p-button-text" @click="ajustarACapacidad" />
             <Button label="Cambiar ubicación" class="p-button-text" @click="abrirSelectorUbicacion" />
             <Button v-if="esAdmin" label="Transferir IMEIs" class="p-button-text" @click="irATransferirImeis" />
           </div>
@@ -295,7 +294,7 @@ import { useRouter } from 'vue-router';
 import { registrarMovimiento } from '@/services/inventarioService';
 import { getQuotations, updateQuotation } from '@/services/quotationService';
 import Chip from 'primevue/chip';
-
+const archivoConstancia = ref(null);
 const venta = reactive({
   cliente_id: null,
   fecha: new Date().toISOString().slice(0, 10),
@@ -363,53 +362,61 @@ const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() ===
 
 const requiereFactura = ref(false);
 const rfc = ref('XAXX010101000');
-const archivoConstancia = ref(null);
+
+
+watch(requiereFactura, (val) => {
+  if (!val) {
+    archivoConstancia.value = null;
+    rfc.value = 'XAXX010101000';
+  }
+});
 
 async function onSeleccionarUbicacion(id) {
-  // Usar IMEIs como fuente canonical y mapear a stock por artículo
   let articulosUbicacion = [];
   try {
     const imeis = await getImeisPorUbicacion(id);
     articulosUbicacion = agruparStockDesdeImeis(imeis);
-
     console.info('[Ubicación] Stock calculado a partir de IMEIs (fuente canonical).');
   } catch (_) {
-    // si falla IMEIs deja la lista vacía (se añade instalación abajo)
     articulosUbicacion = [];
   }
-  // Agrega el objeto de instalación a la ubicación seleccionada
   const instalacionObj = {
     cantidad: 1,
     id: 5,
     stock: 1,
     articulo_id: 5,
     precio_unitario: 650,
-  nombre: 'Instalacion a Domicilio GDL',
-  tipo: 'Servicio'
+    nombre: 'Instalacion a Domicilio GDL',
+    tipo: 'Servicio'
   };
   articulosUbicacion.push(instalacionObj);
   articulosDisponibles.value = articulosUbicacion;
-  // Log enfocado: coincidencias entre cotización y ubicacion
-  logCoincidenciasCotizacionUbicacion();
-  // Log adicional: artículos por SKU en la ubicación seleccionada
+
   try {
-    console.groupCollapsed('[Ubicación] Artículos por SKU');
+    const ubic = ubicaciones.value.find(u => String(u.id) === String(id));
+    console.groupCollapsed('[Ubicación] Selección');
+    console.log('ID:', id, '| Nombre:', ubic ? ubic.nombre : 'Desconocida');
     const items = (Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : []).map(art => ({
       sku: getArticuloSkuById(art.id ?? art.articulo_id),
-      id: art.id ?? art.articulo_id,
+      articulo_id: art.id ?? art.articulo_id,
       nombre: art.nombre ?? '',
       stock: art.stock ?? 0,
       tipo: art.tipo ?? ''
     }));
-  //
+    console.table(items);
     console.groupEnd();
-  } catch (_) {}
+  } catch (err) {
+    console.warn('[Ubicación] No se pudo generar tabla de stock:', err?.message || err);
+  }
+
+  logCoincidenciasCotizacionUbicacion();
 }
 
 function logCoincidenciasCotizacionUbicacion() {
   try {
     const cotizacionArts = Array.isArray(venta.articulos) ? venta.articulos : [];
     const ubicacionArts = Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [];
+
     const detalle = cotizacionArts.map(a => {
       const artU = ubicacionArts.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
       const servicio = esServicio(a.articulo_id);
@@ -418,7 +425,7 @@ function logCoincidenciasCotizacionUbicacion() {
       const existe = servicio || !!artU;
       const stockOK = servicio || (Number(stock) >= Number(requerido));
       return {
-  sku: getArticuloSkuById(a.articulo_id),
+        sku: getArticuloSkuById(a.articulo_id),
         articulo_id: a.articulo_id,
         requerido,
         stock_disponible: stock,
@@ -426,23 +433,32 @@ function logCoincidenciasCotizacionUbicacion() {
         stock_suficiente: stockOK
       };
     });
+
+    const faltantes = detalle.filter(d => !d.existe_en_ubicacion || (!d.stock_suficiente && d.stock_disponible !== 'NA'));
+
     const totales = {
       total_articulos_cotizacion: detalle.length,
       coinciden_en_ubicacion: detalle.filter(d => d.existe_en_ubicacion).length,
       con_stock_suficiente: detalle.filter(d => d.stock_suficiente).length,
+      faltantes: faltantes.length,
       ubicacion_valida: ubicacionValida.value && !stockInsuficiente.value
     };
+
     console.groupCollapsed('[Orden Servicio] Coincidencias cotización vs ubicación');
-  //
-  //
+    console.table(detalle);
+    if (faltantes.length) {
+      console.groupCollapsed('Faltantes / Incompletos');
+      console.table(faltantes);
+      console.groupEnd();
+    }
+    console.log('Totales:', totales);
     console.groupEnd();
-  } catch (_) {
-    // silencio: este log es solo de depuración
+  } catch (err) {
+    console.warn('[Orden Servicio] Error generando log de coincidencias:', err?.message || err);
   }
 }
 
 onMounted(async () => {
-  // Catálogo de artículos para resolver SKU/nombres en logs
   try {
     articulosCatalog.value = await getTodosArticulos();
   } catch (_) { articulosCatalog.value = []; }
@@ -458,9 +474,54 @@ onMounted(async () => {
   const ventas = await getVentas();
   const usuarios = await getUsuarios();
   vendedores.value = usuarios.filter(u => u.perfil === 'Vendedor');
-
-  // Usuario actual viene del store de login (usuarioActual es computed)
 });
+
+const articuloCatalogIndex = ref({ byId: new Map(), bySku: new Map(), byNormName: new Map() });
+
+function normalize(str) {
+  return (str || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^\w\s]/g, ' ') // quitar símbolos raros
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function buildArticuloIndex(catalog = []) {
+  const byId = new Map();
+  const bySku = new Map();
+  const byNormName = new Map();
+  (Array.isArray(catalog) ? catalog : []).forEach(a => {
+    if (!a) return;
+    byId.set(a.id, a);
+    if (a.sku) bySku.set(normalize(a.sku), a);
+    if (a.nombre) byNormName.set(normalize(a.nombre), a);
+  });
+  articuloCatalogIndex.value = { byId, bySku, byNormName };
+}
+
+function findArticuloInCatalogBySkuOrNombre(sku, nombre) {
+  if (!articuloCatalogIndex.value.byId.size) buildArticuloIndex(articulosCatalog.value || []);
+  const normSku = normalize(sku);
+  const normName = normalize(nombre);
+  const { bySku, byNormName } = articuloCatalogIndex.value;
+  if (normSku && bySku.has(normSku)) return bySku.get(normSku);
+  if (normName && byNormName.has(normName)) return byNormName.get(normName);
+  if (normName) {
+    for (const [k, v] of byNormName.entries()) {
+      if (k.includes(normName) || normName.includes(k)) return v;
+    }
+  }
+  return null;
+}
+
+function getArticuloSkuById(articulo_id) {
+  if (!articuloCatalogIndex.value.byId.size) buildArticuloIndex(articulosCatalog.value || []);
+  const art = articuloCatalogIndex.value.byId.get(articulo_id);
+  return art ? art.sku || articulo_id : articulo_id;
+}
 
 watch(
   () => venta.cliente_id,
@@ -490,14 +551,14 @@ async function guardarVentaConLoading() {
       loadingGuardar.value = false;
       return;
     }
-    const { addVenta } = await import('@/services/ventasService');
+    const { addVenta, uploadConstanciaVenta } = await import('@/services/ventasService');
     const ubicacionObj = ubicaciones.value.find(u => u.id === venta.ubicacion_id);
     venta.almacen = ubicacionObj ? ubicacionObj.nombre : '';
     const articulosLimpios = venta.articulos.map(a => ({
       articulo_id: a.articulo_id,
       cantidad: a.cantidad,
       precio_unitario: a.precio_unitario,
-        imeis: []
+      imeis: []
     }));
     const response = await addVenta({
       cliente_id: venta.cliente_id,
@@ -509,15 +570,28 @@ async function guardarVentaConLoading() {
       vendedor: venta.vendedor,
       almacen: venta.almacen,
       descuento: venta.descuento,
-  requiereFactura: requiereFactura.value,
+      requiereFactura: requiereFactura.value,
       notas_cliente: venta.notas_cliente,
       terminos_condiciones: venta.terminos_condiciones,
-  total: totalVenta.value,
+      total: totalVenta.value,
       observaciones: venta.observaciones,
-      articulos: articulosLimpios
+      articulos: articulosLimpios,
+      rfc: requiereFactura.value ? rfc.value : null
     });
 
     folioAsignado.value = response.folio || '';
+
+    const ventaId = response.venta_id || response.id;
+
+    if (requiereFactura.value && archivoConstancia.value && ventaId) {
+      try {
+        console.log('Subiendo constancia fiscal para venta ID:', ventaId);
+        await uploadConstanciaVenta(ventaId, archivoConstancia.value, rfc.value || null);
+      } catch (e) {
+        console.warn('No se pudo subir constancia fiscal', e);
+        toast.add({ severity: 'warn', summary: 'Constancia', detail: 'Orden creada pero la constancia no se subió.', life: 3500 });
+      }
+    }
 
     if (cotizacionSeleccionada.value) {
       const cotizacion = cotizacionesCliente.value.find(c => c.id === cotizacionSeleccionada.value);
@@ -531,10 +605,9 @@ async function guardarVentaConLoading() {
               precio_unitario: a.precio_unitario
             };
           });
-        } else {
+        } else if (typeof venta.articulos === 'object' && venta.articulos) {
           articulosObj = venta.articulos;
         }
-
         await updateQuotation(cotizacion.id, {
           ...cotizacion,
           status: 'Autorizada',
@@ -584,7 +657,6 @@ const stockInsuficiente = computed(() => {
   if (!venta.ubicacion_id) return false;
   return venta.articulos.some(a => {
     if (esServicio(a.articulo_id)) return false;
-    // Buscar el artículo en la ubicación por id o articulo_id
     const artUbicacion = articulosDisponibles.value.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
     const stock = artUbicacion ? artUbicacion.stock ?? 0 : 0;
     return a.cantidad > stock;
@@ -614,7 +686,6 @@ const detalleFaltantes = computed(() => {
 });
 
 function ajustarACapacidad() {
-  // Ajusta cantidades a lo disponible en la ubicación
   venta.articulos = venta.articulos.map(a => {
     if (esServicio(a.articulo_id)) return a;
     const artU = articulosDisponibles.value.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
@@ -624,7 +695,6 @@ function ajustarACapacidad() {
 }
 
 function abrirSelectorUbicacion() {
-  // simple: enfocarse al dropdown de ubicación
   toast.add({ severity: 'info', summary: 'Selecciona otra ubicación', detail: 'Abre el selector “Ubicación o Técnico”.', life: 2500 });
 }
 
@@ -659,13 +729,11 @@ function cargarCotizacionEnVenta(cotizacion) {
   if (typeof cotizacion.articulos === 'string') {
     try {
       const parsed = JSON.parse(cotizacion.articulos);
-      articulos = Object.values(parsed);
-    } catch (e) {
-      articulos = [];
-    }
+      articulos = Object.values(parsed || {});
+    } catch (_) { articulos = []; }
   } else if (Array.isArray(cotizacion.articulos)) {
     articulos = cotizacion.articulos;
-  } else if (typeof cotizacion.articulos === 'object') {
+  } else if (typeof cotizacion.articulos === 'object' && cotizacion) {
     articulos = Object.values(cotizacion.articulos);
   }
 
@@ -678,7 +746,6 @@ function cargarCotizacionEnVenta(cotizacion) {
   venta.ubicacion_id = cotizacion.ubicacion_id || null;
   venta.notas_cliente = cotizacion.notas_cliente || '';
   venta.terminos_condiciones = cotizacion.terminos_condiciones || '';
-  // Log enfocado cuando ya hay ubicación cargada
   if (venta.ubicacion_id) {
     logCoincidenciasCotizacionUbicacion();
   }
@@ -727,85 +794,46 @@ function getArticuloNombreAsync(articulo_id, row) {
   return articulo_id;
 }
 
-function getArticuloSkuById(articulo_id) {
-  if (!articulo_id && articulo_id !== 0) return '';
-  // Primero intenta desde los artículos de la ubicación (si lo traen)
-  const artU = (Array.isArray(articulosDisponibles.value) ? articulosDisponibles.value : [])
-    .find(a => a.id === articulo_id || a.articulo_id === articulo_id);
-  if (artU && artU.sku) return String(artU.sku);
-  // Luego intenta desde el catálogo general
-  const artC = (Array.isArray(articulosCatalog.value) ? articulosCatalog.value : [])
-    .find(a => a.id === articulo_id);
-  return artC && artC.sku ? String(artC.sku) : '-';
-}
-
-function normalize(str) {
-  return String(str ?? '').trim().toUpperCase();
-}
-
-function findArticuloInCatalogBySkuOrNombre(sku, nombre) {
-  const catalog = Array.isArray(articulosCatalog.value) ? articulosCatalog.value : [];
-  const nSku = normalize(sku);
-  const nNom = normalize(nombre);
-  let art = null;
-  if (nSku) {
-    art = catalog.find(a => normalize(a.sku) === nSku);
-    if (art) return art;
-  }
-  if (nNom) {
-    art = catalog.find(a => normalize(a.nombre) === nNom);
-    if (art) return art;
-  }
-  return null;
-}
-
 function agruparStockDesdeImeis(imeis = []) {
+  if (!articuloCatalogIndex.value.byId.size && articulosCatalog.value.length) buildArticuloIndex(articulosCatalog.value);
   const mapa = new Map();
-  let noResueltos = [];
+  const noResueltos = [];
   (Array.isArray(imeis) ? imeis : []).forEach(i => {
-    const est = (i.status || i.estado || '').toString();
-    if (est && est.toLowerCase() !== 'disponible') return; // contar solo disponibles
-
-    // Resolver artículo por id directo o por SKU / nombre del IMEI contra el catálogo
-    const resolved = findArticuloInCatalogBySkuOrNombre(i.sku, i.articulo_nombre || i.articuloNombre);
-    const artId = (i.articulo_id ?? i.articuloId ?? i.articuloID) || (resolved ? resolved.id : null);
-    const nombre = (i.articulo_nombre || i.articuloNombre || (resolved ? resolved.nombre : '')) || '';
-    const sku = (i.sku || (resolved ? resolved.sku : '')) || '';
-
-    // Evitar contar servicios aquí; se agrega instalación aparte
-    const isServicioByNombre = normalize(nombre).includes('INSTALACION');
+    const est = (i.status || i.estado || '').toString().toLowerCase();
+    if (est && est !== 'disponible') return;
+    const explicitId = i.articulo_id ?? i.articuloId ?? i.articuloID;
+    let resolved = null;
+    if (explicitId) {
+      resolved = articuloCatalogIndex.value.byId.get(explicitId) || null;
+    }
+    if (!resolved) {
+      resolved = findArticuloInCatalogBySkuOrNombre(i.sku, i.articulo_nombre || i.articuloNombre);
+    }
+    const artId = explicitId || (resolved ? resolved.id : null);
+    const nombre = (resolved?.nombre) || i.articulo_nombre || i.articuloNombre || '';
+    const sku = (resolved?.sku) || i.sku || '';
+    const isServicioByNombre = normalize(nombre).includes('instalacion');
     if (!artId || isServicioByNombre) {
-      noResueltos.push({ sku: i.sku || '', nombre, imei: i.imei, ubicacion_id: i.ubicacion_id });
+      noResueltos.push({ sku: sku || i.sku || '', nombre, imei: i.imei, ubicacion_id: i.ubicacion_id });
       return;
     }
-
     if (!mapa.has(artId)) {
-      mapa.set(artId, {
-        id: artId,
-        articulo_id: artId,
-        nombre,
-        sku,
-        stock: 0,
-        tipo: 'Producto'
-      });
+      mapa.set(artId, { id: artId, articulo_id: artId, nombre, sku, stock: 0, tipo: 'Producto' });
     }
     mapa.get(artId).stock += 1;
   });
   const lista = Array.from(mapa.values()).map(item => {
-    // Enriquecer nombre/sku desde catálogo si falta
-    if (!item.nombre || !item.sku) {
-      const cat = (Array.isArray(articulosCatalog.value) ? articulosCatalog.value : []).find(a => a.id === item.articulo_id);
-      if (cat) {
-        item.nombre = item.nombre || cat.nombre;
-        item.sku = item.sku || cat.sku;
-      }
+    if ((!item.nombre || !item.sku) && articuloCatalogIndex.value.byId.has(item.articulo_id)) {
+      const cat = articuloCatalogIndex.value.byId.get(item.articulo_id);
+      item.nombre = item.nombre || cat.nombre;
+      item.sku = item.sku || cat.sku;
     }
     return item;
   });
   if (noResueltos.length) {
     try {
-      console.groupCollapsed('[IMEIs] No mapeados al catálogo (revisar SKU/nombre en catálogo)');
-  //
+      console.groupCollapsed('[IMEIs] No mapeados al catálogo (revisar SKU/nombre)');
+      console.table(noResueltos.map(n => ({ sku: n.sku, nombre: n.nombre, imei: n.imei, ubicacion_id: n.ubicacion_id })));
       console.groupEnd();
     } catch (_) {}
   }
@@ -818,6 +846,25 @@ const metodoPagoOptions = [
   { label: 'Pago con Tarjeta de Débito', value: 'tarjeta_debito' },
   { label: 'Transferencia', value: 'transferencia' }
 ];
+
+function onConstanciaFileChange(e){
+  const file = e?.target?.files?.[0] || null;
+  if (file) {
+    const allowed = ['application/pdf','image/png','image/jpeg'];
+    if (!allowed.includes(file.type)) {
+      console.warn('[Constancia] Tipo no permitido:', file.type);
+      archivoConstancia.value = null;
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      console.warn('[Constancia] Archivo supera 8MB');
+      archivoConstancia.value = null;
+      return;
+    }
+  }
+  console.debug('[Constancia] Asignando archivo:', file?.name, 'size:', file?.size);
+  archivoConstancia.value = file;
+}
 </script>
 
 <style scoped>

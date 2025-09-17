@@ -25,12 +25,32 @@ from email.mime.text import MIMEText
 from fastapi import APIRouter
 from twilio.rest import Client
 from fastapi import Request
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 
 
 app = FastAPI()
 
+# Helper para construir URL pública consistente
+def build_public_url(rel_path: str, request: Request | None = None) -> str:
+    import os as _os
+    if not rel_path:
+        return None
+    # Normalizar ruta relativa eliminando prefijos ./
+    rel = rel_path.lstrip('./')
+    # Asegurar que empiece por uploads/
+    if not rel.startswith('uploads/'):
+        if rel.startswith('/'):
+            rel = rel.lstrip('/')
+        if not rel.startswith('uploads/'):
+            rel = f"uploads/{rel}"
+    base_env = _os.getenv('BASE_URL_PUBLIC', '').strip()
+    if not base_env and request is not None:
+        # Fallback a base_url de la request solo si no hay var de entorno
+        base_env = str(request.base_url)
+    if base_env and not base_env.endswith('/'):
+        base_env += '/'
+    return f"{base_env}{rel}" if base_env else rel
 
 # Permitir CORS para tu frontend
 app.add_middleware(
@@ -977,6 +997,7 @@ class Venta(BaseModel):
     total: float
     observaciones: Optional[str] = ""
     articulos: list[DetalleVenta]
+    rfc: Optional[str] = None  # nuevo campo opcional
 
 @app.post("/ventas")
 def crear_venta(venta: Venta):
@@ -1072,7 +1093,7 @@ def crear_venta(venta: Venta):
     return {"message": "Venta registrada exitosamente", "venta_id": venta_id, "folio": new_folio}
 
 @app.get("/ventas")
-def listar_ventas():
+def listar_ventas(request: Request = None):
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -1094,6 +1115,15 @@ def listar_ventas():
             v["requiereFactura"] = bool(v.get("requiere_factura", 0))
         except Exception:
             pass
+        if 'rfc' not in v:
+            v['rfc'] = None
+        if v.get('constancia_path'):
+            try:
+                v['constancia_url'] = build_public_url(v['constancia_path'], request)
+            except Exception:
+                v['constancia_url'] = None
+        else:
+            v['constancia_url'] = None
     cursor.close()
     db.close()
     return ventas
@@ -2059,8 +2089,7 @@ def subir_comprobante_reporte(reporte_id: int, archivo: UploadFile = File(...), 
         cursor.close()
         db.close()
 
-    base_url = str(request.base_url) if request else ""
-    file_url = f"{base_url}uploads/servicios/{safe_folio}/{filename}" if base_url else rel_path
+    file_url = build_public_url(rel_path, request)
     return {"message": "Comprobante subido", "comprobante_path": rel_path, "comprobante_url": file_url, "estado": "pendiente"}
 
 @app.put("/reportes-servicio/{reporte_id}/aprobar-comprobante")
@@ -2136,3 +2165,148 @@ def rechazar_comprobante_reporte(reporte_id: int, current=Depends(get_current_us
         cursor.close()
         db.close()
     return {"message": "Comprobante rechazado"}
+
+@app.post("/ventas/{venta_id}/constancia")
+async def subir_constancia_fiscal(venta_id: int, archivo: UploadFile = File(...), rfc: str = Form(None), request: Request = None):
+    ALLOWED_EXT = {'.pdf', '.png', '.jpg', '.jpeg'}
+    MAX_SIZE_MB = 8
+    import shutil
+
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, folio FROM ventas WHERE id=%s", (venta_id,))
+    venta_row = cursor.fetchone()
+    if not venta_row:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+    folio = venta_row.get("folio") or f"VENTA-{venta_id}"
+    safe_folio = ''.join(c for c in folio if c.isalnum() or c in ('-', '_'))
+
+    filename = archivo.filename or 'constancia'
+    filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail=f"Extensión no permitida {ext}")
+
+    data = await archivo.read()
+    size_mb = len(data)/(1024*1024)
+    if size_mb > MAX_SIZE_MB:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail=f"Archivo supera {MAX_SIZE_MB}MB")
+
+    base_dir = os.path.join('uploads', 'constancias', safe_folio)
+    os.makedirs(base_dir, exist_ok=True)
+
+    base_name, ext2 = os.path.splitext(filename)
+    final_name = filename
+    idx = 1
+    while os.path.exists(os.path.join(base_dir, final_name)):
+        final_name = f"{base_name}_{idx}{ext2}"; idx += 1
+
+    dest_path = os.path.join(base_dir, final_name)
+    with open(dest_path, 'wb') as f:
+        f.write(data)
+
+    rel_path = os.path.relpath(dest_path, start='.')
+
+    cursor2 = db.cursor()
+    try:
+        try:
+            cursor2.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
+        except Exception:
+            pass
+        try:
+            cursor2.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS rfc VARCHAR(20) NULL")
+        except Exception:
+            pass
+        cursor2.execute("UPDATE ventas SET constancia_path=%s, rfc=COALESCE(%s, rfc) WHERE id=%s", (rel_path, rfc, venta_id))
+        db.commit()
+    finally:
+        cursor2.close(); cursor.close(); db.close()
+
+    file_url = build_public_url(rel_path, request)
+    return {"message": "Constancia subida", "constancia_path": rel_path, "constancia_url": file_url, "rfc": rfc}
+
+@app.get("/clientes/{cliente_id}/constancia-venta-reciente")
+def get_constancia_venta_reciente(cliente_id: int, request: Request = None):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
+    except Exception:
+        pass
+    cursor.execute(
+        """
+        SELECT id, folio, cliente_id, constancia_path, rfc, fecha
+        FROM ventas
+        WHERE cliente_id=%s AND constancia_path IS NOT NULL
+        ORDER BY fecha DESC, id DESC
+        LIMIT 1
+        """,
+        (cliente_id,)
+    )
+    row = cursor.fetchone()
+    cursor.close(); db.close()
+    if not row:
+        return {"hasConstancia": False}
+    rel = row.get('constancia_path')
+    file_url = build_public_url(rel, request) if rel else None
+    return {
+        "hasConstancia": True,
+        "venta_id": row.get('id'),
+        "folio": row.get('folio'),
+        "rfc": row.get('rfc'),
+        "fecha": row.get('fecha'),
+        "constancia_url": file_url
+    }
+
+@app.delete("/ventas/{venta_id}/constancia")
+async def eliminar_constancia_fiscal(venta_id: int, request: Request = None):
+    import os
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    try:
+        # Asegurar columnas existen
+        try:
+            cursor.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS rfc VARCHAR(20) NULL")
+        except Exception:
+            pass
+        cursor.execute("SELECT constancia_path FROM ventas WHERE id=%s", (venta_id,))
+        row = cursor.fetchone()
+        if not row:
+            cursor.close(); db.close()
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+        path = row.get('constancia_path')
+        # Borrar archivo físico si existe
+        if path and os.path.isfile(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        # Limpiar campos
+        cursor.execute("UPDATE ventas SET constancia_path=NULL WHERE id=%s", (venta_id,))
+        db.commit()
+    finally:
+        cursor.close(); db.close()
+    return {"message": "Constancia eliminada", "venta_id": venta_id}

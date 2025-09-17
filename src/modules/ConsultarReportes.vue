@@ -515,17 +515,55 @@ function confirmarEliminarReporte(reporte) {
 async function eliminarReporteConfirmado() {
   if (!reporteAEliminar.value) return;
   loading.value = true;
+  const reporteId = reporteAEliminar.value.id;
+  let detalleReporte = null;
+  // Obtener detalle antes de eliminar para saber qué IMEIs revertir
   try {
-    await axios.delete(`${API_URL}/${reporteAEliminar.value.id}`);
-    // Eliminar movimiento de dinero relacionado
-    const movimientos = await getMovimientosDineroPorReferencia(reporteAEliminar.value.folio || `ReporteServicio-${reporteAEliminar.value.id}`);
-    if (Array.isArray(movimientos) && movimientos.length > 0) {
-      for (const mov of movimientos) {
-        await axios.delete(`${import.meta.env.VITE_API_URL}/movimientos-dinero/${mov.id}`);
+    const respDetalle = await axios.get(`${API_URL}/${reporteId}`);
+    detalleReporte = respDetalle.data || null;
+  } catch (e) {
+    // Si falla, continuamos; intentaremos con los campos mínimos del listado
+    detalleReporte = { imei: reporteAEliminar.value.imei, sim_serie: reporteAEliminar.value.sim_serie };
+  }
+  try {
+    await axios.delete(`${API_URL}/${reporteId}`);
+    // Eliminar movimiento de dinero relacionado (referencia por folio o id)
+    try {
+      const movimientos = await getMovimientosDineroPorReferencia(reporteAEliminar.value.folio || `ReporteServicio-${reporteId}`);
+      if (Array.isArray(movimientos) && movimientos.length > 0) {
+        for (const mov of movimientos) {
+          await axios.delete(`${import.meta.env.VITE_API_URL}/movimientos-dinero/${mov.id}`);
+        }
       }
+    } catch (e) {
+      console.error('Error eliminando movimientos dinero relacionados:', e);
+    }
+    // Revertir IMEIs a Disponible
+    try {
+      const imeisSet = new Set();
+      if (detalleReporte?.imei) imeisSet.add(String(detalleReporte.imei).trim());
+      if (detalleReporte?.sim_serie) imeisSet.add(String(detalleReporte.sim_serie).trim());
+      if (Array.isArray(detalleReporte?.imeis_articulos)) {
+        for (const li of detalleReporte.imeis_articulos) {
+          if (Array.isArray(li.imeis)) {
+            for (const im of li.imeis) if (im) imeisSet.add(String(im).trim());
+          }
+        }
+      }
+      // Evitar revertir strings vacíos o placeholders
+      const imeisList = Array.from(imeisSet).filter(v => v && v !== '-' && v.toLowerCase() !== 'null');
+      if (imeisList.length) {
+        await Promise.all(imeisList.map(im => fetch(`${import.meta.env.VITE_API_URL}/imeis/${encodeURIComponent(im)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'Disponible' })
+        }).catch(err => console.error('Error revertiendo IMEI', im, err))));
+      }
+    } catch (e) {
+      console.error('Error revertiendo IMEIs a Disponible:', e);
     }
     await cargarReportes();
-    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Reporte y movimiento de dinero eliminados correctamente.', life: 3000 });
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Reporte eliminado y IMEIs revertidos a Disponible.', life: 3000 });
     messageDialogText.value = 'Reporte eliminado correctamente.';
     showMessageDialog.value = true;
   } catch (e) {

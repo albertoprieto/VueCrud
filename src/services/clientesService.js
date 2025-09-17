@@ -21,3 +21,15 @@ export const deleteCliente = async (id) => {
   const res = await axios.delete(`${API_URL}/${id}`);
   return res.data;
 };
+
+export const getConstanciaVentaReciente = async (clienteId) => {
+  const res = await axios.get(`${API_URL}/${clienteId}/constancia-venta-reciente`);
+  return res.data; // { hasConstancia, venta_id, folio, rfc, fecha, constancia_url }
+};
+
+// Nuevo: eliminar constancia de una venta específica (si se usa desde clientes)
+export const deleteConstanciaVenta = async (ventaId) => {
+  const API_VENTAS = `${import.meta.env.VITE_API_URL}/ventas`;
+  const res = await axios.delete(`${API_VENTAS}/${ventaId}/constancia`);
+  return res.data;
+};

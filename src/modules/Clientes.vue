@@ -144,8 +144,6 @@
               <label for="rfc" style="margin-top:0.5em;"><i class="pi pi-id-card icon-inline"></i>RFC:</label>
               <InputText id="rfc" v-model="rfc.value" class="w-full" placeholder="RFC del cliente" />
             </div>
-            <label for="constanciaFiscal" style="margin-top:0.5em;"><i class="pi pi-paperclip icon-inline"></i>Constancia fiscal:</label>
-            <input id="constanciaFiscal" type="file" @change="handleFileChange" class="w-full" />
           </div>
         </div>
         <div class="modal-actions">
@@ -169,6 +167,7 @@ import InputSwitch from 'primevue/inputswitch';
 import { useToast } from 'primevue/usetoast';
 import { getClientes, addCliente, updateCliente, deleteCliente } from '@/services/clientesService';
 import { useLoginStore } from '@/stores/loginStore';
+import { useRouter } from 'vue-router';
 
 const toast = useToast();
 const loginStore = useLoginStore();
@@ -176,7 +175,6 @@ const usuarioSesion = ref(loginStore.user?.username || '');
 const atendidoPor = ref(loginStore.user?.username || '');
 const requiereFactura = ref(false);
 const rfc = ref('XAXX010101000');
-const constanciaFiscal = ref(null);
 const rfcVisible = ref(false);
 
 watch(requiereFactura, (val) => {
@@ -203,8 +201,7 @@ const form = ref({
   atendidoPor: '',
   usuarioSesion: '',
   requiereFactura: false,
-  rfc: 'XAXX010101000',
-  constanciaFiscal: null
+  rfc: 'XAXX010101000'
 });
 
 const filtroNombre = ref('');
@@ -268,6 +265,8 @@ const loadClientes = async () => {
 
 onMounted(loadClientes);
 
+const router = useRouter();
+
 const openModal = () => {
   form.value = {
     id: null,
@@ -280,8 +279,7 @@ const openModal = () => {
     atendidoPor: atendidoPor.value,
     usuarioSesion: usuarioSesion.value,
     requiereFactura: requiereFactura.value,
-    rfc: rfc.value,
-    constanciaFiscal: null
+    rfc: rfc.value
   };
   showModal.value = true;
 };
@@ -302,7 +300,6 @@ const saveCliente = async () => {
   form.value.usuarioSesion = usuarioSesion.value;
   form.value.requiereFactura = requiereFactura.value;
   form.value.rfc = rfc.value;
-  form.value.constanciaFiscal = constanciaFiscal.value;
   try {
     if (form.value.id) {
       await updateCliente(form.value.id, form.value);
@@ -318,7 +315,7 @@ const saveCliente = async () => {
   }
 };
 
-const editCliente = (cliente) => {
+const oldEditCliente = (cliente) => {
   form.value = {
     id: cliente.id,
     nombre: cliente.nombre,
@@ -330,14 +327,17 @@ const editCliente = (cliente) => {
     atendidoPor: cliente.atendidoPor || atendidoPor.value,
     usuarioSesion: cliente.usuarioSesion || usuarioSesion.value,
     requiereFactura: cliente.requiereFactura ?? false,
-    rfc: cliente.rfc || 'XAXX010101000',
-    constanciaFiscal: null // No se precarga archivo
+    rfc: cliente.rfc || 'XAXX010101000'
   };
   requiereFactura.value = form.value.requiereFactura;
   rfc.value = form.value.rfc;
   usuarioSesion.value = form.value.usuarioSesion;
   atendidoPor.value = form.value.atendidoPor;
   showModal.value = true;
+};
+
+const editCliente = (cliente) => {
+  oldEditCliente(cliente); // sin carga de constancia ahora
 };
 
 const handleDeleteCliente = async (id) => {
@@ -372,9 +372,6 @@ const handleFacturaChange = () => {
   }
 };
 
-const handleFileChange = (event) => {
-  constanciaFiscal.value = event.target.files[0];
-};
 </script>
 
 <style scoped>
@@ -561,4 +558,6 @@ const handleFileChange = (event) => {
   margin-left: 0.5em;
   vertical-align: middle;
 }
+.enlace-constancia { color: var(--color-primary); text-decoration: none; font-weight:500; }
+.enlace-constancia:hover { text-decoration: underline; }
 </style>

@@ -3,29 +3,6 @@
     <h2>Consultar Notas de Venta</h2>
     <div class="filtros">
       <InputText v-model="filtroNombre" placeholder="Buscar por cliente..." class="mb-2 filtro-input" clearable />
-      <!-- <AutoComplete
-        v-model="filtroUsuario"
-        :suggestions="usuariosFiltrados"
-        @complete="buscarUsuario"
-        optionLabel="label"
-        placeholder="Filtrar por usuario"
-        class="filtro-autocomplete"
-        :dropdown="true"
-        forceSelection
-        @item-select="e => filtroUsuario = e.value.label"
-      /> -->
-      <!-- <AutoComplete
-        v-model="filtroTelefono"
-        :suggestions="telefonosFiltrados"
-        @complete="buscarTelefono"
-        optionLabel="label"
-        placeholder="Filtrar por teléfono"
-        class="filtro-autocomplete"
-        :dropdown="true"
-        forceSelection
-        @item-select="e => filtroTelefono = e.value.label"
-      /> -->
-      <!-- <InputText v-model="filtroImei" placeholder="Buscar por IMEI" class="mb-2 filtro-input" clearable /> -->
       <Button label="Limpiar" icon="pi pi-times" class="p-button-secondary" @click="limpiarFiltros" />
     </div>
     <DataTable :value="ventasFiltradas">
@@ -267,6 +244,40 @@ const buscarTelefono = (event) => {
 }
 
 .detalle-cerrar-btn {
+  margin-top: 1rem;
+}
+
+.constancia-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.constancia-dialog {
+  width: 70vw;
+  max-width: 900px;
+}
+
+.pdf-wrapper {
+  height: 70vh;
+}
+
+.pdf-wrapper iframe {
+  width: 100%;
+  height: 100%;
+}
+
+.constancia-img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 1rem;
 }
 </style>

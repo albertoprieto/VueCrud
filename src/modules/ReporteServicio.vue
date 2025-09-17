@@ -5,8 +5,9 @@
       <div class="responsive-grid">
         <div class="col-block">
           <div class="form-group">
-            <label>Tipo de servicio</label>
-            <Dropdown v-model="form.tipo_servicio" :options="tiposServicio" placeholder="Selecciona" class="w-full" />
+            <label class="required-label">Tipo de servicio</label>
+            <Dropdown v-model="form.tipo_servicio" :options="tiposServicio" placeholder="Selecciona" class="w-full" :class="{'p-invalid': isCampoInvalido('tipo_servicio')}" />
+            <small v-if="isCampoInvalido('tipo_servicio')" class="error-msg">Requerido</small>
           </div>
           <div class="form-group">
             <label>Lugar / Centro de instalación</label>
@@ -14,16 +15,16 @@
           </div>
           <h4 class="section-title">Datos del vehículo</h4>
           <div class="form-group">
-            <InputText v-model="form.marca" placeholder="Marca" class="w-full mb-2" />
-            <InputText v-model="form.submarca" placeholder="Submarca" class="w-full mb-2" />
-            <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" />
-            <InputText v-model="form.placas" placeholder="Placa" class="w-full mb-2" />
-            <InputText v-model="form.color" placeholder="Color" class="w-full mb-2" />
-            <InputText v-model="form.numero_economico" placeholder="Número económico" class="w-full mb-2" />
+            <InputText v-model="form.marca" placeholder="Marca" class="w-full mb-2" :class="{'p-invalid': isCampoInvalido('marca')}" />
+            <InputText v-model="form.submarca" placeholder="Submarca" class="w-full mb-2" :class="{'p-invalid': isCampoInvalido('submarca')}" />
+            <InputText v-model="form.modelo" placeholder="Modelo" class="w-full mb-2" :class="{'p-invalid': isCampoInvalido('modelo')}" />
+            <InputText v-model="form.placas" placeholder="Placa" class="w-full mb-2" :class="{'p-invalid': isCampoInvalido('placas')}" />
+            <InputText v-model="form.color" placeholder="Color" class="w-full mb-2" :class="{'p-invalid': isCampoInvalido('color')}" />
+            <InputText v-model="form.numero_economico" placeholder="Número económico" class="w-full mb-2" :class="{'p-invalid': isCampoInvalido('numero_economico')}" />
           </div>
         </div>
         <div class="col-block">
-          <h4 class="section-title">Datos del dispositivo</h4>
+          <h4 class="section-title">Datos del dispositivo (opcionales)</h4>
           <div class="form-group">
             <InputText v-model="form.modelo_gps" placeholder="Modelo GPS" class="w-full mb-2" />
             <InputText v-model="form.accesorios" placeholder="Accesorios adicionales (Botón/Micro/Etc.)" class="w-full mb-2" />
@@ -32,21 +33,27 @@
           </div>
           <h4 class="section-title">Datos del cobro</h4>
           <div class="form-group">
-            <label>Subtotal (orden de servicio)</label>
-            <InputText v-model="form.subtotal" placeholder="Subtotal" class="w-full mb-2" :disabled="true" />
+            <label class="required-label">Subtotal (orden de servicio)</label>
+            <InputText v-model="form.subtotal" placeholder="Subtotal" class="w-full mb-2" :disabled="true" :class="{'p-invalid': isCampoInvalido('subtotal')}" />
           </div>
             <div class="form-group">
-            <label>Total a cobrar</label>
-            <InputNumber v-model="form.total" placeholder="Total a cobrar" class="w-full mb-2" />
+            <label class="required-label">Total a cobrar</label>
+            <InputNumber v-model="form.total" placeholder="Total a cobrar" class="w-full mb-2" :class="{'p-invalid': isCampoInvalido('total')}" />
             <small>El instalador puede modificar este valor si hay algún ajuste.</small>
+          </div>
+          <div class="form-group monto-tecnico-group">
+            <label>Monto cobrado por el técnico</label>
+            <div class="monto-tecnico-row">
+              <InputNumber v-model="form.monto_tecnico" placeholder="Monto técnico" class="w-full mb-2" :disabled="usarTotalMontoTecnico" />
+              <div class="checkbox-inline">
+                <Checkbox v-model="usarTotalMontoTecnico" :binary="true" inputId="chkUsarTotal" />
+                <label for="chkUsarTotal" class="inline-label">Total</label>
+              </div>
+            </div>
           </div>
           <div class="form-group">
             <label>Método de pago</label>
             <InputText v-model="form.forma_pago" placeholder="Método de pago" class="w-full mb-2" :disabled="true" />
-          </div>
-          <div class="form-group">
-            <label>Monto cobrado por el técnico</label>
-            <InputText v-model="form.monto_tecnico" type="number" class="w-full mb-2" />
           </div>
           <div class="form-group">
             <label>Viáticos</label>
@@ -87,7 +94,6 @@
                   {{ linea.selecciones.filter(Boolean).length }} / {{ linea.selecciones.length }}
                 </span>
                 <Button v-if="linea.selecciones.some(s => s)" size="small" type="button" label="Limpiar" class="p-button-text p-button-sm" @click="limpiarLinea(linea)" />
-                <Button size="small" type="button" icon="pi pi-plus" class="p-button-text p-button-sm" @click="agregarSlot(linea)" :disabled="linea.imeisPosibles.length <= linea.selecciones.length" />
               </div>
               <div class="slots-grid">
                 <div v-for="(sel, idx) in linea.selecciones" :key="`line-${linea.lineaId}-slot-${idx}`" class="slot-item">
@@ -100,8 +106,10 @@
                     placeholder="IMEI"
                     :filter="true"
                     class="w-full"
+                    :class="{'p-invalid imei-slot-invalid': attemptedSubmit && !linea.selecciones[idx]}"
                   />
-                  <small v-if="opcionesVisibles(linea, idx).length === 0" class="warn-text">Sin IMEIs disponibles</small>
+                  <small v-if="attemptedSubmit && !linea.selecciones[idx]" class="error-msg">Requerido</small>
+                  <small v-else-if="opcionesVisibles(linea, idx).length === 0" class="warn-text">Sin IMEIs disponibles</small>
                 </div>
               </div>
             </div>
@@ -123,7 +131,7 @@
         </div>
       </div>
       <div class="modal-actions full-width">
-        <Button label="Guardar" icon="pi pi-save" type="submit" />
+        <Button label="Guardar" icon="pi pi-save" type="submit" :disabled="!formCompleto" :class="{ 'btn-disabled-force': !formCompleto }" />
         <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" type="button" @click="cerrar" />
       </div>
     </form>
@@ -137,7 +145,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import Textarea from 'primevue/textarea';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
@@ -162,7 +170,6 @@ const asignacionIdValido = computed(() => Number.isInteger(Number(route.params.a
 const asignacionIdCentral = computed(() => asignacionIdValido.value ? Number(route.params.asignacionId) : null);
 const asignacion = ref(null);
 
-// --- Ensure assignment ID is valid and centralize its use ---
 const tiposServicio = ['Instalación', 'Reinstalación', 'Revisión', 'Desinstalación', 'Búsqueda'];
 const formasPago = ['Efectivo Entregado al tecnico', 'Transferencia', 'Depósito', ];
 
@@ -172,38 +179,25 @@ const proveedoresSim = [ { label: 'TELCEL', value: 'TELCEL' }, { label: 'ESPAÑO
 const imeiOptions = ref([]); // Para IMEI (filtrado por artículos de la orden)
 const simSerieOptions = ref([]); // Para Serie (stock de la ubicación filtrado)
 const simSelecciones = ref([null]); // NUEVO: múltiples SIM seleccionadas
-const allowedSimNombrePatterns = [
-  'sim telcel regalo',
-  'sim con un año de datos',
-  'sim con un ano de datos'
-];
 
-function normalizeTexto(v) {
-  return String(v || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '');
+const ubicacionId = ref(null); // Ubicación (almacén) asociada a la venta/asignación
+const allowedArticuloIds = ref(new Set()); // Set de ids de artículos presentes en el detalle (puede usarse en futuras reglas)
+const allowedArticuloNames = ref(new Set()); // Set de nombres normalizados de artículos
+const ALLOW_AUTO_UBICACION_DEDUCCION = false; // Deshabilitado por defecto (evita deducir ubicación automáticamente)
+
+function buildImeiOptions(){
+  imeiOptions.value = imeisStockRaw.value
+    .filter(r => !esSimArticuloNombre(r.articulo_nombre))
+    .map(r => ({ label: `${r.imei} — ${r.articulo_nombre}`, value: String(r.imei) }));
 }
 
-function buildSimSerieOptions() {
-  try {
-    let result = imeisStockRaw.value.filter(r => {
-      const nombreNorm = normalizeTexto(r.articulo_nombre);
-      return allowedSimNombrePatterns.some(p => nombreNorm.includes(normalizeTexto(p)));
-    });
-    if (result.length === 0) {
-      result = imeisStockRaw.value.filter(r => /sim/i.test(r.articulo_nombre || ''));
-    }
-    simSerieOptions.value = result.map(i => ({ label: `${i.imei} — ${i.articulo_nombre || ''}`.trim(), value: String(i.imei) }));
-  } catch (e) {
-    console.error('Error filtrando SIMs:', e);
-    simSerieOptions.value = [];
-  }
+function normalizeTexto(v){
+  return String(v||'').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'').trim();
 }
 
-const allowedArticuloIds = ref(new Set());
-const allowedArticuloNames = ref(new Set());
-const ubicacionId = ref(null);
+function esSimArticuloNombre(nombre){
+  return /\bsim\b/.test(normalizeTexto(nombre));
+}
 
 const form = ref({
   tipo_servicio: '',
@@ -253,6 +247,9 @@ const pagos = ref([]);
 const imeisStockRaw = ref([]);
 const articulosIndex = ref({}); // Nuevo índice de artículos por id
 
+const attemptedSubmit = ref(false);
+const usarTotalMontoTecnico = ref(false);
+
 async function cargarArticulos(){
   try {
     const arts = await getTodosArticulos();
@@ -264,36 +261,59 @@ async function cargarArticulos(){
   }
 }
 
-async function cargarImeisDeUbicacion(id) {
+async function cargarImeisDeUbicacion(id){
+  console.log('cargarImeisDeUbicacion llamado con id:', id);
+  
   try {
     const res = await fetch(`${import.meta.env.VITE_API_URL}/imeis`);
     const todos = await res.json();
+    console.log('Todos los IMEIs cargados:', todos);
+    
     const imeisUbicacion = Array.isArray(todos) ? todos.filter(i => Number(i.ubicacion_id) === Number(id)) : [];
-    imeisStockRaw.value = imeisUbicacion.filter(i => ['Disponible', 'Devuelto'].includes(i.status));
+    console.log('IMEIs ubicacion (raw) antes de filtrar status:', imeisUbicacion);
+    imeisStockRaw.value = imeisUbicacion.filter(i => ['Disponible','Devuelto'].includes(i.status));
     buildSimSerieOptions();
-    try {
-      console.group('Reporte de Servicio');
-      console.log('Ubicación (ID):', id);
-      console.log('Stock de la ubicación (IMEIs):', imeisStockRaw.value);
-      console.groupEnd();
-    } catch (_) {}
-  } catch (e) {
-    console.error('Error cargando IMEIs (stock) desde /imeis:', e);
-  }
+    buildLineItems();
+  } catch(e){ console.error('Error cargando IMEIs:', e); }
 }
 
-function buildImeiOptions() {
-  try {
-    const byArticle = (r) => {
-      const okId = r.articulo_id && allowedArticuloIds.value.has(Number(r.articulo_id));
-      const okName = r.articulo_nombre && allowedArticuloNames.value.has(String(r.articulo_nombre).toLowerCase());
-      return okId || okName;
-    };
-    const filtered = imeisStockRaw.value.filter(byArticle);
-    imeiOptions.value = filtered.map(i => ({ label: `${i.imei} — ${i.articulo_nombre || ''}`, value: i.imei }));
-  } catch (_) {
-    imeiOptions.value = imeisStockRaw.value.map(i => ({ label: `${i.imei} — ${i.articulo_nombre || ''}`, value: i.imei }));
+watch(ubicacionId, (val) => {
+  if(val && !imeisStockRaw.value.length){
+    cargarImeisDeUbicacion(val).then(()=>{ buildImeiOptions(); buildLineItems(); });
   }
+});
+
+function buildSimSerieOptions(){
+  const sims = imeisStockRaw.value.filter(r => esSimArticuloNombre(r.articulo_nombre));
+  simSerieOptions.value = sims.map(i => ({ label: `${i.imei} — ${i.articulo_nombre}`, value: String(i.imei) }));
+}
+
+function buildLineItems(){
+  if(!detalleVentaRaw.value.length || !imeisStockRaw.value.length) { lineItems.value = []; return; }
+  const resultado = [];
+  for(const d of detalleVentaRaw.value){
+    if(esSimArticuloNombre(d.articulo_nombre)) continue;
+    if(/instalacion/.test(normalizeTexto(d.articulo_nombre||''))) continue;
+    const cantidad = Number(d.cantidad || d.cantidad_articulos || 1) || 1;
+    const nombreDetNorm = normalizeTexto(d.articulo_nombre || d.descripcion || '');
+    const imeisPosibles = imeisStockRaw.value
+      .filter(r => {
+        if(esSimArticuloNombre(r.articulo_nombre)) return false;
+        const sameId = r.articulo_id && d.articulo_id && Number(r.articulo_id) === Number(d.articulo_id);
+        const sameName = nombreDetNorm && normalizeTexto(r.articulo_nombre) === nombreDetNorm;
+        return sameId || sameName;
+      })
+      .map(r => ({ label:`${r.imei} — ${r.articulo_nombre}`, value:String(r.imei) }));
+    resultado.push({
+      lineaId: d.id || d.detalle_id || `${d.articulo_id}-${Math.random().toString(36).slice(2,7)}`,
+      articulo_id: d.articulo_id || null,
+      articulo_nombre: d.articulo_nombre || d.descripcion || 'Artículo',
+      imeisPosibles,
+      selecciones: Array(cantidad).fill(null),
+      get seleccionesCompletas(){ return this.selecciones.every(v=>!!v); }
+    });
+  }
+  lineItems.value = resultado;
 }
 
 async function cargarPagos() {
@@ -325,13 +345,11 @@ async function cargarDatosTecnico() {
   }
 }
 
-// NUEVO: almacenamiento del detalle para generar dropdowns dinámicos
 const detalleVentaRaw = ref([]);
 const lineItems = ref([]); // [{ lineaId, articulo_id, articulo_nombre, cantidad, imeisPosibles:[{label,value}], selecciones:[...], seleccionesCompletas:false }]
 
 const selectedImeisGlobal = computed(() => {
   const s = new Set();
-  // incluir SIMs seleccionadas
   for (const sim of simSelecciones.value) if (sim) s.add(sim);
   for (const li of lineItems.value) {
     for (const val of li.selecciones) if (val) s.add(val);
@@ -339,49 +357,15 @@ const selectedImeisGlobal = computed(() => {
   return s;
 });
 
-function esSimArticuloNombre(nombre) {
-  if (!nombre) return false;
-  const n = normalizeTexto(nombre);
-  return allowedSimNombrePatterns.some(p => n.includes(normalizeTexto(p))) || /\bsim\b/.test(n);
-}
-
 function esArticuloServicio(d){
-  // Basado únicamente en el campo tipo del catálogo de artículos
   const art = d?.articulo_id ? articulosIndex.value[d.articulo_id] : null;
   const tipo = String(art?.tipo || d?.tipo || '').toLowerCase();
   return tipo === 'servicio';
 }
 
-function buildLineItems() {
-  if (!Array.isArray(detalleVentaRaw.value) || !detalleVentaRaw.value.length) return;
-  if (!imeisStockRaw.value.length) return;
-  const resultado = [];
-  for (const d of detalleVentaRaw.value) {
-    if (esArticuloServicio(d)) continue; // excluir servicios
-    if (esSimArticuloNombre(d.articulo_nombre)) continue; // excluir SIM
-    const cantidad = Number(d.cantidad || d.cantidad_articulos || 1) || 1;
-    const imeisPosibles = imeisStockRaw.value.filter(r => {
-      const matchId = d.articulo_id && r.articulo_id && Number(r.articulo_id) === Number(d.articulo_id);
-      const nameR = normalizeTexto(r.articulo_nombre || '');
-      const nameD = normalizeTexto(d.articulo_nombre || '');
-      const matchNombre = nameR && nameD && nameR === nameD;
-      return matchId || matchNombre;
-    }).map(r => ({ label: `${r.imei} — ${r.articulo_nombre || ''}`.trim(), value: String(r.imei) }));
-    const selecciones = Array(cantidad).fill(null);
-    resultado.push({
-      lineaId: d.id || d.detalle_id || `${d.articulo_id}-${Math.random().toString(36).slice(2,7)}`,
-      articulo_id: d.articulo_id || null,
-      articulo_nombre: d.articulo_nombre || d.descripcion || d.modelo_gps || 'Artículo',
-      imeisPosibles,
-      selecciones,
-      get seleccionesCompletas() { return this.selecciones.every(v => !!v); }
-    });
-  }
-  lineItems.value = resultado;
-}
-
-function agregarSlot(linea){
-  if(linea.imeisPosibles.length > linea.selecciones.length){ linea.selecciones.push(null); }
+function opcionesVisibles(linea, slotIdx){
+  const current = linea.selecciones[slotIdx];
+  return linea.imeisPosibles.filter(opt => !selectedImeisGlobal.value.has(opt.value) || opt.value === current);
 }
 
 function agregarSimSlot(){
@@ -390,17 +374,11 @@ function agregarSimSlot(){
 function eliminarSimSlot(idx){
   if (simSelecciones.value.length === 1) { simSelecciones.value[0] = null; return; }
   simSelecciones.value.splice(idx,1);
-  // re-sync primer SIM con form.sim_serie
   if (!simSelecciones.value[0]) form.value.sim_serie = '';
 }
 function simOpcionesVisibles(idx){
   const current = simSelecciones.value[idx];
   return simSerieOptions.value.filter(opt => !selectedImeisGlobal.value.has(opt.value) || opt.value === current);
-}
-
-function opcionesVisibles(linea, slotIdx) {
-  const current = linea.selecciones[slotIdx];
-  return linea.imeisPosibles.filter(opt => !selectedImeisGlobal.value.has(opt.value) || opt.value === current);
 }
 
 function limpiarLinea(linea) {
@@ -418,15 +396,13 @@ const stockInsuficiente = computed(() => {
 });
 
 watch(simSelecciones, (arr) => {
-  // sincronizar primer SIM con form.sim_serie (compatibilidad backend)
   const first = arr.find(v => !!v) || '';
   form.value.sim_serie = first;
 }, { deep: true });
 
 watch(selectedImeisGlobal, (setVal) => {
-  // Mantener compatibilidad: primer IMEI seleccionado se copia a form.imei si vacío o distinto
   if (!form.value.imei) {
-    const first = Array.from(setVal).find(v => v !== form.value.sim_serie); // evitar que tome la SIM como IMEI principal
+    const first = Array.from(setVal).find(v => v !== form.value.sim_serie);
     if (first) form.value.imei = first;
   }
 });
@@ -469,7 +445,6 @@ async function cargarDatosCliente() {
       const ventas = await getVentas();
       const venta = ventas.find(v => v.id == asignacion.value.venta_id);
       if (venta) {
-        console.log('Venta encontrada para la asignación:', venta);
         form.value.subtotal = venta.total || '';
         form.value.total = venta.total || '';
         form.value.forma_pago = venta.terminos_pago || '';
@@ -502,6 +477,8 @@ async function cargarDatosCliente() {
         }
         try {
           const ubicaciones = await getUbicaciones();
+
+          
           const uMatch = ubicaciones.find(u => String(u.nombre || '').toLowerCase() === String(venta.almacen || '').toLowerCase());
           if (uMatch?.id) {
             ubicacionId.value = uMatch.id;
@@ -514,7 +491,7 @@ async function cargarDatosCliente() {
           await cargarImeisDeUbicacion(ubicacionId.value);
           buildImeiOptions();
           buildLineItems(); // NUEVO
-        } else {
+        } else if (ALLOW_AUTO_UBICACION_DEDUCCION) { // ahora condicionado
           const imeiBase = form.value.imei;
           if (imeiBase) {
             try {
@@ -528,7 +505,7 @@ async function cargarDatosCliente() {
                   ubicacionId.value = ubic.id;
                   await cargarImeisDeUbicacion(ubicacionId.value);
                   buildImeiOptions();
-                  buildLineItems(); // NUEVO
+                  buildLineItems();
                 }
               }
             } catch (e) {
@@ -576,12 +553,17 @@ function cerrar() {
 }
 
 async function guardar() {
+  attemptedSubmit.value = true;
   if (!asignacionIdValido.value) {
     resultMessage.value = 'ID de asignación inválido. No se puede guardar el reporte.';
     showResultDialog.value = true;
+    scrollFocusFirstIssue();
     return;
   }
-  if (!validarAsignacionesImeis()) return; // nueva validación
+  if(!formCompleto.value){
+    scrollFocusFirstIssue();
+  }
+  if (!validarAsignacionesImeis()) { scrollFocusFirstIssue(); return; }
   loading.value = true;
   try {
     saveSuccess.value = false;
@@ -599,7 +581,6 @@ async function guardar() {
       linea_id: li.lineaId,
       imeis: [...li.selecciones]
     }));
-    // asegurar sim_serie desde primer SIM
     if (!form.value.sim_serie && simSelecciones.value.some(s=>s)) {
       form.value.sim_serie = simSelecciones.value.find(s=>s) || '';
     }
@@ -654,7 +635,6 @@ async function guardar() {
     {
       const setImeis = new Set();
       if (payload.imei) setImeis.add(payload.imei);
-      // añadir todas las SIM seleccionadas
       for (const sim of simSelecciones.value.filter(Boolean)) setImeis.add(sim);
       for (const li of imeisArticulosPayload) {
         for (const im of li.imeis.filter(Boolean)) setImeis.add(im);
@@ -709,6 +689,43 @@ function formatearFecha(fecha) {
 function formatoMoneda(valor) {
   if (isNaN(valor)) return '$0.00';
   return valor.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 });
+}
+
+const baseObligatorios = ['tipo_servicio','marca','submarca','modelo','placas','color','numero_economico','subtotal','total'];
+function isCampoObligatorio(c){
+  if((c === 'placas' || c === 'numero_economico') && ['Revisión','Búsqueda'].includes(form.value.tipo_servicio)) return false;
+  return baseObligatorios.includes(c);
+}
+function isCampoInvalido(c){
+  if(!isCampoObligatorio(c)) return false;
+  const val = form.value[c];
+  if(c === 'total') return val === null || val === undefined || val === '' || isNaN(val);
+  return !String(val ?? '').trim();
+}
+const formCompleto = computed(() => baseObligatorios.filter(isCampoObligatorio).every(c => !isCampoInvalido(c)));
+
+watch(usarTotalMontoTecnico, val => {
+  if (val) {
+    form.value.monto_tecnico = Number(form.value.total) || 0;
+  }
+});
+watch(() => form.value.total, val => {
+  if (usarTotalMontoTecnico.value) {
+    form.value.monto_tecnico = Number(val) || 0;
+  }
+});
+
+function scrollFocusFirstIssue(){
+  nextTick(() => {
+    const container = document.querySelector('.reporte-form');
+    if(!container) return;
+    const firstInvalid = container.querySelector('.p-invalid');
+    if(firstInvalid){
+      firstInvalid.scrollIntoView({behavior:'smooth', block:'center'});
+      const focusable = firstInvalid.querySelector('input,textarea,.p-dropdown');
+      if(focusable && 'focus' in focusable) focusable.focus();
+    }
+  });
 }
 </script>
 
@@ -808,4 +825,12 @@ label {
 .warning-block { background: #fff4e5; border:1px solid #ffb74d; padding: .75rem 1rem; border-radius:6px; font-size:.8rem; }
 .sim-block { margin-bottom: 1rem; }
 .sim-slot-actions { margin-top: .25rem; display:flex; justify-content:flex-end; }
+.btn-disabled-force { opacity:.45 !important; pointer-events:none !important; filter:grayscale(1); }
+.required-label::after { content: ' *'; color: #d32f2f; }
+.error-msg { color:#d32f2f; font-size:0.7rem; margin-top:-0.25rem; display:block; }
+.monto-tecnico-row { display:flex; gap:.75rem; align-items:flex-start; }
+.checkbox-inline { display:flex; align-items:center; gap:.35rem; margin-top:.25rem; }
+.inline-label { font-weight:normal; margin:0; }
+.imei-slot-invalid :deep(.p-dropdown) { border:1px solid #d32f2f !important; }
+.info-block { background:#e8f4fd; border:1px solid #90caf9; padding:.65rem .8rem; border-radius:6px; font-size:.75rem; margin-top: .75rem; }
 </style>
