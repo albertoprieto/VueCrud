@@ -1620,6 +1620,9 @@ class ReporteServicio(BaseModel):
     total: float = 0
     monto_tecnico: float = 0
     viaticos: float = 0
+    # NUEVO: soporte multi-instalación
+    imeis_articulos: Optional[List[dict]] = None
+    sim_series: Optional[List[str]] = None
 
 @app.post("/reportes-servicio")
 def add_reporte_servicio(reporte: ReporteServicio):
@@ -1630,8 +1633,25 @@ def add_reporte_servicio(reporte: ReporteServicio):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    # Serializar campos JSON si vienen en el payload
+    imeis_json = json.dumps(reporte.imeis_articulos) if getattr(reporte, "imeis_articulos", None) is not None else None
+    sim_json = json.dumps(reporte.sim_series) if getattr(reporte, "sim_series", None) is not None else None
     cursor.execute(
-    "INSERT INTO reportes_servicio (asignacion_id, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico, equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria, ignicion, corte, ubicacion_corte, modelo_gps, ubicacion_gps, ubicacion_bloqueo, observaciones, plataforma, usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador, total, monto_tecnico, viaticos) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+    """
+    INSERT INTO reportes_servicio (
+        asignacion_id, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico,
+        equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria,
+        ignicion, corte, ubicacion_corte, modelo_gps, ubicacion_gps, ubicacion_bloqueo, observaciones, plataforma,
+        usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador,
+        total, monto_tecnico, viaticos, imeis_articulos, sim_series
+    ) VALUES (
+        %s, %s, %s, %s, %s, %s, %s, %s, %s,
+        %s, %s, %s, %s, %s, %s, %s, %s, %s,
+        %s, %s, %s, %s, %s, %s, %s, %s,
+        %s, %s, %s, %s, %s, %s, %s, %s,
+        %s, %s, %s, %s, %s
+    )
+    """,
     (
         reporte.asignacion_id, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
         reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
@@ -1641,13 +1661,74 @@ def add_reporte_servicio(reporte: ReporteServicio):
         reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
         reporte.forma_pago, int(reporte.pagado), reporte.nombre_cliente, reporte.firma_cliente,
         reporte.nombre_instalador, reporte.firma_instalador, reporte.total,
-        reporte.monto_tecnico, reporte.viaticos
+        reporte.monto_tecnico, reporte.viaticos, imeis_json, sim_json
     )
 )
+    # NUEVO: marcar IMEIs y SIMs involucrados como "Vendido"
+    nuevo_id = cursor.lastrowid
+    imeis_a_vender = set()
+    def _add(v):
+        vv = (v or '').strip()
+        if vv:
+            imeis_a_vender.add(vv)
+    try:
+        _add(reporte.imei)
+        _add(reporte.sim_serie)
+        if getattr(reporte, 'imeis_articulos', None):
+            for li in (reporte.imeis_articulos or []):
+                try:
+                    for im in (li.get('imeis') or []):
+                        _add(im)
+                    for s in (li.get('sims') or []):
+                        _add(s)
+                except Exception:
+                    continue
+        if getattr(reporte, 'sim_series', None):
+            for s in (reporte.sim_series or []):
+                _add(s)
+    except Exception:
+        pass
+
+    imeis_actualizados = 0
+    if imeis_a_vender:
+        cur2 = db.cursor()
+        try:
+            cur2.executemany(
+                "UPDATE imeis SET status='Vendido' WHERE imei=%s",
+                [(i,) for i in imeis_a_vender]
+            )
+            imeis_actualizados = cur2.rowcount or 0
+        finally:
+            cur2.close()
+        # Registrar movimientos por cada IMEI/SIM actualizado
+        try:
+            cur3 = db.cursor(dictionary=True)
+            usuario_evt = getattr(reporte, 'usuario', None) or 'sistema'
+            for imei_val in imeis_a_vender:
+                try:
+                    cur3.execute("SELECT articulo_id, articulo_nombre FROM imeis WHERE imei=%s", (imei_val,))
+                    row = cur3.fetchone() or {}
+                    articulo_id = row.get('articulo_id')
+                    articulo_nombre = row.get('articulo_nombre') or ''
+                    try:
+                        registrar_movimiento(usuario_evt, 'instalacion', articulo_id, articulo_nombre, imei_val, None, None, f'reporte_servicio_id={nuevo_id}')
+                    except Exception:
+                        pass
+                except Exception:
+                    continue
+            cur3.close()
+        except Exception:
+            pass
+
     db.commit()
+    # Sincronizar stock de artículos tras marcar IMEIs/SIM como vendidos
+    try:
+        sincronizar_stock_articulos()
+    except Exception:
+        pass
     cursor.close()
     db.close()
-    return {"message": "Reporte de servicio creado exitosamente"}
+    return {"message": "Reporte de servicio creado exitosamente", "reporte_id": nuevo_id, "imeis_actualizados": imeis_actualizados}
 
 @app.get("/reportes-servicio")
 def get_reporte_servicio(asignacion_id: int = Query(...)):
@@ -1662,6 +1743,45 @@ def get_reporte_servicio(asignacion_id: int = Query(...)):
     reporte = cursor.fetchone()
     cursor.close()
     db.close()
+    # Deserializar JSON si aplica
+    if reporte:
+        try:
+            if isinstance(reporte.get("imeis_articulos"), str):
+                reporte["imeis_articulos"] = json.loads(reporte["imeis_articulos"]) if reporte["imeis_articulos"] else []
+        except Exception:
+            pass
+        try:
+            if isinstance(reporte.get("sim_series"), str):
+                reporte["sim_series"] = json.loads(reporte["sim_series"]) if reporte["sim_series"] else []
+        except Exception:
+            pass
+    return reporte
+
+# NUEVO: detalle por ID
+@app.get("/reportes-servicio/{reporte_id}")
+def get_reporte_servicio_por_id(reporte_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM reportes_servicio WHERE id = %s", (reporte_id,))
+    reporte = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if reporte:
+        try:
+            if isinstance(reporte.get("imeis_articulos"), str):
+                reporte["imeis_articulos"] = json.loads(reporte["imeis_articulos"]) if reporte["imeis_articulos"] else []
+        except Exception:
+            pass
+        try:
+            if isinstance(reporte.get("sim_series"), str):
+                reporte["sim_series"] = json.loads(reporte["sim_series"]) if reporte["sim_series"] else []
+        except Exception:
+            pass
     return reporte
 
 @app.get("/reportes-servicio-todos")
@@ -1677,6 +1797,18 @@ def get_reportes_servicio_todos():
     reportes = cursor.fetchall()
     cursor.close()
     db.close()
+    # Deserializar JSON en colección
+    for rep in reportes or []:
+        try:
+            if isinstance(rep.get("imeis_articulos"), str):
+                rep["imeis_articulos"] = json.loads(rep["imeis_articulos"]) if rep["imeis_articulos"] else []
+        except Exception:
+            pass
+        try:
+            if isinstance(rep.get("sim_series"), str):
+                rep["sim_series"] = json.loads(rep["sim_series"]) if rep["sim_series"] else []
+        except Exception:
+            pass
     return reportes
 
 @app.put("/reportes-servicio/{reporte_id}")
@@ -1692,12 +1824,20 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
     valid_columns = [
         "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos",
         # nuevas columnas para comprobantes
-        "comprobante_path", "comprobante_estado", "aprobado_por", "aprobado_fecha"
+        "comprobante_path", "comprobante_estado", "aprobado_por", "aprobado_fecha",
+        # NUEVO: columnas JSON
+        "imeis_articulos", "sim_series"
     ]
     campos = []
     valores = []
     for k, v in reporte.items():
         if k in valid_columns:
+            # Serializar JSON para columnas nuevas si viene como lista/dict
+            if k in ("imeis_articulos", "sim_series") and v is not None and not isinstance(v, str):
+                try:
+                    v = json.dumps(v)
+                except Exception:
+                    pass
             campos.append(f"{k}=%s")
             valores.append(v)
     if not campos:
@@ -1720,12 +1860,88 @@ def delete_reporte_servicio(reporte_id: int):
         password="tu_password_segura",
         database="nombre_de_tu_db"
     )
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM reportes_servicio WHERE id=%s", (reporte_id,))
-    db.commit()
-    cursor.close()
-    db.close()
-    return {"message": "Reporte eliminado"}
+    cursor = db.cursor(dictionary=True)
+    imeis_to_revert = set()
+    try:
+        # Intentar leer con columnas nuevas; si falla, fallback a columnas básicas
+        try:
+            cursor.execute(
+                "SELECT imei, sim_serie, imeis_articulos, sim_series FROM reportes_servicio WHERE id=%s",
+                (reporte_id,)
+            )
+        except Exception:
+            cursor.execute(
+                "SELECT imei, sim_serie FROM reportes_servicio WHERE id=%s",
+                (reporte_id,)
+            )
+        rep = cursor.fetchone()
+
+        def add_imei(val: str | None):
+            v = (val or '').strip()
+            if v:
+                imeis_to_revert.add(v)
+
+        if rep:
+            add_imei(rep.get("imei"))
+            add_imei(rep.get("sim_serie"))
+            # imeis_articulos puede venir como JSON string
+            ia = rep.get("imeis_articulos") if isinstance(rep, dict) else None
+            if isinstance(ia, (str, bytes)):
+                try:
+                    ia = json.loads(ia)
+                except Exception:
+                    ia = None
+            if isinstance(ia, list):
+                for li in ia:
+                    try:
+                        for im in (li.get("imeis") or []):
+                            add_imei(im)
+                        # NUEVO: también considerar SIMs por línea
+                        for s in (li.get("sims") or []):
+                            add_imei(s)
+                    except Exception:
+                        continue
+            # sim_series puede venir como JSON string
+            ss = rep.get("sim_series") if isinstance(rep, dict) else None
+            if isinstance(ss, (str, bytes)):
+                try:
+                    ss = json.loads(ss)
+                except Exception:
+                    ss = None
+            if isinstance(ss, list):
+                for s in ss:
+                    add_imei(s)
+
+        # Revertir IMEIs a Disponible
+        if imeis_to_revert:
+            cur2 = db.cursor()
+            try:
+                cur2.executemany(
+                    "UPDATE imeis SET status='Disponible' WHERE imei=%s",
+                    [(i,) for i in imeis_to_revert]
+                )
+            finally:
+                cur2.close()
+
+        # Eliminar el reporte
+        cur3 = db.cursor()
+        try:
+            cur3.execute("DELETE FROM reportes_servicio WHERE id=%s", (reporte_id,))
+        finally:
+            cur3.close()
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        cursor.close(); db.close()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar reporte: {str(e)}")
+    # Sincronizar stock de artículos tras revertir IMEIs/SIM a Disponible
+    try:
+        sincronizar_stock_articulos()
+    except Exception:
+        pass
+    cursor.close(); db.close()
+    return {"message": "Reporte eliminado", "imeis_revertidos": len(imeis_to_revert)}
 
 @app.delete("/imeis/{imei}")
 def delete_imei(imei: str):

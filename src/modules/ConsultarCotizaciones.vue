@@ -579,12 +579,12 @@ function generatePDF(cotizacion) {
           [
             { text: 'Facturar a', style: 'sectionHeader' },
             { text: clienteObj.nombre || '', style: 'clienteLabel' },
-            { text: clienteObj.direccion || '', style: 'clienteLabel' }
+            { text: `Teléfono cliente: ${clienteObj.telefonos && clienteObj.telefonos.length ? clienteObj.telefonos[0] : '-'}` , style: 'clienteLabel' },
+            { text: clienteObj.direccion || '', style: 'clienteLabel' },
           ],
           [
             { text: `Fecha : ${cotizacion.fecha}`, style: 'clienteLabel', alignment: 'right' },
             { text: `Vendedor : ${cotizacion.vendedor || ''}`, style: 'clienteLabel', alignment: 'right' },
-            { text: `Teléfono cliente: ${clienteObj.telefonos && clienteObj.telefonos.length ? clienteObj.telefonos[0] : '-'}` , style: 'clienteLabel', alignment: 'right' }
           ]
         ]
       },

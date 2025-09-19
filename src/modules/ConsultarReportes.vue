@@ -630,7 +630,16 @@ async function descargarReporteServicio(reporte) {
       const clientes = await getClientes();
       cliente = venta ? (clientes.find(c => c.id === venta.cliente_id) || {}) : {};
     }
-    // Solo los campos que existen en el backend/modelo/SQL
+
+    // Obtener detalle completo del reporte (para imeis_articulos, sim_series)
+    let detalleReporte = null;
+    try {
+      const resp = await axios.get(`${API_URL}/${reporte.id}`);
+      detalleReporte = resp.data || null;
+    } catch (_) {
+      detalleReporte = null;
+    }
+
     const reporteCampos = {
       tipo_servicio: reporte.tipo_servicio,
       lugar_instalacion: reporte.lugar_instalacion,
@@ -654,7 +663,10 @@ async function descargarReporteServicio(reporte) {
       viaticos: reporte.viaticos,
       pagado: reporte.pagado,
       nombre_cliente: reporte.nombre_cliente,
-      nombre_instalador: reporte.nombre_instalador
+      nombre_instalador: reporte.nombre_instalador,
+      // NUEVO: estructuras N
+      imeis_articulos: detalleReporte?.imeis_articulos || reporte.imeis_articulos || [],
+      sim_series: detalleReporte?.sim_series || reporte.sim_series || []
     };
     await generarReporteServicioPDF({
       reporte: reporteCampos,

@@ -51,6 +51,28 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
     return columnsArr;
   }
 
+  function pickSimForIndex(li, baseSimSeries) {
+    try {
+      if (Array.isArray(li?.sims) && li.sims.length) {
+        const val = li.sims[0];
+        if (val) return String(val);
+      }
+      if (Array.isArray(baseSimSeries) && baseSimSeries.length) {
+        return String(baseSimSeries[0]);
+      }
+      if (li && li.sim_serie) return String(li.sim_serie);
+    } catch(_) { /* noop */ }
+    return '';
+  }
+
+  const subtotalCalc = Number(reporte?.subtotal ?? 0) || 0;
+  const descuentoPct = Number(reporte?.descuento ?? venta?.descuento ?? 0) || 0;
+  const descuentoCalc = subtotalCalc * (descuentoPct / 100);
+  const baseCalc = Math.max(0, subtotalCalc - descuentoCalc);
+  const requiereFactura = Boolean(venta?.requiereFactura ?? reporte?.requiereFactura);
+  const ivaCalc = requiereFactura ? baseCalc * 0.16 : 0;
+  const totalCalc = Number(reporte?.total ?? 0) || (baseCalc + ivaCalc);
+
   const blocksList = [
     block('Cliente', {
       'Nombre': reporte?.nombre_cliente || cliente?.nombre || '-',
@@ -60,34 +82,68 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
     block('Técnico', {
       'Técnico': reporte?.nombre_instalador || '-'
     }),
-    block('Vehículo', {
-      'Marca': reporte?.marca || '-',
-      'Submarca': reporte?.submarca || '-',
-      'Modelo': reporte?.modelo || '-',
-      'Placas': reporte?.placas || '-',
-      'Color': reporte?.color || '-',
-      'Número económico': reporte?.numero_economico || '-'
-    }),
-    block('GPS', {
-      'Modelo GPS': reporte?.modelo_gps || '-',
-      'IMEI': reporte?.imei || '-',
-      'Serie': reporte?.serie || '-',
-      'Accesorios': reporte?.accesorios || '-',
-      'Ubicación GPS': reporte?.ubicacion_gps || '-',
-      'Ubicación Bloqueo': reporte?.ubicacion_bloqueo || '-'
-    }),
-    block('SIM', {
-      'Serie SIM': reporte?.sim_serie || '-'
-    }),
     block('Pago', {
-      'Subtotal': reporte?.subtotal ? `$${reporte.subtotal}` : '-',
-      'Total': reporte?.total ? `$${reporte.total}` : '-',
+      'Subtotal': subtotalCalc ? `$${subtotalCalc.toFixed(2)}` : '-',
+      'Descuento (%)': `${descuentoPct}%`,
+      'IVA (16%)': `$${ivaCalc.toFixed(2)}`,
+      'Total': `$${totalCalc.toFixed(2)}`,
       'Forma de pago': reporte?.forma_pago || '-',
-      'Monto técnico': reporte?.monto_tecnico ? `$${reporte.monto_tecnico}` : '-',
-      'Viáticos': reporte?.viaticos ? `$${reporte.viaticos}` : '-',
+      'Monto técnico': reporte?.monto_tecnico ? `$${Number(reporte.monto_tecnico).toFixed(2)}` : '-',
+      'Viáticos': reporte?.viaticos ? `$${Number(reporte.viaticos).toFixed(2)}` : '-',
       'Pagado': reporte?.pagado ? 'Sí' : 'No'
     })
   ];
+
+  // Secciones por instalación
+  const instalacionesBlocks = [];
+  const imeiLines = Array.isArray(reporte?.imeis_articulos) ? reporte.imeis_articulos : [];
+  const simSeries = Array.isArray(reporte?.sim_series) ? reporte.sim_series : [];
+  if (imeiLines.length > 0) {
+    let simIdx = 0;
+    let contador = 1;
+    for (const li of imeiLines) {
+      const imeis = Array.isArray(li.imeis) ? li.imeis.filter(Boolean) : [];
+      const simsLinea = Array.isArray(li.sims) ? li.sims : [];
+      for (let i = 0; i < imeis.length; i++) {
+        const imei = imeis[i];
+        const sim = simsLinea[i] || simSeries[simIdx] || (reporte?.sim_serie || '-');
+        if (!simsLinea[i] && simSeries[simIdx]) simIdx += 1;
+        instalacionesBlocks.push(
+          block(`Servicio de Instalación #${contador}`,[
+            ['Marca', li.marca || reporte?.marca || '-'],
+            ['Submarca', li.submarca || reporte?.submarca || '-'],
+            ['Modelo', li.modelo || reporte?.modelo || '-'],
+            ['Placas', li.placas || reporte?.placas || '-'],
+            ['Color', li.color || reporte?.color || '-'],
+            ['Número económico', li.numero_economico || reporte?.numero_economico || '-'],
+            ['Modelo GPS', li.modelo_gps || reporte?.modelo_gps || '-'],
+            ['IMEI', imei || '-'],
+            ['Serie SIM', sim || '-'],
+            ['Ubicación GPS', li.ubicacion_gps || reporte?.ubicacion_gps || '-'],
+            ['Ubicación Bloqueo', li.ubicacion_bloqueo || reporte?.ubicacion_bloqueo || '-']
+          ].reduce((acc,[k,v])=>{ acc[k]=v; return acc; }, {}))
+        );
+        contador += 1;
+      }
+    }
+  } else {
+    // Push as a grouped block
+    instalacionesBlocks.push(
+      block('Servicio de Instalación', {
+        'Marca': reporte?.marca || '-',
+        'Submarca': reporte?.submarca || '-',
+        'Modelo': reporte?.modelo || '-',
+        'Placas': reporte?.placas || '-',
+        'Color': reporte?.color || '-',
+        'Número económico': reporte?.numero_economico || '-',
+        'Modelo GPS': reporte?.modelo_gps || '-',
+        'IMEI': reporte?.imei || '-',
+        'Serie SIM': reporte?.sim_serie || '-',
+        'Ubicación GPS': reporte?.ubicacion_gps || '-',
+        'Ubicación Bloqueo': reporte?.ubicacion_bloqueo || '-'
+      })
+    );
+  }
 
   const docDefinition = {
     content: [
@@ -106,6 +162,8 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
         margin: [0, 0, 0, 10]
       },
       ...blocksInColumns(blocksList),
+      { text: 'Servicios de Instalación', style: 'sectionTitle', margin: [0, 18, 0, 4] },
+      ...blocksInColumns(instalacionesBlocks),
       { text: 'Observaciones', style: 'sectionTitle', margin: [0, 18, 0, 4] },
       {
         table: {
