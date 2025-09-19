@@ -48,7 +48,7 @@
             </div>
             <div class="dialog-section" v-if="selectedEvent.extendedProps?.link_ubicacion">
               <strong>Link:</strong>
-              <a :href="selectedEvent.extendedProps.link_ubicacion" target="_blank">Abrir</a>
+              <a :href="normalizedLink(selectedEvent.extendedProps.link_ubicacion)" target="_blank" rel="noopener noreferrer" title="Abrir ubicación">Abrir</a>
             </div>
             <div class="dialog-section" v-if="parsedClienteInfo">
               <strong>Cliente Info:</strong>
@@ -112,6 +112,17 @@
           <Column field="tecnico" header="Técnico" sortable />
           <Column field="cliente" header="Cliente" sortable />
           <Column field="direccion" header="Dirección" />
+          <!-- Nueva columna: Ubicación con ícono -->
+          <Column header="Ubicación">
+            <template #body="slotProps">
+              <div v-if="slotProps.data.link_ubicacion" style="display:flex; align-items:center; gap:.5rem;">
+                <a :href="normalizedLink(slotProps.data.link_ubicacion)" target="_blank" rel="noopener noreferrer" title="Abrir en Google Maps">
+                  <Button icon="pi pi-map-marker" class="p-button-rounded p-button-text p-button-sm" />
+                </a>
+              </div>
+              <span v-else>-</span>
+            </template>
+          </Column>
           <Column header="Acciones">
             <template #body="slotProps">
               <template v-if="!reporteDeAsignacion(slotProps.data)">
@@ -489,6 +500,33 @@ function modificarOrden(asignacion) {
 function abrirTecladoBusquedaCliente() {
   window.scrollTo(0, 0);
   document.querySelector('input[placeholder="Filtrar por cliente"]')?.focus();
+}
+
+function normalizedLink(link) {
+  if (!link) return '#';
+  const l = String(link).trim();
+  // If already has a scheme (http, https, etc.) and is not a geo: URI
+  if (/^[a-z]+:\/\//i.test(l) && !/^geo:/i.test(l)) {
+    return l;
+  }
+  // Handle geo:lat,lng
+  if (/^geo:/i.test(l)) {
+    const m = l.match(/^geo:([\-\d.]+),([\-\d.]+)/i);
+    if (m) {
+      const q = `${m[1]},${m[2]}`;
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+    }
+  }
+  // If it looks like a Google Maps short link or domain without scheme
+  if (/^(www\.|(google\.com\/maps|maps\.google\.com|goo\.gl\/maps|maps\.app\.goo\.gl))/i.test(l)) {
+    return `https://${l.replace(/^www\./i, '')}`;
+  }
+  // If it's plain coordinates
+  if (/^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(l)) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l)}`;
+  }
+  // Fallback: treat as address/query
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l)}`;
 }
 </script>
 

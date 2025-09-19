@@ -294,6 +294,7 @@ import { useRouter } from 'vue-router';
 import { registrarMovimiento } from '@/services/inventarioService';
 import { getQuotations, updateQuotation } from '@/services/quotationService';
 import Chip from 'primevue/chip';
+
 const archivoConstancia = ref(null);
 const venta = reactive({
   cliente_id: null,
@@ -362,7 +363,6 @@ const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() ===
 
 const requiereFactura = ref(false);
 const rfc = ref('XAXX010101000');
-
 
 watch(requiereFactura, (val) => {
   if (!val) {
@@ -854,11 +854,13 @@ function onConstanciaFileChange(e){
     if (!allowed.includes(file.type)) {
       console.warn('[Constancia] Tipo no permitido:', file.type);
       archivoConstancia.value = null;
+      toast.add({ severity: 'warn', summary: 'Archivo no admitido', detail: 'Solo PDF/PNG/JPG.', life: 3000 });
       return;
     }
     if (file.size > 8 * 1024 * 1024) {
       console.warn('[Constancia] Archivo supera 8MB');
       archivoConstancia.value = null;
+      toast.add({ severity: 'warn', summary: 'Archivo muy grande', detail: 'Máximo 8MB.', life: 3000 });
       return;
     }
   }
@@ -1068,3 +1070,4 @@ function onConstanciaFileChange(e){
   }
 }
 </style>
+``` 
