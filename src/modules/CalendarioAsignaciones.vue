@@ -246,6 +246,44 @@ const calendarOptions = ref({
   selectable: true,
   editable: false,
 });
+
+
+const acalendarOptions = ref({
+  plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
+  initialView: 'timeGridWeek',
+  headerToolbar: {
+    left: 'prev,next today',
+    center: 'title',
+    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+  },
+  // Configuración específica para vista de semana
+  slotDuration: '01:00:00',
+  slotMinTime: '06:00:00',
+  slotMaxTime: '22:00:00',
+  allDaySlot: false, // Ocultar "Todo el día"
+  weekends: true,
+  editable: false,
+  selectable: false,
+  events: [],
+  eventClick: (info) => {
+    // Mostrar información detallada del evento
+    console.log('Evento clickeado:', info.event.extendedProps);
+  },
+  eventContent: (arg) => {
+    // Personalizar cómo se ve el evento en el calendario
+    return {
+      html: `
+        <div class="custom-event-content">
+          <div class="event-title">${arg.event.title}</div>
+          <div class="event-time">${arg.timeText}</div>
+          <div class="event-client">${arg.event.extendedProps.cliente}</div>
+        </div>
+      `
+    };
+  }
+});
+
+
 const events = ref([]);
 const showDialog = ref(false);
 const selectedEvent = ref(null);
@@ -355,7 +393,6 @@ async function eliminarReporte(asignacion) {
     window.toast && window.toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar', life: 4000 })
   }
 }
-
 onMounted(async () => {
   loading.value = true;
   const [asignacionesRaw, clientesRaw, ventasRaw] = await Promise.all([
@@ -363,39 +400,74 @@ onMounted(async () => {
     getClientes(),
     getVentas()
   ]);
+  
   clientesMap.value = Object.fromEntries(clientesRaw.map(c => [c.id, c.nombre]));
   ventasMap.value = Object.fromEntries(ventasRaw.map(v => [v.id, v.folio]));
+  
   let todasAsignaciones = asignacionesRaw.map(a => ({
     ...a,
     cliente: clientesMap.value[a.cliente_id] || a.cliente_nombre || a.cliente_id || '',
     tecnico: a.tecnico || a.tecnico_nombre || '',
     venta_folio: ventasMap.value[a.venta_id] || ''
   }));
+  
   // Filtrar por técnico si el usuario es técnico
   if (user.value.perfil === 'Tecnico') {
     todasAsignaciones = todasAsignaciones.filter(a => {
-      // Comparar por username o nombre según cómo se guarde el técnico
       return (
         (a.tecnico && a.tecnico.toLowerCase() === (user.value.username || '').toLowerCase()) ||
         (a.tecnico_nombre && a.tecnico_nombre.toLowerCase() === (user.value.username || '').toLowerCase())
       );
     });
   }
+  
   asignaciones.value = todasAsignaciones;
   tecnicos.value = [...new Set(asignaciones.value.map(a => a.tecnico).filter(Boolean))].map(t => ({ tecnico: t }));
   clientes.value = [...new Set(asignaciones.value.map(a => a.cliente).filter(Boolean))].map(c => ({ cliente: c }));
   loading.value = false;
-  events.value = asignaciones.value.map(a => ({
-    title: a.tecnico ? `Técnico: ${a.tecnico}` : 'Asignación',
-    start: a.fecha_servicio,
-    description: `Cliente: ${a.cliente || a.cliente_id || ''}\nVenta: ${a.venta_folio || a.venta_id || ''}`,
-    id: a.id ?? a.venta_id,
-    ...a
-  }));
+  
+  // CORRECCIÓN PRINCIPAL: Combinar fecha y hora
+  events.value = asignaciones.value.map(a => {
+    // Combinar fecha_servicio con hora_servicio
+    const startDateTime = a.hora_servicio ? `${a.fecha_servicio}T${a.hora_servicio}` : a.fecha_servicio;
+    
+    // Calcular end time (asumiendo 1 hora de duración si hay hora_servicio)
+    let endDateTime = null;
+    if (a.hora_servicio) {
+      const [hours, minutes] = a.hora_servicio.split(':');
+      const endTime = new Date(`${a.fecha_servicio}T${a.hora_servicio}`);
+      endTime.setHours(endTime.getHours() + 1); // Duración de 1 hora
+      endDateTime = endTime.toISOString().slice(0, 16).replace('T', ' ');
+    }
+    
+    return {
+      title: a.tecnico ? `Técnico: ${a.tecnico}` : 'Asignación',
+      start: startDateTime,
+      end: endDateTime,
+      description: `Cliente: ${a.cliente || a.cliente_id || ''}\nVenta: ${a.venta_folio || a.venta_id || ''}`,
+      id: a.id ?? a.venta_id,
+      extendedProps: {
+        // Mover propiedades adicionales aquí
+        fecha_servicio: a.fecha_servicio,
+        hora_servicio: a.hora_servicio,
+        direccion: a.direccion,
+        link_ubicacion: a.link_ubicacion,
+        cliente_info: a.cliente_info,
+        venta_id: a.venta_id,
+        cliente_id: a.cliente_id,
+        tecnico: a.tecnico,
+        fecha_venta: a.fecha_venta,
+        cliente: a.cliente,
+        venta_folio: a.venta_folio
+      }
+    };
+  });
+  
   calendarOptions.value.events = events.value;
-  await cargarReportesServicios()
+  console.log('Eventos mapeados:', events.value);
+  
+  await cargarReportesServicios();
 });
-
 function buscarTecnico(event) {
   const query = event.query?.toLowerCase() || '';
   tecnicosFiltrados.value = tecnicos.value.filter(t =>
@@ -554,5 +626,30 @@ function normalizedLink(link) {
 }
 .fade-enter-from, .fade-leave-to {
   opacity: 0;
+}
+.custom-event-content {
+  padding: 2px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.event-title {
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.event-time {
+  font-size: 10px;
+  color: #666;
+}
+
+.event-client {
+  font-size: 10px;
+  color: #444;
+}
+
+/* Asegurar que los eventos se vean bien en la vista de semana */
+.fc-time-grid-event .fc-content {
+  padding: 1px;
 }
 </style>
