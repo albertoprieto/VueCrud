@@ -110,6 +110,7 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
         if (!simsLinea[i] && simSeries[simIdx]) simIdx += 1;
         instalacionesBlocks.push(
           block(`Servicio de Instalación #${contador}`,[
+            ['Tipo de servicio', li.tipo_servicio || '-'],
             ['Marca', li.marca || reporte?.marca || '-'],
             ['Submarca', li.submarca || reporte?.submarca || '-'],
             ['Modelo', li.modelo || reporte?.modelo || '-'],
@@ -130,6 +131,7 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
     // Push as a grouped block
     instalacionesBlocks.push(
       block('Servicio de Instalación', {
+        'Tipo de servicio': reporte?.tipo_servicio || '-',
         'Marca': reporte?.marca || '-',
         'Submarca': reporte?.submarca || '-',
         'Modelo': reporte?.modelo || '-',

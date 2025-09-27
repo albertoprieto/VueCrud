@@ -5,11 +5,6 @@
       <!-- Bloque global: una sola columna a lo ancho -->
       <div class="global-header col-block full-width">
         <div class="form-group">
-          <label class="required-label">Tipo de servicio</label>
-          <Dropdown v-model="form.tipo_servicio" :options="tiposServicio" placeholder="Selecciona" class="w-full" :class="{'p-invalid': isCampoInvalido('tipo_servicio')}" />
-          <small v-if="isCampoInvalido('tipo_servicio')" class="error-msg">Requerido</small>
-        </div>
-        <div class="form-group">
           <label>Lugar / Centro de instalación</label>
           <InputText v-model="form.lugar_instalacion" class="w-full" placeholder="Opcional" />
         </div>
@@ -18,6 +13,14 @@
       <!-- Bloques por artículo: máximo 2 columnas -->
       <div class="line-items-grid" :class="{ 'two-cols': shouldUseTwoCols }">
         <div class="col-block" v-for="linea in lineItems" :key="`art-${linea.lineaId}`">
+
+
+          <label class="required-label">Tipo de servicio</label>
+          <Dropdown v-model="linea.tipo_servicio" :options="tiposServicio" placeholder="Selecciona" class="w-full mb-4" :class="{'p-invalid': isCampoInvalido('tipo_servicio')}" />
+
+
+          
+
           <h4 class="section-title articulo-title">Artículo: {{ linea.articulo_nombre }}</h4>
 
           <!-- Datos del vehículo (por artículo) -->
@@ -97,26 +100,26 @@
             <InputText v-model="form.subtotal" placeholder="Subtotal" class="w-full" :disabled="true" :class="{'p-invalid': isCampoInvalido('subtotal')}" />
           </div>
           <div class="form-group">
-            <label class="required-label">Total a cobrar</label>
+            <label class="required-label">Total pagado por el cliente</label>
             <InputNumber v-model="form.total" placeholder="Total a cobrar" class="w-full" :class="{'p-invalid': isCampoInvalido('total')}" />
             <small>El instalador puede modificar este valor si hay algún ajuste.</small>
           </div>
           <div class="form-group monto-tecnico-group">
-            <label>Monto cobrado por el técnico</label>
+            <label>Monto cobrado por el servicio del técnico</label>
             <div class="monto-tecnico-row">
               <InputNumber v-model="form.monto_tecnico" placeholder="Monto técnico" class="w-full" :disabled="usarTotalMontoTecnico" />
               <div class="checkbox-inline">
-                <Checkbox v-model="usarTotalMontoTecnico" :binary="true" inputId="chkUsarTotal" />
-                <label for="chkUsarTotal" class="inline-label">Total</label>
+                <!-- <Checkbox v-model="usarTotalMontoTecnico" :binary="true" inputId="chkUsarTotal" />
+                <label for="chkUsarTotal" class="inline-label">Total</label> -->
               </div>
             </div>
           </div>
           <div class="form-group">
             <label>Método de pago</label>
-            <InputText v-model="form.forma_pago" placeholder="Método de pago" class="w-full" :disabled="true" />
+            <Dropdown v-model="form.forma_pago" :options="metodoPagoOptions" optionLabel="label" optionValue="value" placeholder="Selecciona método de pago" class="w-full" />
           </div>
           <div class="form-group">
-            <label>Viáticos</label>
+            <label>Viáticos cobrados por el técnico</label>
             <InputText v-model="form.viaticos" type="number" class="w-full" />
           </div>
           <div class="form-group span-2">
@@ -169,6 +172,22 @@ const asignacion = ref(null);
 
 const tiposServicio = ['Instalación', 'Reinstalación', 'Revisión', 'Desinstalación', 'Búsqueda'];
 const formasPago = ['Efectivo Entregado al tecnico', 'Transferencia', 'Depósito', ];
+
+const metodoPagoOptions = [
+  { label: 'Pago en efectivo con el técnico', value: 'efectivo_tecnico' },
+  { label: 'Pago con Tarjeta de Crédito', value: 'tarjeta_credito' },
+  { label: 'Pago con Tarjeta de Débito', value: 'tarjeta_debito' },
+  { label: 'Transferencia', value: 'transferencia' }
+];
+
+function mapFormaPago(forma) {
+  const mappings = {
+    'Efectivo Entregado al tecnico': 'efectivo_tecnico',
+    'Transferencia': 'transferencia',
+    'Depósito': 'transferencia' // asumiendo que depósito es similar a transferencia
+  };
+  return mappings[forma] || '';
+}
 
 const tecnicoNombre = ref('');
 const tecnicoTelefono = ref('');
@@ -309,6 +328,7 @@ function buildLineItems(){
         imeisPosibles,
         selecciones: [null],
         sims: [null],
+        tipo_servicio: tiposServicio[0] || '',
         // Campos por artículo (independientes por unidad)
         marca: '', submarca: '', modelo: '', placas: '', color: '', numero_economico: '',
         modelo_gps: '', accesorios: '', ubicacion_gps: '', ubicacion_bloqueo: '',
@@ -395,7 +415,6 @@ const firstSelectedSim = computed(() => {
   }
   return '';
 });
-watch(firstSelectedSim, (v) => { form.value.sim_serie = v || ''; });
 
 watch(selectedImeisGlobal, (setVal) => {
   if (!form.value.imei) {
@@ -403,6 +422,13 @@ watch(selectedImeisGlobal, (setVal) => {
     if (first) form.value.imei = first;
   }
 });
+
+watch(lineItems, (newItems) => {
+  const firstWithTipo = newItems.find(li => li.tipo_servicio);
+  if (firstWithTipo) {
+    form.value.tipo_servicio = firstWithTipo.tipo_servicio;
+  }
+}, { deep: true });
 
 function validarAsignacionesImeis() {
   if (!lineItems.value.length) return true;
@@ -444,7 +470,7 @@ async function cargarDatosCliente() {
       if (venta) {
         form.value.subtotal = venta.total || '';
         form.value.total = venta.total || '';
-        form.value.forma_pago = venta.terminos_pago || '';
+        form.value.forma_pago = mapFormaPago(venta.terminos_pago || '');
         try {
           const detalle = await getDetalleVenta(venta.id);
           if (Array.isArray(detalle) && detalle.length > 0) {
@@ -501,6 +527,7 @@ onMounted(async () => {
     form.value.asignacion_id = asignacion.value.id;
     await cargarDatosTecnico();
     await cargarDatosCliente();
+    form.value.tipo_servicio = tiposServicio[0] || '';
     try { await cargarPagos(); } catch (e) { console.error('Error en cargarPagos:', e); }
     loading.value = false;
   } catch (e) { console.error('Error en onMounted:', e); loading.value = false; }
@@ -535,6 +562,7 @@ async function guardar() {
     const imeisArticulosPayload = lineItems.value.map(li => ({
       articulo_id: li.articulo_id,
       linea_id: li.lineaId,
+      tipo_servicio: li.tipo_servicio || '',
       imeis: [...li.selecciones],
       sims: [...(li.sims || [])],
       marca: li.marca || '',
@@ -646,12 +674,15 @@ function formatoMoneda(valor) {
   return valor.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 });
 }
 
-const baseObligatorios = ['tipo_servicio','subtotal','total'];
+const baseObligatorios = ['subtotal','total'];
 function isCampoObligatorio(c){
   return baseObligatorios.includes(c);
 }
 function isCampoInvalido(c){
   if(!isCampoObligatorio(c)) return false;
+  if(c === 'tipo_servicio'){
+    return lineItems.value.some(li => !li.tipo_servicio);
+  }
   const val = form.value[c];
   if(c === 'total') return val === null || val === undefined || val === '' || isNaN(val);
   return !String(val ?? '').trim();
