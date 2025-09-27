@@ -60,17 +60,17 @@
               </ul>
             </div>
             <div class="dialog-actions" style="display:flex; gap:1rem; margin-top:1.5rem; flex-wrap:wrap;">
-              <template v-if="!reporteDeAsignacion(selectedEventData.value)">
-                <Button label="Agregar Reporte" icon="pi pi-plus" class="p-button-success p-button-sm" @click="irReporteServicio(selectedEvent.extendedProps)" />
+              <template v-if="!reporteDeAsignacion(selectedEvent.extendedProps.asignacion)">
+                <Button label="Agregar Reporte" icon="pi pi-plus" class="p-button-success p-button-sm" @click="irReporteServicio(selectedEvent.extendedProps.asignacion)" />
               </template>
               <template v-else>
-                <Button label="Consultar Reporte" icon="pi pi-file-pdf" class="p-button-warning p-button-sm" @click="consultarReporte(selectedEventData.value)" />
-                <a v-if="reporteDeAsignacion(selectedEventData.value)?.comprobante_path" :href="urlComprobante(reporteDeAsignacion(selectedEventData.value))" target="_blank" rel="noopener noreferrer">
+                <Button label="Consultar Reporte" icon="pi pi-file-pdf" class="p-button-warning p-button-sm" @click="consultarReporte(selectedEvent.extendedProps.asignacion)" />
+                <a v-if="reporteDeAsignacion(selectedEvent.extendedProps.asignacion)?.comprobante_path" :href="urlComprobante(reporteDeAsignacion(selectedEvent.extendedProps.asignacion))" target="_blank" rel="noopener noreferrer">
                   <Button label="Ver Comprobante" icon="pi pi-download" class="p-button-secondary p-button-sm" />
                 </a>
-                <Button label="Eliminar Reporte" icon="pi pi-trash" class="p-button-danger p-button-sm" @click="eliminarReporte(selectedEventData.value)" />
+                <Button label="Eliminar Reporte" icon="pi pi-trash" class="p-button-danger p-button-sm" @click="eliminarReporte(selectedEvent.extendedProps.asignacion)" />
               </template>
-              <Button label="Descargar Orden" icon="pi pi-file-pdf" class="p-button-secondary p-button-sm" @click="descargarNota(selectedEventData)" v-if="selectedEventData.venta_id" />
+              <Button label="Descargar Orden" icon="pi pi-file-pdf" class="p-button-secondary p-button-sm" @click="descargarNota(selectedEvent.extendedProps.asignacion)" v-if="selectedEvent.extendedProps.asignacion?.venta_id" />
             </div>
           </div>
         </Dialog>
@@ -217,7 +217,13 @@ const clientesFiltrados = ref([]);
 function handleEventClick(info) {
   selectedEvent.value = info.event;
   dialogTitle.value = info.event.title;
-  selectedEventData.value = info.event.extendedProps;
+  console.log('Evento click:', {
+    event: info.event,
+    extendedProps: info.event.extendedProps,
+    asignacion: info.event.extendedProps?.asignacion
+  });
+  // Usar el objeto de asignación completo si existe, si no, usar extendedProps
+  selectedEventData.value = info.event.extendedProps?.asignacion || info.event.extendedProps || {};
   const raw = info.event.extendedProps?.cliente_info;
   if (raw) {
     try {
@@ -326,6 +332,8 @@ async function cargarReportesServicios() {
 }
 
 function reporteDeAsignacion(asignacion) {
+  console.log(asignacion);
+  
   if (!asignacion) return null
   return reportesPorAsignacion.value[asignacion.id]
 }
@@ -430,7 +438,6 @@ onMounted(async () => {
   events.value = asignaciones.value.map(a => {
     // Combinar fecha_servicio con hora_servicio
     const startDateTime = a.hora_servicio ? `${a.fecha_servicio}T${a.hora_servicio}` : a.fecha_servicio;
-    
     // Calcular end time (asumiendo 1 hora de duración si hay hora_servicio)
     let endDateTime = null;
     if (a.hora_servicio) {
@@ -439,7 +446,6 @@ onMounted(async () => {
       endTime.setHours(endTime.getHours() + 1); // Duración de 1 hora
       endDateTime = endTime.toISOString().slice(0, 16).replace('T', ' ');
     }
-    
     return {
       title: a.tecnico ? `Técnico: ${a.tecnico}` : 'Asignación',
       start: startDateTime,
@@ -458,14 +464,13 @@ onMounted(async () => {
         tecnico: a.tecnico,
         fecha_venta: a.fecha_venta,
         cliente: a.cliente,
-        venta_folio: a.venta_folio
+        venta_folio: a.venta_folio,
+        asignacion: a // Guardar el objeto original
       }
-    };
+    }
   });
-  
   calendarOptions.value.events = events.value;
   console.log('Eventos mapeados:', events.value);
-  
   await cargarReportesServicios();
 });
 function buscarTecnico(event) {
