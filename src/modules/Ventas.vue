@@ -634,10 +634,14 @@ function cerrarDialogoVenta() {
 }
 
 const esServicio = (articulo_id) => {
-  const art = articulosDisponibles.value.find(a => a.id === articulo_id || a.articulo_id === articulo_id);
+  // Busca en catálogo si no está en articulosDisponibles
+  let art = articulosDisponibles.value.find(a => a.id === articulo_id || a.articulo_id === articulo_id);
+  if (!art && articulosCatalog.value?.length) {
+    art = articulosCatalog.value.find(a => a.id === articulo_id);
+  }
   if (!art) return false;
-  const tipo = String(art.tipo).toLocaleLowerCase();
-  return tipo === 'servicio' || tipo === 'servicio' || tipo === 'servicios';
+  const tipo = String(art.tipo || '').toLocaleLowerCase();
+  return tipo === 'servicio' || tipo === 'servicios';
 };
 
 const subtotalVenta = computed(() =>
@@ -655,6 +659,7 @@ const totalVenta = computed(() =>
 
 const stockInsuficiente = computed(() => {
   if (!venta.ubicacion_id) return false;
+  // Solo valida stock para artículos que NO son servicio
   return venta.articulos.some(a => {
     if (esServicio(a.articulo_id)) return false;
     const artUbicacion = articulosDisponibles.value.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
@@ -667,7 +672,7 @@ const detalleFaltantes = computed(() => {
   if (!venta.ubicacion_id) return [];
   const detalles = [];
   for (const a of venta.articulos) {
-    if (esServicio(a.articulo_id)) continue;
+    if (esServicio(a.articulo_id)) continue; // Ignora servicios
     const artU = articulosDisponibles.value.find(art => art.id === a.articulo_id || art.articulo_id === a.articulo_id);
     const stock = artU ? (artU.stock ?? 0) : 0;
     const requerido = a.cantidad ?? 0;

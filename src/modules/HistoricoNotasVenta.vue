@@ -148,58 +148,92 @@
     </Dialog>
     
   <Dialog v-model:visible="showAsignarDialog" header="Asignar Técnico" :modal="true" :closable="false" class="asignar-dialog">
-      <!-- Datos de la orden / cliente (solo lectura) -->
-      <div class="grid-info">
-        <div class="field">
-          <label>Teléfonos</label>
-          <div class="field-read">{{ ordenClienteInfo.telefonos || '-' }}</div>
+      <form class="asignar-form" @submit.prevent="asignarTecnico">
+        <div class="asignar-grid">
+          <div class="asignar-col">
+            <label>Teléfonos <span class="req">*</span></label>
+            <input v-model="ordenClienteInfo.telefonos" required class="asignar-input" placeholder="Teléfonos" />
+          </div>
+          <div class="asignar-col">
+            <label>Usuario(s) <span class="req">*</span></label>
+            <input v-model="ordenClienteInfo.usuario" required class="asignar-input" placeholder="Usuario(s)" />
+          </div>
         </div>
-        <div class="field">
-          <label>Usuario(s)</label>
-          <div class="field-read">{{ ordenClienteInfo.usuario || '-' }}</div>
+        <div class="asignar-col">
+          <label>Plataforma <span class="req">*</span></label>
+          <Dropdown
+            v-model="ordenClienteInfo.plataforma"
+            :options="plataformasCliente"
+            placeholder="Selecciona plataforma"
+            class="asignar-input plataforma-dropdown"
+            :required="true"
+            :invalid="!ordenClienteInfo.plataforma"
+          />
         </div>
-        <div class="field">
-          <label>Plataforma(s)</label>
-          <div class="field-read">{{ ordenClienteInfo.plataforma || '-' }}</div>
+        <div class="asignar-col">
+          <label>Descripción <span class="req">*</span></label>
+          <Textarea v-model="ordenClienteInfo.descripcion" required class="asignar-input" placeholder="Descripción" />
         </div>
-        <div class="field field-full">
-          <label>Descripción</label>
-          <Textarea v-model="ordenClienteInfo.descripcion" rows="2" class="w-full" />
+        <div class="asignar-grid">
+          <div class="asignar-col">
+            <label>Técnico <span class="req">*</span></label>
+            <Dropdown
+              v-model="tecnicoSeleccionado"
+              :options="tecnicos"
+              optionLabel="nombre"
+              optionValue="id"
+              placeholder="Selecciona técnico"
+              class="asignar-input"
+              :required="true"
+              :invalid="!tecnicoSeleccionado"
+            />
+          </div>
+          <div class="asignar-col">
+            <label>Fecha servicio <span class="req">*</span></label>
+            <Calendar
+              v-model="fechaServicio"
+              dateFormat="yy-mm-dd"
+              placeholder="Fecha servicio"
+              class="asignar-input"
+              :required="true"
+              :invalid="!fechaServicio"
+            />
+          </div>
+          <div class="asignar-col">
+            <label>Hora <span class="req">*</span></label>
+            <Calendar
+              v-model="horaServicio"
+              timeOnly
+              hourFormat="24"
+              iconDisplay="input"
+              placeholder="Hora"
+              class="asignar-input"
+              :required="true"
+              :invalid="!horaServicio"
+            />
+          </div>
         </div>
-      </div>
-      <Divider />
-      <!-- Campos para asignación -->
-      <Dropdown
-        v-model="tecnicoSeleccionado"
-        :options="tecnicos"
-        optionLabel="nombre"
-        optionValue="id"
-        placeholder="Selecciona técnico"
-        class="w-full mb-3"
-      />
-      <div class="flex gap-3 mb-3 flex-wrap">
-        <Calendar
-          v-model="fechaServicio"
-          dateFormat="yy-mm-dd"
-          placeholder="Fecha servicio"
-          class="flex-1 min-w-40"
-        />
-        <Calendar
-          v-model="horaServicio"
-          timeOnly
-          hourFormat="24"
-          iconDisplay="input"
-          placeholder="Hora"
-          class="flex-1 min-w-40"
-        />
-      </div>
-      <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;">
-        <input v-model="direccionServicio" placeholder="Dirección" style="padding:.5rem; border:1px solid #666; border-radius:4px; background:#111; color:#fff;" />
-        <input v-model="cpServicio" placeholder="Código Postal" style="padding:.5rem; border:1px solid #666; border-radius:4px; background:#111; color:#fff;" />
-        <input v-model="linkUbicacion" placeholder="Link Ubicación (Maps)" style="padding:.5rem; border:1px solid #666; border-radius:4px; background:#111; color:#fff;" />
-      </div>
-      <Button label="Asignar" icon="pi pi-check" @click="asignarTecnico" :disabled="!tecnicoSeleccionado || !fechaServicio" />
-      <Button label="Cancelar" icon="pi pi-times" @click="showAsignarDialog = false" class="p-button-secondary ml-2" />
+        <div class="asignar-grid">
+          <div class="asignar-col">
+            <label>Dirección <span class="req">*</span></label>
+            <input v-model="direccionServicio" required class="asignar-input" placeholder="Dirección" />
+          </div>
+          <div class="asignar-col">
+            <label>Código Postal <span class="req">*</span></label>
+            <input v-model="cpServicio" required class="asignar-input" placeholder="Código Postal" />
+          </div>
+          <div class="asignar-col">
+            <label>Link Ubicación (Maps) <span class="req">*</span></label>
+            <input v-model="linkUbicacion" required class="asignar-input" placeholder="Link Ubicación (Maps)" />
+          </div>
+        </div>
+        <div class="asignar-actions">
+          <Button label="Asignar" icon="pi pi-check" type="submit"
+            :disabled="!tecnicoSeleccionado || !fechaServicio || !horaServicio || !ordenClienteInfo.plataforma || !ordenClienteInfo.telefonos || !ordenClienteInfo.usuario || !ordenClienteInfo.descripcion || !direccionServicio || !cpServicio || !linkUbicacion"
+            class="p-button-success" />
+          <Button label="Cancelar" icon="pi pi-times" @click="showAsignarDialog = false" class="p-button-secondary ml-2" />
+        </div>
+      </form>
     </Dialog>
     <Dialog v-model:visible="showResponseDialog" header="Resultado" :modal="true">
       <div style="padding:1.5rem; text-align:center;">
@@ -289,8 +323,9 @@ const direccionServicio = ref('');
 const cpServicio = ref('');
 const linkUbicacion = ref('');
 // Eliminados coordLat y coordLng (mapa removido)
-// Datos cliente/orden mostrados en dialog (solo lectura)
+// Datos cliente/orden mostrados en dialog
 const ordenClienteInfo = ref({ telefonos: '', usuario: '', plataforma: '', descripcion: '' });
+const plataformasCliente = ref([]);
 
 function buildOrdenClienteInfo(venta, cliente) {
   const telefonos = Array.isArray(cliente?.telefonos) ? cliente.telefonos.filter(Boolean).join(', ') : (cliente?.telefono || '');
@@ -451,6 +486,18 @@ async function abrirAsignarTecnico(venta) {
     const cliente = clientes.find(c => String(c.id) === String(venta.cliente_id)) || {};
     // Ya no autocompletamos direccion / cp: el usuario los ingresará manualmente.
     ordenClienteInfo.value = buildOrdenClienteInfo(venta, cliente);
+    // Extrae plataformas disponibles del cliente
+    plataformasCliente.value = Array.isArray(cliente?.plataformas)
+      ? cliente.plataformas.filter(Boolean)
+      : cliente?.plataforma
+        ? [cliente.plataforma]
+        : [];
+    // Si hay plataformas, selecciona la primera por defecto
+    // if (plataformasCliente.value.length && !ordenClienteInfo.value.plataforma) {
+    //   ordenClienteInfo.value.plataforma = plataformasCliente.value[0];
+    // }
+    console.log(plataformasCliente.value);
+    
     console.log('[DEBUG abrirAsignarTecnico] cliente encontrado?', !!cliente.id);
   } catch (e) {
     console.warn('No se pudo cargar info cliente para dialog', e);
@@ -580,11 +627,77 @@ function esPdf(url) { return url && url.toLowerCase().includes('.pdf'); }
 </script>
 
 <style scoped>
+/* Estilos modernos para el diálogo de asignar técnico */
+.asignar-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  /* background: #181818; */
+  padding: 1.5rem;
+  border-radius: 12px;
+}
+.asignar-grid {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+}
+.asignar-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.asignar-input {
+  /* background: #222;
+  color: #fff;
+  border: 1.5px solid #444; */
+  border-radius: 6px;
+  font-size: 1em;
+  padding: 0.5em 0.8em;
+}
+.asignar-input:focus {
+  border-color: #ff4081;
+  outline: none;
+}
+.plataforma-dropdown .p-dropdown {
+  /* background: #222;
+  color: #fff; */
+  border: 1.5px solid #ff4081;
+  border-radius: 6px;
+  font-size: 1em;
+}
+.plataforma-dropdown .p-dropdown.p-invalid {
+  border-color: #ff5252;
+  box-shadow: 0 0 0 2px rgba(255,82,82,0.2);
+}
+
+.req {
+  color: #ff5252;
+  font-weight: bold;
+}
+.asignar-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 1.2rem;
+}
+/* Mejora visual para el dropdown de plataforma */
+.plataforma-dropdown .p-dropdown {
+  /* background: #181818;
+  color: #fff; */
+  border: 1.5px solid #ff4081;
+  border-radius: 6px;
+  font-size: 1em;
+}
+.plataforma-dropdown .p-dropdown.p-invalid {
+  border-color: #ff5252;
+  box-shadow: 0 0 0 2px rgba(255,82,82,0.2);
+}
+
 .historico-notas-container {
   margin: 2rem auto;
   background: var(--color-bg);
   border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  /* box-shadow: 0 4px 24px rgba(0,0,0,0.10); */
   padding: 2rem 1.5rem;
   color: var(--color-text);
 }
@@ -599,7 +712,7 @@ function esPdf(url) { return url && url.toLowerCase().includes('.pdf'); }
   margin-bottom: 2rem;
   background: var(--color-card);
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  /* box-shadow: 0 2px 8px rgba(0,0,0,0.08); */
   padding: 1.5rem;
 }
 .historico-dialog :deep(.p-dialog-content) {

@@ -678,7 +678,6 @@ function descargarPDFCotizacion() {
                   min="0"
                   step="0.01"
                   class="w-full mobile-input"
-                  :disabled="true"
                 />
               </template>
             </Column>

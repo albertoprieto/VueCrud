@@ -50,7 +50,11 @@
       <!-- Vista lista plana -->
       <DataTable v-if="!viewGrouped" :value="filteredQuotationsList" responsiveLayout="scroll" :paginator="true" :rows="10" :rowsPerPageOptions="[10,20,50]" dataKey="id" :sortField="'fecha'" :sortOrder="-1">
         <Column field="folio" header="Folio" sortable />
-        <Column field="fecha" header="Fecha" sortable />
+        <Column field="fecha" header="Fecha" sortable>
+          <template #body="row">
+            {{ row.data.fecha.split('T')[0] }}
+          </template>
+        </Column>
         <Column field="cliente" header="Cliente" sortable />
         <Column field="vendedor" header="Vendedor" sortable />
         <Column field="status" header="Estado">
@@ -113,7 +117,11 @@
     <!-- Dialogo para ver todas las cotizaciones del cliente -->
     <Dialog :visible="cotizacionesDialogVisible" header="Cotizaciones del Cliente" :modal="true" :closable="false">
       <DataTable :value="cotizacionesDelCliente" responsiveLayout="scroll">
-        <Column field="fecha" header="Fecha" />
+        <Column field="fecha" header="Fecha">
+          <template #body="row">
+            {{ row.data.fecha.split('T')[0] }}
+          </template>
+        </Column>
         <Column field="monto" header="Monto">
           <template #body="row">
             ${{ Number(row.data.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}
@@ -147,7 +155,7 @@
       <div v-if="selectedCotizacion">
         <div class="detalle-cotizacion-info">
           <div><strong>Cliente:</strong> {{ selectedCotizacion.cliente }}</div>
-          <div><strong>Fecha:</strong> {{ selectedCotizacion.fecha }}</div>
+          <div><strong>Fecha:</strong> {{ selectedCotizacion.fecha ? selectedCotizacion.fecha.split('T')[0] : '' }}</div>
           <div><strong>Vendedor:</strong> {{ selectedCotizacion.vendedor || '-' }}</div>
           <div><strong>Descuento:</strong> {{ selectedCotizacion.descuento || 0 }}%</div>
           <div><strong>Monto:</strong> ${{ Number(selectedCotizacion.monto).toLocaleString('es-MX', {
@@ -200,7 +208,7 @@
           </div>
           <div class="form-group">
             <label>Fecha</label>
-            <InputText v-model="selectedCotizacion.fecha" type="date" class="w-full" />
+            <InputText v-model="selectedCotizacion.fecha" type="date" class="w-full" :value="selectedCotizacion.fecha ? selectedCotizacion.fecha.split('T')[0] : ''" />
           </div>
         </div>
         <div class="form-row">
@@ -583,7 +591,7 @@ function generatePDF(cotizacion) {
             { text: clienteObj.direccion || '', style: 'clienteLabel' },
           ],
           [
-            { text: `Fecha : ${cotizacion.fecha}`, style: 'clienteLabel', alignment: 'right' },
+            { text: `Fecha : ${cotizacion.fecha ? cotizacion.fecha.split('T')[0] : '' }`, style: 'clienteLabel', alignment: 'right' },
             { text: `Vendedor : ${cotizacion.vendedor || ''}`, style: 'clienteLabel', alignment: 'right' },
           ]
         ]

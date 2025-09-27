@@ -1,11 +1,13 @@
 <template>
   <div class="consultar-reportes-container">
     <h2 class="consultar-reportes-title">Consultar Reportes de Servicio</h2>
-    <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+    <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
       <InputText v-model="filtroCliente" placeholder="Filtrar por cliente" class="filtro-input" clearable />
       <InputText v-model="filtroSO" placeholder="Filtrar por Orden de servicio" class="filtro-input" clearable />
       <InputText v-model="filtroVendedor" placeholder="Filtrar por vendedor" class="filtro-input" clearable />
       <InputText v-model="filtroFecha" placeholder="Filtrar por fecha (YYYY-MM-DD)" class="filtro-input" clearable />
+      <InputText v-model="filtroTecnico" placeholder="Filtrar por técnico" class="filtro-input" clearable />
+      <InputText v-model="filtroIMEI" placeholder="Filtrar por IMEI" class="filtro-input" clearable />
       <Dropdown
         v-model="filtroPagado"
         :options="[
@@ -380,6 +382,8 @@ const filtroCliente = ref('');
 const filtroSO = ref('');
 const filtroVendedor = ref('');
 const filtroFecha = ref('');
+const filtroTecnico = ref('');
+const filtroIMEI = ref('');
 const filtroPagado = ref('');
 
 const reportesFiltrados = computed(() => {
@@ -394,14 +398,16 @@ const reportesFiltrados = computed(() => {
   }
   // Admin ve todo, otros perfiles pueden tener lógica aquí si se requiere
   return lista.filter(r => {
-    const clienteOk = !filtroCliente.value || (r.nombre_cliente && r.nombre_cliente.toLowerCase().includes(filtroCliente.value.toLowerCase()));
-    const so = r.folio || obtenerSO(r);
-    const soOk = !filtroSO.value || (so && so.toLowerCase().includes(filtroSO.value.toLowerCase()));
-    const vendedorOk = !filtroVendedor.value || (r.vendedor && r.vendedor.toLowerCase().includes(filtroVendedor.value.toLowerCase()));
-    const fechaOk = !filtroFecha.value || (r.fecha && r.fecha.includes(filtroFecha.value));
-    const pagadoOk = filtroPagado.value === '' || r.pagado === filtroPagado.value;
-    return clienteOk && soOk && vendedorOk && fechaOk && pagadoOk;
-  });
+      const clienteOk = !filtroCliente.value || (r.nombre_cliente && r.nombre_cliente.toLowerCase().includes(filtroCliente.value.toLowerCase()));
+      const so = r.folio || obtenerSO(r);
+      const soOk = !filtroSO.value || (so && so.toLowerCase().includes(filtroSO.value.toLowerCase()));
+      const vendedorOk = !filtroVendedor.value || (r.vendedor && r.vendedor.toLowerCase().includes(filtroVendedor.value.toLowerCase()));
+      const fechaOk = !filtroFecha.value || (r.fecha && r.fecha.includes(filtroFecha.value));
+      const tecnicoOk = !filtroTecnico.value || (r.nombre_instalador && r.nombre_instalador.toLowerCase().includes(filtroTecnico.value.toLowerCase()));
+      const imeiOk = !filtroIMEI.value || (r.imei && String(r.imei).toLowerCase().includes(filtroIMEI.value.toLowerCase()));
+      const pagadoOk = filtroPagado.value === '' || r.pagado === filtroPagado.value;
+      return clienteOk && soOk && vendedorOk && fechaOk && tecnicoOk && imeiOk && pagadoOk;
+    });
 });
 
 async function cargarReportes() {
