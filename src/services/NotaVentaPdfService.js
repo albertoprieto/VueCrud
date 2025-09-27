@@ -58,8 +58,8 @@ export async function generarNotaVentaPDF({ venta, cliente, articulos, empresa }
   const subtotal = articulos.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
   const descuento = subtotal * ((Number(venta?.descuento) || 0) / 100);
   const base = subtotal - descuento;
-  const requiereFactura = !!venta?.requiereFactura;
-  const iva = requiereFactura ? base * 0.16 : 0;
+  // El precio mostrado siempre incluye IVA
+  const iva = base * 0.16;
   const total = base + iva;
 
   const docDefinition = {
@@ -147,8 +147,8 @@ export async function generarNotaVentaPDF({ venta, cliente, articulos, empresa }
         ]
       },
       { text: '\n' },
-      { text: 'Notas', style: 'sectionHeader' },
-  { text: venta.notas_cliente || (requiereFactura ? '' : 'Si no requiere factura el total es sin IVA. Para facturar, el pago sería más IVA.'), style: 'notas' },
+    { text: 'Notas', style: 'sectionHeader' },
+    { text: 'Si no necesitas factura y tu pago es mediante transferencia podemos descontar el IVA.', style: 'notas' },
       { text: '\n' },
       { text: 'Términos y condiciones', style: 'sectionHeader' },
       { text: venta.terminos_condiciones || 'Si el técnico acudió al domicilio o va de camino y se cancela el servicio se cobrará la vuelta en falso del técnico. El tiempo de traslado en el envió de los paquetes depende de la paquetería.', style: 'notas' }

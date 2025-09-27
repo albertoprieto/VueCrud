@@ -1,4 +1,5 @@
 <template>
+  <Toast />
   <login v-if="!logged" @session="session"></login>
   <dashboard v-else @logout="handleLogout"></dashboard>
 </template>

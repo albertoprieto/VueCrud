@@ -116,15 +116,16 @@
           <div class="field col-12 md:col-6">
             <label><i class="pi pi-user icon-inline"></i>Usuarios:</label>
             <div v-for="(u, idx) in form.usuarios" :key="idx" class="input-row">
-              <InputText v-model="form.usuarios[idx]" class="w-full" placeholder="Usuario" />
-              <Button icon="pi pi-minus" class="clientes-btn" @click="removeUsuario(idx)" v-if="form.usuarios.length > 1" />
+              <InputText v-model="form.usuarios[idx]" class="w-full" placeholder="Usuario"
+                 />
+              <Button icon="pi pi-minus" class="clientes-btn" @click="removeUsuario(idx)" v-if="form.usuarios.length > 1 && idx !== 0" />
             </div>
             <Button icon="pi pi-plus" class="clientes-btn" @click="addUsuario" />
           </div>
           <div class="field col-12 md:col-6">
             <label><i class="pi pi-globe icon-inline"></i>Plataformas:</label>
-            <div v-for="(p, idx) in form.plataformas" :key="idx" class="input-row">
-              <InputText v-model="form.plataformas[idx]" class="w-full" placeholder="Plataforma" />
+            <div v-for="(plat, idx) in form.plataformas" :key="idx" class="input-row">
+              <Dropdown v-model="form.plataformas[idx]" :options="['Wanway', 'Tracksolidpro']" class="w-full" />
               <Button icon="pi pi-minus" class="clientes-btn" @click="removePlataforma(idx)" v-if="form.plataformas.length > 1" />
             </div>
             <Button icon="pi pi-plus" class="clientes-btn" @click="addPlataforma" />
@@ -156,6 +157,41 @@
 </template>
 
 <script setup>
+// Genera usuario sugerido basado en el nombre, rellenando hasta 9 caracteres
+function sugerirUsuario(nombre) {
+  if (!nombre) return '';
+  const partes = nombre.trim().split(/\s+/);
+  let usuario = '';
+  // Primer caracter: número aleatorio del 1 al 9
+  usuario += Math.floor(Math.random() * 9) + 1;
+  if (partes.length > 1) {
+    for (let i = 0; i < partes.length - 1; i++) {
+      usuario += partes[i][0] || '';
+    }
+    usuario += partes[partes.length - 1];
+  } else {
+    usuario += partes[0];
+  }
+  usuario = usuario.toLowerCase();
+  // Si falta para llegar a 9, agrega dos dígitos aleatorios al final
+  while (usuario.length < 9) {
+    usuario += Math.floor(Math.random() * 10);
+  }
+  return usuario.slice(0, 9);
+}
+// ...existing code...
+// ...existing imports...
+
+
+
+// Inicializa usuarios con el nombre al abrir modal
+
+function addUsuario() {
+  form.value.usuarios.push('');
+}
+function removeUsuario(idx) {
+  if (idx > 0) form.value.usuarios.splice(idx, 1);
+}
 import { ref, computed, onMounted, watch } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -164,6 +200,7 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import AutoComplete from 'primevue/autocomplete';
 import InputSwitch from 'primevue/inputswitch';
+import Dropdown from 'primevue/dropdown';
 import { useToast } from 'primevue/usetoast';
 import { getClientes, addCliente, updateCliente, deleteCliente } from '@/services/clientesService';
 import { useLoginStore } from '@/stores/loginStore';
@@ -177,16 +214,7 @@ const requiereFactura = ref(false);
 const rfc = ref('XAXX010101000');
 const rfcVisible = ref(false);
 
-watch(requiereFactura, (val) => {
-  //
-  
-  rfcVisible.value = !!val.value;
-  if (!val.value) {
-    rfc.value = 'XAXX010101000';
-  } else {
-    rfc.value = '';
-  }
-});
+
 
 const clientes = ref([]);
 const showModal = ref(false);
@@ -289,8 +317,17 @@ const closeModal = () => {
 };
 
 const saveCliente = async () => {
-  if (!form.value.nombre) {
-    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'El nombre es obligatorio.', life: 4000 });
+  // Validar todos los campos obligatorios
+  const nombreOk = !!form.value.nombre && form.value.nombre.trim() !== '';
+  const telefonosOk = Array.isArray(form.value.telefonos) && form.value.telefonos.length > 0 && form.value.telefonos.every(t => t && t.trim() !== '');
+  const correoOk = !!form.value.correo && form.value.correo.trim() !== '';
+  const direccionOk = !!form.value.direccion && form.value.direccion.trim() !== '';
+  const usuariosOk = Array.isArray(form.value.usuarios) && form.value.usuarios.length > 0 && form.value.usuarios.every(u => u && u.trim() !== '');
+  const plataformasOk = Array.isArray(form.value.plataformas) && form.value.plataformas.length > 0 && form.value.plataformas.every(p => p && p.trim() !== '');
+  const rfcOk = !form.value.requiereFactura || (!!form.value.rfc && form.value.rfc.trim() !== '' && form.value.rfc !== 'XAXX010101000');
+
+  if (!nombreOk || !telefonosOk || !correoOk || !direccionOk || !usuariosOk || !plataformasOk || !rfcOk) {
+    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Completa todos los campos antes de guardar.', life: 4000 });
     return;
   }
   form.value.telefonos = form.value.telefonos.filter(t => t);
@@ -352,8 +389,6 @@ const handleDeleteCliente = async (id) => {
 
 const addTelefono = () => form.value.telefonos.push('');
 const removeTelefono = (idx) => form.value.telefonos.splice(idx, 1);
-const addUsuario = () => form.value.usuarios.push('');
-const removeUsuario = (idx) => form.value.usuarios.splice(idx, 1);
 const addPlataforma = () => form.value.plataformas.push('');
 const removePlataforma = (idx) => form.value.plataformas.splice(idx, 1);
 
@@ -371,7 +406,32 @@ const handleFacturaChange = () => {
     rfc.value = '';
   }
 };
+// Sincroniza el primer usuario con el nombre del cliente usando sugerirUsuario
+watch(() => form.value.nombre, (nuevoNombre) => {
+  // Solo sugerir usuario si estamos creando (id es null)
+  if (form.value.id === null) {
+    const sugerido = sugerirUsuario(nuevoNombre);
+    if (form.value.usuarios && form.value.usuarios.length === 0) {
+      form.value.usuarios = [sugerido];
+    } else if (form.value.usuarios) {
+      form.value.usuarios[0] = sugerido;
+    }
+  }
+});
 
+// El watcher de showModal ya no modifica usuarios al editar
+watch(requiereFactura, (val) => {
+  //
+  
+  rfcVisible.value = !!val.value;
+  if (!val.value) {
+    rfc.value = 'XAXX010101000';
+  } else {
+    rfc.value = '';
+  }
+});
+
+// Sincroniza el primer usuario con el nombre del cliente
 </script>
 
 <style scoped>
