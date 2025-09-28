@@ -102,10 +102,6 @@
           <label>RFC</label>
           <InputText v-model="rfc" :disabled="!requiereFactura" placeholder="RFC" class="w-full" />
         </div>
-        <div class="ventas-form-col">
-          <label>Constancia fiscal</label>
-          <input type="file" class="file-input" @change="onConstanciaFileChange" :disabled="!requiereFactura" />
-        </div>
       </div>
 
       <!-- Tabla de artículos -->
@@ -295,7 +291,6 @@ import { registrarMovimiento } from '@/services/inventarioService';
 import { getQuotations, updateQuotation } from '@/services/quotationService';
 import Chip from 'primevue/chip';
 
-const archivoConstancia = ref(null);
 const venta = reactive({
   cliente_id: null,
   fecha: new Date().toISOString().slice(0, 10),
@@ -366,7 +361,6 @@ const rfc = ref('XAXX010101000');
 
 watch(requiereFactura, (val) => {
   if (!val) {
-    archivoConstancia.value = null;
     rfc.value = 'XAXX010101000';
   }
 });
@@ -582,16 +576,6 @@ async function guardarVentaConLoading() {
     folioAsignado.value = response.folio || '';
 
     const ventaId = response.venta_id || response.id;
-
-    if (requiereFactura.value && archivoConstancia.value && ventaId) {
-      try {
-        console.log('Subiendo constancia fiscal para venta ID:', ventaId);
-        await uploadConstanciaVenta(ventaId, archivoConstancia.value, rfc.value || null);
-      } catch (e) {
-        console.warn('No se pudo subir constancia fiscal', e);
-        toast.add({ severity: 'warn', summary: 'Constancia', detail: 'Orden creada pero la constancia no se subió.', life: 3500 });
-      }
-    }
 
     if (cotizacionSeleccionada.value) {
       const cotizacion = cotizacionesCliente.value.find(c => c.id === cotizacionSeleccionada.value);
@@ -852,26 +836,7 @@ const metodoPagoOptions = [
   { label: 'Transferencia', value: 'transferencia' }
 ];
 
-function onConstanciaFileChange(e){
-  const file = e?.target?.files?.[0] || null;
-  if (file) {
-    const allowed = ['application/pdf','image/png','image/jpeg'];
-    if (!allowed.includes(file.type)) {
-      console.warn('[Constancia] Tipo no permitido:', file.type);
-      archivoConstancia.value = null;
-      toast.add({ severity: 'warn', summary: 'Archivo no admitido', detail: 'Solo PDF/PNG/JPG.', life: 3000 });
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      console.warn('[Constancia] Archivo supera 8MB');
-      archivoConstancia.value = null;
-      toast.add({ severity: 'warn', summary: 'Archivo muy grande', detail: 'Máximo 8MB.', life: 3000 });
-      return;
-    }
-  }
-  console.debug('[Constancia] Asignando archivo:', file?.name, 'size:', file?.size);
-  archivoConstancia.value = file;
-}
+
 </script>
 
 <style scoped>

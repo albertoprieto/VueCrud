@@ -27,9 +27,24 @@ export const getConstanciaVentaReciente = async (clienteId) => {
   return res.data; // { hasConstancia, venta_id, folio, rfc, fecha, constancia_url }
 };
 
-// Nuevo: eliminar constancia de una venta específica (si se usa desde clientes)
-export const deleteConstanciaVenta = async (ventaId) => {
-  const API_VENTAS = `${import.meta.env.VITE_API_URL}/ventas`;
-  const res = await axios.delete(`${API_VENTAS}/${ventaId}/constancia`);
+export const uploadConstanciaCliente = async (clienteId, file) => {
+  const formData = new FormData();
+  formData.append('archivo', file);
+  const res = await axios.post(`${API_URL}/${clienteId}/constancia`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
   return res.data;
+};
+
+export const extractRfcFromPdf = async (file) => {
+  const formData = new FormData();
+  formData.append('archivo', file);
+  const res = await axios.post(`${import.meta.env.VITE_API_URL}/extract-rfc`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return res.data.rfc;
 };
