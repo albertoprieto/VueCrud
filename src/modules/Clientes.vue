@@ -137,14 +137,16 @@
             </div>
           </div>
           <div class="field col-12 md:col-6">
-            <div class="factura-row">
-              <label><i class="pi pi-file-edit icon-inline"></i>Requiere factura:</label>
-              <InputSwitch v-model="requiereFactura" class="factura-switch" />
-            </div>
-            <div v-if="requiereFactura">
-              <label for="rfc" style="margin-top:0.5em;"><i class="pi pi-id-card icon-inline"></i>RFC:</label>
-              <InputText id="rfc" v-model="rfc.value" class="w-full" placeholder="RFC del cliente" />
-            </div>
+            <label for="rfc"><i class="pi pi-id-card icon-inline"></i>RFC:</label>
+            <InputText id="rfc" v-model="form.rfc" class="w-full" placeholder="RFC del cliente" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="constancia"><i class="pi pi-file-pdf icon-inline"></i>Constancia Fiscal:</label>
+            <input type="file" id="constancia" @change="onConstanciaFileChange" accept=".pdf,.png,.jpg,.jpeg" class="w-full" />
+            <small v-if="archivoConstancia" class="file-selected">Archivo seleccionado: {{ archivoConstancia.name }}</small>
+            <small v-if="form.constancia_path" class="file-existing">
+              <a :href="constanciaUrl" download>Descargar constancia actual</a>
+            </small>
           </div>
         </div>
         <div class="modal-actions">
@@ -199,10 +201,9 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import AutoComplete from 'primevue/autocomplete';
-import InputSwitch from 'primevue/inputswitch';
 import Dropdown from 'primevue/dropdown';
 import { useToast } from 'primevue/usetoast';
-import { getClientes, addCliente, updateCliente, deleteCliente } from '@/services/clientesService';
+import { getClientes, addCliente, updateCliente, deleteCliente, uploadConstanciaCliente, extractRfcFromPdf } from '@/services/clientesService';
 import { useLoginStore } from '@/stores/loginStore';
 import { useRouter } from 'vue-router';
 
@@ -210,14 +211,10 @@ const toast = useToast();
 const loginStore = useLoginStore();
 const usuarioSesion = ref(loginStore.user?.username || '');
 const atendidoPor = ref(loginStore.user?.username || '');
-const requiereFactura = ref(false);
-const rfc = ref('XAXX010101000');
-const rfcVisible = ref(false);
 
-
-
-const clientes = ref([]);
+const archivoConstancia = ref(null);
 const showModal = ref(false);
+const clientes = ref([]);
 const form = ref({
   id: null,
   nombre: '',
@@ -228,8 +225,8 @@ const form = ref({
   plataformas: [''],
   atendidoPor: '',
   usuarioSesion: '',
-  requiereFactura: false,
-  rfc: 'XAXX010101000'
+  rfc: 'XAXX010101000',
+  constancia_path: null
 });
 
 const filtroNombre = ref('');
@@ -269,6 +266,15 @@ const telefonosUnicos = computed(() => {
   return Array.from(set).map(t => ({ label: t, value: t }));
 });
 
+// Computed para la URL de descarga de constancia
+const constanciaUrl = computed(() => {
+  if (form.value.constancia_path) {
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    return baseUrl + '/' + form.value.constancia_path;
+  }
+  return null;
+});
+
 // Para autocompletar usuarios/plataformas
 const usuariosFiltrados = ref([]);
 const plataformasFiltradas = ref([]);
@@ -285,6 +291,41 @@ const buscarPlataforma = (event) => {
 const buscarTelefono = (event) => {
   const query = event.query?.toLowerCase() || '';
   telefonosFiltrados.value = telefonosUnicos.value.filter(t => t.label.toLowerCase().includes(query));
+};
+
+const onConstanciaFileChange = async (event) => {
+  const file = event.target.files[0];
+  if (file) {
+    // Validar tipo y tamaño
+    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+    const maxSize = 8 * 1024 * 1024; // 8MB
+    if (!allowedTypes.includes(file.type)) {
+      toast.add({ severity: 'error', summary: 'Tipo no permitido', detail: 'Solo PDF, PNG, JPG.', life: 4000 });
+      event.target.value = '';
+      archivoConstancia.value = null;
+      return;
+    }
+    if (file.size > maxSize) {
+      toast.add({ severity: 'error', summary: 'Archivo grande', detail: 'Máximo 8MB.', life: 4000 });
+      event.target.value = '';
+      archivoConstancia.value = null;
+      return;
+    }
+    archivoConstancia.value = file;
+
+    // Si es PDF, extraer RFC
+    if (file.type === 'application/pdf') {
+      try {
+        const extractedRfc = await extractRfcFromPdf(file);
+        form.value.rfc = extractedRfc;
+        toast.add({ severity: 'info', summary: 'RFC extraído', detail: `RFC ${extractedRfc} copiado al campo.`, life: 3000 });
+      } catch (e) {
+        toast.add({ severity: 'warn', summary: 'RFC no extraído', detail: 'No se pudo extraer el RFC del PDF.', life: 4000 });
+      }
+    }
+  } else {
+    archivoConstancia.value = null;
+  }
 };
 
 const loadClientes = async () => {
@@ -306,9 +347,10 @@ const openModal = () => {
     plataformas: [''],
     atendidoPor: atendidoPor.value,
     usuarioSesion: usuarioSesion.value,
-    requiereFactura: requiereFactura.value,
-    rfc: rfc.value
+    rfc: 'XAXX010101000',
+    constancia_path: null
   };
+  archivoConstancia.value = null;
   showModal.value = true;
 };
 
@@ -324,9 +366,8 @@ const saveCliente = async () => {
   const direccionOk = !!form.value.direccion && form.value.direccion.trim() !== '';
   const usuariosOk = Array.isArray(form.value.usuarios) && form.value.usuarios.length > 0 && form.value.usuarios.every(u => u && u.trim() !== '');
   const plataformasOk = Array.isArray(form.value.plataformas) && form.value.plataformas.length > 0 && form.value.plataformas.every(p => p && p.trim() !== '');
-  const rfcOk = !form.value.requiereFactura || (!!form.value.rfc && form.value.rfc.trim() !== '' && form.value.rfc !== 'XAXX010101000');
 
-  if (!nombreOk || !telefonosOk || !correoOk || !direccionOk || !usuariosOk || !plataformasOk || !rfcOk) {
+  if (!nombreOk || !telefonosOk || !correoOk || !direccionOk || !usuariosOk || !plataformasOk) {
     toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Completa todos los campos antes de guardar.', life: 4000 });
     return;
   }
@@ -335,17 +376,30 @@ const saveCliente = async () => {
   form.value.plataformas = form.value.plataformas.filter(p => p);
   form.value.atendidoPor = atendidoPor.value;
   form.value.usuarioSesion = usuarioSesion.value;
-  form.value.requiereFactura = requiereFactura.value;
-  form.value.rfc = rfc.value;
   try {
+    let clienteId;
     if (form.value.id) {
       await updateCliente(form.value.id, form.value);
+      clienteId = form.value.id;
       toast.add({ severity: 'success', summary: 'Cliente actualizado', detail: 'El cliente se actualizó correctamente.', life: 3000 });
     } else {
-      await addCliente(form.value);
+      const response = await addCliente(form.value);
+      clienteId = response.id;
       toast.add({ severity: 'success', summary: 'Cliente agregado', detail: 'El cliente se agregó correctamente.', life: 3000 });
     }
+
+    // Subir constancia fiscal si se seleccionó un archivo
+    if (archivoConstancia.value) {
+      try {
+        await uploadConstanciaCliente(clienteId, archivoConstancia.value);
+        toast.add({ severity: 'success', summary: 'Constancia subida', detail: 'La constancia fiscal se subió correctamente.', life: 3000 });
+      } catch (e) {
+        toast.add({ severity: 'error', summary: 'Error en constancia', detail: 'Error al subir la constancia fiscal.', life: 4000 });
+      }
+    }
+
     showModal.value = false;
+    archivoConstancia.value = null; // Reset file input
     await loadClientes();
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar el cliente.', life: 4000 });
@@ -363,13 +417,12 @@ const oldEditCliente = (cliente) => {
     plataformas: cliente.plataformas?.length ? [...cliente.plataformas] : [''],
     atendidoPor: cliente.atendidoPor || atendidoPor.value,
     usuarioSesion: cliente.usuarioSesion || usuarioSesion.value,
-    requiereFactura: cliente.requiereFactura ?? false,
-    rfc: cliente.rfc || 'XAXX010101000'
+    rfc: cliente.rfc || 'XAXX010101000',
+    constancia_path: cliente.constancia_path || null
   };
-  requiereFactura.value = form.value.requiereFactura;
-  rfc.value = form.value.rfc;
   usuarioSesion.value = form.value.usuarioSesion;
   atendidoPor.value = form.value.atendidoPor;
+  archivoConstancia.value = null; // Reset file input
   showModal.value = true;
 };
 
@@ -399,13 +452,6 @@ watch(filtroPlataforma, (val) => {
   if (typeof val === 'object' && val !== null) filtroPlataforma.value = val.label;
 });
 
-const handleFacturaChange = () => {
-  if (!requiereFactura.value) {
-    rfc.value = 'XAXX010101000';
-  } else {
-    rfc.value = '';
-  }
-};
 // Sincroniza el primer usuario con el nombre del cliente usando sugerirUsuario
 watch(() => form.value.nombre, (nuevoNombre) => {
   // Solo sugerir usuario si estamos creando (id es null)
@@ -416,18 +462,6 @@ watch(() => form.value.nombre, (nuevoNombre) => {
     } else if (form.value.usuarios) {
       form.value.usuarios[0] = sugerido;
     }
-  }
-});
-
-// El watcher de showModal ya no modifica usuarios al editar
-watch(requiereFactura, (val) => {
-  //
-  
-  rfcVisible.value = !!val.value;
-  if (!val.value) {
-    rfc.value = 'XAXX010101000';
-  } else {
-    rfc.value = '';
   }
 });
 

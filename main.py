@@ -8,6 +8,7 @@ from satcfdi.create.cfd.catalogos import RegimenFiscal, UsoCFDI, MetodoPago, Imp
 
 import base64
 import os
+import io
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
@@ -880,6 +881,10 @@ class Cliente(BaseModel):
     telefonos: Optional[list[str]] = []
     usuarios: Optional[list[str]] = []
     plataformas: Optional[list[str]] = []
+    atendidoPor: Optional[str] = ""
+    usuarioSesion: Optional[str] = ""
+    rfc: Optional[str] = None
+    constancia_path: Optional[str] = None
 
 @app.get("/clientes")
 def get_clientes():
@@ -902,6 +907,9 @@ def get_clientes():
         # Obtener plataformas
         cursor.execute("SELECT plataforma FROM plataformas_cliente WHERE cliente_id=%s", (cliente["id"],))
         cliente["plataformas"] = [p["plataforma"] for p in cursor.fetchall()]
+        # Build public URL for constancia
+        if cliente.get("constancia_path"):
+            cliente["constancia_path"] = build_public_url(cliente["constancia_path"])
     cursor.close()
     db.close()
     return clientes
@@ -915,9 +923,25 @@ def add_cliente(cliente: Cliente):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS atendidoPor VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS usuarioSesion VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS rfc VARCHAR(20) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
+    except Exception:
+        pass
     cursor.execute(
-        "INSERT INTO clientes (nombre, correo, direccion) VALUES (%s, %s, %s)",
-        (cliente.nombre, cliente.correo, cliente.direccion)
+        "INSERT INTO clientes (nombre, correo, direccion, atendidoPor, usuarioSesion, rfc, constancia_path) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (cliente.nombre, cliente.correo, cliente.direccion, cliente.atendidoPor, cliente.usuarioSesion, cliente.rfc, cliente.constancia_path)
     )
     cliente_id = cursor.lastrowid
     for tel in cliente.telefonos or []:
@@ -940,9 +964,25 @@ def update_cliente(cliente_id: int, cliente: Cliente):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS atendidoPor VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS usuarioSesion VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS rfc VARCHAR(20) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
+    except Exception:
+        pass
     cursor.execute(
-        "UPDATE clientes SET nombre=%s, correo=%s, direccion=%s WHERE id=%s",
-        (cliente.nombre, cliente.correo, cliente.direccion, cliente_id)
+        "UPDATE clientes SET nombre=%s, correo=%s, direccion=%s, atendidoPor=%s, usuarioSesion=%s, rfc=%s, constancia_path=%s WHERE id=%s",
+        (cliente.nombre, cliente.correo, cliente.direccion, cliente.atendidoPor, cliente.usuarioSesion, cliente.rfc, cliente.constancia_path, cliente_id)
     )
     cursor.execute("DELETE FROM telefonos_cliente WHERE cliente_id=%s", (cliente_id,))
     for tel in cliente.telefonos or []:
@@ -2450,47 +2490,11 @@ async def subir_constancia_fiscal(venta_id: int, archivo: UploadFile = File(...)
     file_url = build_public_url(rel_path, request)
     return {"message": "Constancia subida", "constancia_path": rel_path, "constancia_url": file_url, "rfc": rfc}
 
-@app.get("/clientes/{cliente_id}/constancia-venta-reciente")
-def get_constancia_venta_reciente(cliente_id: int, request: Request = None):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
-    cursor = db.cursor(dictionary=True)
-    try:
-        cursor.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
-    except Exception:
-        pass
-    cursor.execute(
-        """
-        SELECT id, folio, cliente_id, constancia_path, rfc, fecha
-        FROM ventas
-        WHERE cliente_id=%s AND constancia_path IS NOT NULL
-        ORDER BY fecha DESC, id DESC
-        LIMIT 1
-        """,
-        (cliente_id,)
-    )
-    row = cursor.fetchone()
-    cursor.close(); db.close()
-    if not row:
-        return {"hasConstancia": False}
-    rel = row.get('constancia_path')
-    file_url = build_public_url(rel, request) if rel else None
-    return {
-        "hasConstancia": True,
-        "venta_id": row.get('id'),
-        "folio": row.get('folio'),
-        "rfc": row.get('rfc'),
-        "fecha": row.get('fecha'),
-        "constancia_url": file_url
-    }
+@app.post("/clientes/{cliente_id}/constancia")
+async def subir_constancia_fiscal_cliente(cliente_id: int, archivo: UploadFile = File(...), rfc: str = Form(None), request: Request = None):
+    ALLOWED_EXT = {'.pdf', '.png', '.jpg', '.jpeg'}
+    MAX_SIZE_MB = 8
 
-@app.delete("/ventas/{venta_id}/constancia")
-async def eliminar_constancia_fiscal(venta_id: int, request: Request = None):
-    import os
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -2498,31 +2502,73 @@ async def eliminar_constancia_fiscal(venta_id: int, request: Request = None):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, nombre FROM clientes WHERE id=%s", (cliente_id,))
+    cliente_row = cursor.fetchone()
+    if not cliente_row:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    nombre = cliente_row.get("nombre") or f"CLIENTE-{cliente_id}"
+    safe_nombre = ''.join(c for c in nombre if c.isalnum() or c in ('-', '_'))
+
+    filename = archivo.filename or 'constancia'
+    filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail=f"Extensión no permitida {ext}")
+
+    data = await archivo.read()
+    size_mb = len(data)/(1024*1024)
+    if size_mb > MAX_SIZE_MB:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail=f"Archivo supera {MAX_SIZE_MB}MB")
+
+    base_dir = os.path.join('uploads', 'constancias_clientes', safe_nombre)
+    os.makedirs(base_dir, exist_ok=True)
+
+    base_name, ext2 = os.path.splitext(filename)
+    final_name = filename
+    idx = 1
+    while os.path.exists(os.path.join(base_dir, final_name)):
+        final_name = f"{base_name}_{idx}{ext2}"; idx += 1
+
+    dest_path = os.path.join(base_dir, final_name)
+    with open(dest_path, 'wb') as f:
+        f.write(data)
+
+    rel_path = os.path.relpath(dest_path, start='.')
+
+    cursor2 = db.cursor()
     try:
-        # Asegurar columnas existen
-        try:
-            cursor.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
-        except Exception:
-            pass
-        try:
-            cursor.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS rfc VARCHAR(20) NULL")
-        except Exception:
-            pass
-        cursor.execute("SELECT constancia_path FROM ventas WHERE id=%s", (venta_id,))
-        row = cursor.fetchone()
-        if not row:
-            cursor.close(); db.close()
-            raise HTTPException(status_code=404, detail="Venta no encontrada")
-        path = row.get('constancia_path')
-        # Borrar archivo físico si existe
-        if path and os.path.isfile(path):
-            try:
-                os.remove(path)
-            except Exception:
-                pass
-        # Limpiar campos
-        cursor.execute("UPDATE ventas SET constancia_path=NULL WHERE id=%s", (venta_id,))
+        cursor2.execute("UPDATE clientes SET constancia_path=%s, rfc=COALESCE(%s, rfc) WHERE id=%s", (rel_path, rfc, cliente_id))
         db.commit()
     finally:
-        cursor.close(); db.close()
-    return {"message": "Constancia eliminada", "venta_id": venta_id}
+        cursor2.close(); cursor.close(); db.close()
+
+    file_url = build_public_url(rel_path, request)
+    return {"message": "Constancia fiscal subida exitosamente", "file_url": file_url}
+
+@app.post("/extract-rfc")
+async def extract_rfc_from_pdf(archivo: UploadFile = File(...)):
+    import PyPDF2
+    import re
+
+    if archivo.content_type != 'application/pdf':
+        raise HTTPException(status_code=400, detail="Solo archivos PDF")
+
+    data = await archivo.read()
+    pdf_reader = PyPDF2.PdfReader(io.BytesIO(data))
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+
+    # Buscar RFC: patrón de 12-13 caracteres alfanuméricos, empezando con letras
+    rfc_pattern = re.search(r'\b[A-Z]{4}\d{6}[A-Z0-9]{3}\b', text)
+    if rfc_pattern:
+        rfc = rfc_pattern.group(0)
+        return {"rfc": rfc}
+    else:
+        raise HTTPException(status_code=400, detail="RFC no encontrado en el PDF")
+
+
