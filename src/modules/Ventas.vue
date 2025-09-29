@@ -360,7 +360,12 @@ const requiereFactura = ref(false);
 const rfc = ref('XAXX010101000');
 
 watch(requiereFactura, (val) => {
-  if (!val) {
+  if (val) {
+    const clienteSeleccionado = clientes.value.find(c => c.id === venta.cliente_id);
+    if (clienteSeleccionado?.rfc) {
+      rfc.value = clienteSeleccionado.rfc;
+    }
+  } else {
     rfc.value = 'XAXX010101000';
   }
 });
@@ -530,6 +535,13 @@ watch(
           ...c,
           label: `COTIZACION-${String(c.id).padStart(5, '0')}`
         }));
+      // Setear RFC si requiere factura
+      if (requiereFactura.value) {
+        const clienteSeleccionado = clientes.value.find(c => c.id === nuevoClienteId);
+        if (clienteSeleccionado?.rfc) {
+          rfc.value = clienteSeleccionado.rfc;
+        }
+      }
     } else {
       cotizacionesCliente.value = [];
     }

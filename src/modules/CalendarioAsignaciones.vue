@@ -434,26 +434,55 @@ onMounted(async () => {
   clientes.value = [...new Set(asignaciones.value.map(a => a.cliente).filter(Boolean))].map(c => ({ cliente: c }));
   loading.value = false;
   
-  // CORRECCIÓN PRINCIPAL: Combinar fecha y hora
+  await cargarReportesServicios();
+  
+  // Función para generar color consistente basado en el nombre del instalador
+  const generarColorConsistente = (nombre) => {
+    let hash = 0;
+    for (let i = 0; i < nombre.length; i++) {
+      hash = nombre.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const color = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return '#' + '00000'.substring(0, 6 - color.length) + color;
+  };
+  
+  // Asignar colores consistentes por instalador (mismo nombre_instalador = mismo color)
+  const instaladoresUnicos = [...new Set(Object.values(reportesPorAsignacion.value).map(r => r.nombre_instalador).filter(Boolean))];
+  const coloresInstaladores = {};
+  instaladoresUnicos.forEach(instalador => {
+    coloresInstaladores[instalador] = generarColorConsistente(instalador);
+  });
+  
+  // Mapeamos los eventos con colores y horas correctas
   events.value = asignaciones.value.map(a => {
-    // Combinar fecha_servicio con hora_servicio
-    const startDateTime = a.hora_servicio ? `${a.fecha_servicio}T${a.hora_servicio}` : a.fecha_servicio;
-    // Calcular end time (asumiendo 1 hora de duración si hay hora_servicio)
+    const rep = reporteDeAsignacion(a);
+    const instalador = rep?.nombre_instalador || 'Sin asignar';
+    
+    // Crear fecha de inicio en formato ISO para FullCalendar
+    let startDateTime = a.fecha_servicio;
+    if (a.hora_servicio) {
+      // Asegurar formato HH:MM si viene sin segundos
+      const horaCompleta = a.hora_servicio.length === 5 ? `${a.hora_servicio}:00` : a.hora_servicio;
+      startDateTime = `${a.fecha_servicio}T${horaCompleta}`;
+    }
+    
+    // Crear fecha de fin (1 hora después)
     let endDateTime = null;
     if (a.hora_servicio) {
-      const [hours, minutes] = a.hora_servicio.split(':');
-      const endTime = new Date(`${a.fecha_servicio}T${a.hora_servicio}`);
-      endTime.setHours(endTime.getHours() + 1); // Duración de 1 hora
-      endDateTime = endTime.toISOString().slice(0, 16).replace('T', ' ');
+      const horaCompleta = a.hora_servicio.length === 5 ? `${a.hora_servicio}:00` : a.hora_servicio;
+      const startDate = new Date(`${a.fecha_servicio}T${horaCompleta}`);
+      const endDate = new Date(startDate.getTime() + (60 * 60 * 1000)); // +1 hora
+      endDateTime = endDate.toISOString();
     }
+    
     return {
       title: a.tecnico ? `Técnico: ${a.tecnico}` : 'Asignación',
       start: startDateTime,
       end: endDateTime,
       description: `Cliente: ${a.cliente || a.cliente_id || ''}\nVenta: ${a.venta_folio || a.venta_id || ''}`,
       id: a.id ?? a.venta_id,
+      backgroundColor: coloresInstaladores[instalador] || '#3788d8',
       extendedProps: {
-        // Mover propiedades adicionales aquí
         fecha_servicio: a.fecha_servicio,
         hora_servicio: a.hora_servicio,
         direccion: a.direccion,
@@ -465,13 +494,11 @@ onMounted(async () => {
         fecha_venta: a.fecha_venta,
         cliente: a.cliente,
         venta_folio: a.venta_folio,
-        asignacion: a // Guardar el objeto original
+        asignacion: a
       }
-    }
+    };
   });
   calendarOptions.value.events = events.value;
-  console.log('Eventos mapeados:', events.value);
-  await cargarReportesServicios();
 });
 function buscarTecnico(event) {
   const query = event.query?.toLowerCase() || '';
