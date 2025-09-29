@@ -11,7 +11,7 @@
       </div>
 
       <!-- Bloques por artículo: máximo 2 columnas -->
-      <div class="line-items-grid" :class="{ 'two-cols': shouldUseTwoCols }">
+      <div v-if="lineItems.length" class="line-items-grid" :class="{ 'two-cols': shouldUseTwoCols }">
         <div class="col-block" v-for="linea in lineItems" :key="`art-${linea.lineaId}`">
 
 
@@ -88,6 +88,29 @@
           <div v-if="linea.imeisPosibles.length < linea.selecciones.length" class="warning-block">
             <p><strong>Advertencia:</strong> Stock insuficiente para {{ linea.articulo_nombre }} (requiere {{ linea.selecciones.length }}, disponibles {{ linea.imeisPosibles.length }}).</p>
           </div>
+        </div>
+      </div>
+
+      <!-- Campos manuales para IMEI y SIM cuando no hay artículos físicos -->
+      <div v-if="!lineItems.length" class="col-block full-width">
+        <h4 class="section-title">Asignación de IMEI y SIM (Manual)</h4>
+        <div class="slots-grid">
+          <div v-for="(imei, idx) in form.imeisManuales" :key="`imei-${idx}`" class="slot-item">
+            <div class="form-group">
+              <label>IMEI {{ idx + 1 }}</label>
+              <InputText v-model="form.imeisManuales[idx]" placeholder="Ingresa IMEI manualmente" class="w-full mb-2" />
+            </div>
+            <div class="form-group">
+              <label>SIM {{ idx + 1 }}</label>
+              <InputText v-model="form.simsManuales[idx]" placeholder="Ingresa SIM manualmente" class="w-full mb-2" />
+            </div>
+            <div v-if="form.imeisManuales.length > 1" class="form-group">
+              <Button label="Quitar" icon="pi pi-minus" @click="removerSlotManual(idx)" class="p-button-danger p-button-sm" />
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <Button label="Agregar IMEI/SIM" icon="pi pi-plus" @click="agregarSlotManual" class="p-button-secondary" />
         </div>
       </div>
 
@@ -251,7 +274,9 @@ const form = ref({
   viaticos: 0,
   modelo_gps: '',
   ubicacion_gps: '',
-  ubicacion_bloqueo: ''
+  ubicacion_bloqueo: '',
+  imeisManuales: [''], // Para múltiples IMEIs manuales
+  simsManuales: ['']   // Para múltiples SIMs manuales
 });
 
 const loading = ref(false);
@@ -431,7 +456,16 @@ watch(lineItems, (newItems) => {
 }, { deep: true });
 
 function validarAsignacionesImeis() {
-  if (!lineItems.value.length) return true;
+  if (!lineItems.value.length) {
+    // Para manuales, validar que no haya duplicados
+    const allManual = [...form.value.imeisManuales.filter(Boolean), ...form.value.simsManuales.filter(Boolean)];
+    if (new Set(allManual).size !== allManual.length) {
+      resultMessage.value = 'Hay IMEIs o SIMs duplicados en las asignaciones manuales.';
+      showResultDialog.value = true;
+      return false;
+    }
+    return true;
+  }
   const allSelected = [];
   for (const li of lineItems.value) allSelected.push(...li.selecciones.filter(Boolean));
   if (new Set(allSelected).size !== allSelected.length) {
@@ -470,7 +504,7 @@ async function cargarDatosCliente() {
       if (venta) {
         form.value.subtotal = venta.total || '';
         form.value.total = venta.total || '';
-        form.value.forma_pago = mapFormaPago(venta.terminos_pago || '');
+        form.value.forma_pago = venta.terminos_pago || '';
         try {
           const detalle = await getDetalleVenta(venta.id);
           if (Array.isArray(detalle) && detalle.length > 0) {
@@ -559,23 +593,45 @@ async function guardar() {
     }
 
     // Preparar payload por línea con datos de vehículo/dispositivo + IMEIs + SIMs
-    const imeisArticulosPayload = lineItems.value.map(li => ({
-      articulo_id: li.articulo_id,
-      linea_id: li.lineaId,
-      tipo_servicio: li.tipo_servicio || '',
-      imeis: [...li.selecciones],
-      sims: [...(li.sims || [])],
-      marca: li.marca || '',
-      submarca: li.submarca || '',
-      modelo: li.modelo || '',
-      placas: li.placas || '',
-      color: li.color || '',
-      numero_economico: li.numero_economico || '',
-      modelo_gps: li.modelo_gps || '',
-      accesorios: li.accesorios || '',
-      ubicacion_gps: li.ubicacion_gps || '',
-      ubicacion_bloqueo: li.ubicacion_bloqueo || ''
-    }));
+    let imeisArticulosPayload = [];
+    if (lineItems.value.length) {
+      imeisArticulosPayload = lineItems.value.map(li => ({
+        articulo_id: li.articulo_id,
+        linea_id: li.lineaId,
+        tipo_servicio: li.tipo_servicio || '',
+        imeis: [...li.selecciones],
+        sims: [...(li.sims || [])],
+        marca: li.marca || '',
+        submarca: li.submarca || '',
+        modelo: li.modelo || '',
+        placas: li.placas || '',
+        color: li.color || '',
+        numero_economico: li.numero_economico || '',
+        modelo_gps: li.modelo_gps || '',
+        accesorios: li.accesorios || '',
+        ubicacion_gps: li.ubicacion_gps || '',
+        ubicacion_bloqueo: li.ubicacion_bloqueo || ''
+      }));
+    } else {
+      // Para servicios manuales, enviar un objeto global
+      imeisArticulosPayload = [{
+        articulo_id: null,
+        linea_id: 'manual',
+        tipo_servicio: form.value.tipo_servicio || '',
+        imeis: form.value.imeisManuales.filter(Boolean),
+        sims: form.value.simsManuales.filter(Boolean),
+        marca: form.value.marca || '',
+        submarca: form.value.submarca || '',
+        modelo: form.value.modelo || '',
+        placas: form.value.placas || '',
+        color: form.value.color || '',
+        numero_economico: form.value.numero_economico || '',
+        modelo_gps: form.value.modelo_gps || '',
+        accesorios: form.value.accesorios || '',
+        ubicacion_gps: form.value.ubicacion_gps || '',
+        ubicacion_bloqueo: form.value.ubicacion_bloqueo || ''
+      }];
+    }
 
     // Compatibilidad: setear campos base con el primer IMEI/SIM seleccionado
     if (!form.value.sim_serie) {
@@ -585,6 +641,11 @@ async function guardar() {
     if (!form.value.imei && selectedImeisGlobal.value.size) {
       const firstImei = Array.from(selectedImeisGlobal.value).find(v => v !== form.value.sim_serie);
       if (firstImei) form.value.imei = firstImei;
+    }
+    // Para manuales, setear con el primero
+    if (!lineItems.value.length) {
+      form.value.imei = form.value.imeisManuales.find(Boolean) || '';
+      form.value.sim_serie = form.value.simsManuales.find(Boolean) || '';
     }
 
     const payload = {
@@ -627,7 +688,7 @@ async function guardar() {
       ubicacion_bloqueo: form.value.ubicacion_bloqueo || '',
       imeis_articulos: imeisArticulosPayload,
       // Compatibilidad: también enviar colección aplanada de SIMs si backend aún la usa
-      sim_series: lineItems.value.flatMap(li => (li.sims || []).filter(Boolean))
+      sim_series: lineItems.value.length ? lineItems.value.flatMap(li => (li.sims || []).filter(Boolean)) : form.value.simsManuales.filter(Boolean)
     };
 
     const resp = await addReporteServicio(payload);
@@ -689,8 +750,12 @@ function isCampoInvalido(c){
 }
 const formCompleto = computed(() => baseObligatorios.filter(isCampoObligatorio).every(c => !isCampoInvalido(c)));
 
-watch(usarTotalMontoTecnico, val => { if (val) { form.value.monto_tecnico = Number(form.value.total) || 0; } });
-watch(() => form.value.total, val => { if (usarTotalMontoTecnico.value) { form.value.monto_tecnico = Number(val) || 0; } });
+watch(() => [form.value.imeisManuales, form.value.simsManuales], () => {
+  if (!lineItems.value.length) {
+    form.value.imei = form.value.imeisManuales.find(Boolean) || '';
+    form.value.sim_serie = form.value.simsManuales.find(Boolean) || '';
+  }
+}, { deep: true });
 
 function scrollFocusFirstIssue(){
   nextTick(() => {
@@ -705,7 +770,15 @@ function scrollFocusFirstIssue(){
   });
 }
 
-const shouldUseTwoCols = computed(() => (lineItems.value?.length || 0) >= 2);
+function agregarSlotManual() {
+  form.value.imeisManuales.push('');
+  form.value.simsManuales.push('');
+}
+
+function removerSlotManual(idx) {
+  form.value.imeisManuales.splice(idx, 1);
+  form.value.simsManuales.splice(idx, 1);
+}
 </script>
 
 <style scoped>

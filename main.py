@@ -1673,13 +1673,26 @@ def add_reporte_servicio(reporte: ReporteServicio):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    
+    # Obtener el folio de la venta asociada a la asignación
+    folio_venta = None
+    try:
+        cursor.execute("SELECT venta_id FROM venta_tecnico WHERE id=%s", (reporte.asignacion_id,))
+        row = cursor.fetchone()
+        if row and row.get("venta_id"):
+            cursor.execute("SELECT folio FROM ventas WHERE id=%s", (row["venta_id"],))
+            v = cursor.fetchone()
+            folio_venta = v.get("folio") if v else None
+    except Exception:
+        folio_venta = None
+    
     # Serializar campos JSON si vienen en el payload
     imeis_json = json.dumps(reporte.imeis_articulos) if getattr(reporte, "imeis_articulos", None) is not None else None
     sim_json = json.dumps(reporte.sim_series) if getattr(reporte, "sim_series", None) is not None else None
     cursor.execute(
     """
     INSERT INTO reportes_servicio (
-        asignacion_id, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico,
+        asignacion_id, folio, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico,
         equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria,
         ignicion, corte, ubicacion_corte, modelo_gps, ubicacion_gps, ubicacion_bloqueo, observaciones, plataforma,
         usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador,
@@ -1693,7 +1706,7 @@ def add_reporte_servicio(reporte: ReporteServicio):
     )
     """,
     (
-        reporte.asignacion_id, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
+        reporte.asignacion_id, folio_venta, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
         reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
         reporte.imei, reporte.serie, reporte.accesorios, reporte.sim_proveedor, reporte.sim_serie,
         reporte.sim_instalador, reporte.sim_telefono, reporte.bateria, reporte.ignicion, reporte.corte,
@@ -2297,24 +2310,15 @@ def subir_comprobante_reporte(reporte_id: int, archivo: UploadFile = File(...), 
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT id, asignacion_id FROM reportes_servicio WHERE id=%s", (reporte_id,))
+    cursor.execute("SELECT id, asignacion_id, folio FROM reportes_servicio WHERE id=%s", (reporte_id,))
     rep = cursor.fetchone()
     if not rep:
         cursor.close()
         db.close()
         raise HTTPException(status_code=404, detail="Reporte no encontrado")
 
-    # Obtener folio de la venta asociada a la asignación
-    folio = None
-    try:
-        cursor.execute("SELECT venta_id FROM venta_tecnico WHERE id=%s", (rep["asignacion_id"],))
-        row = cursor.fetchone()
-        if row and row.get("venta_id"):
-            cursor.execute("SELECT folio FROM ventas WHERE id=%s", (row["venta_id"],))
-            v = cursor.fetchone()
-            folio = v.get("folio") if v else None
-    except Exception:
-        folio = None
+    # Usar el folio del reporte (que ahora es el mismo que el de la venta)
+    folio = rep.get("folio")
     if not folio:
         # fallback
         folio = f"ReporteServicio-{reporte_id}"

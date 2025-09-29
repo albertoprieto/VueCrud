@@ -161,11 +161,9 @@ const guardarCotizacion = async () => {
   cotizacionGeneradaNumero.value = (cotizacionBD.folio || (cotizacionBD.id ? `COTIZACION-${String(cotizacionBD.id).padStart(5,'0')}` : null));
       } else {
         return;
-  //
       }
-      dialogVisible.value = true;
     } catch (e) {
-      dialogVisible.value = true;
+      console.log(e);
     }
 
     const articulosPDF = cotizacion.value.articulos.map((a, idx) => {
@@ -318,6 +316,8 @@ const guardarCotizacion = async () => {
       status: 'Pendiente'
     };
   } catch (error) {
+    console.log(error);
+    
     toast.add({ severity: 'error', summary: 'Error', detail: 'Error al registrar la cotización', life: 4000 });
   }
 };
