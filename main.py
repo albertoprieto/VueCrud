@@ -1672,7 +1672,20 @@ def add_reporte_servicio(reporte: ReporteServicio):
         password="tu_password_segura",
         database="nombre_de_tu_db"
     )
-    cursor = db.cursor()
+    cursor = db.cursor(dictionary=True)
+    
+    # Validar que no exista ya un reporte para esta asignación
+    try:
+        cursor.execute("SELECT id FROM reportes_servicio WHERE asignacion_id = %s", (reporte.asignacion_id,))
+        existing_report = cursor.fetchone()
+        if existing_report:
+            cursor.close()
+            db.close()
+            raise HTTPException(status_code=400, detail=f"Ya existe un reporte de servicio para la asignación {reporte.asignacion_id}")
+    except mysql.connector.Error as e:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=500, detail=f"Error al validar reporte existente: {str(e)}")
     
     # Obtener el folio de la venta asociada a la asignación
     folio_venta = None
@@ -1689,34 +1702,47 @@ def add_reporte_servicio(reporte: ReporteServicio):
     # Serializar campos JSON si vienen en el payload
     imeis_json = json.dumps(reporte.imeis_articulos) if getattr(reporte, "imeis_articulos", None) is not None else None
     sim_json = json.dumps(reporte.sim_series) if getattr(reporte, "sim_series", None) is not None else None
-    cursor.execute(
-    """
-    INSERT INTO reportes_servicio (
-        asignacion_id, folio, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico,
-        equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria,
-        ignicion, corte, ubicacion_corte, modelo_gps, ubicacion_gps, ubicacion_bloqueo, observaciones, plataforma,
-        usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador,
-        total, monto_tecnico, viaticos, imeis_articulos, sim_series
-    ) VALUES (
-        %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s
+    
+    try:
+        cursor.execute(
+        """
+        INSERT INTO reportes_servicio (
+            asignacion_id, folio, tipo_servicio, lugar_instalacion, marca, submarca, modelo, placas, color, numero_economico,
+            equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria,
+            ignicion, corte, ubicacion_corte, modelo_gps, ubicacion_gps, ubicacion_bloqueo, observaciones, plataforma,
+            usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador,
+            total, monto_tecnico, viaticos, imeis_articulos, sim_series
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s
+        )
+        """,
+        (
+            reporte.asignacion_id, folio_venta, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
+            reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
+            reporte.imei, reporte.serie, reporte.accesorios, reporte.sim_proveedor, reporte.sim_serie,
+            reporte.sim_instalador, reporte.sim_telefono, reporte.bateria, reporte.ignicion, reporte.corte,
+            reporte.ubicacion_corte, reporte.modelo_gps, reporte.ubicacion_gps, reporte.ubicacion_bloqueo,
+            reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
+            reporte.forma_pago, int(reporte.pagado), reporte.nombre_cliente, reporte.firma_cliente,
+            reporte.nombre_instalador, reporte.firma_instalador, reporte.total,
+            reporte.monto_tecnico, reporte.viaticos, imeis_json, sim_json
+        )
     )
-    """,
-    (
-        reporte.asignacion_id, folio_venta, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
-        reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
-        reporte.imei, reporte.serie, reporte.accesorios, reporte.sim_proveedor, reporte.sim_serie,
-        reporte.sim_instalador, reporte.sim_telefono, reporte.bateria, reporte.ignicion, reporte.corte,
-        reporte.ubicacion_corte, reporte.modelo_gps, reporte.ubicacion_gps, reporte.ubicacion_bloqueo,
-        reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
-        reporte.forma_pago, int(reporte.pagado), reporte.nombre_cliente, reporte.firma_cliente,
-        reporte.nombre_instalador, reporte.firma_instalador, reporte.total,
-        reporte.monto_tecnico, reporte.viaticos, imeis_json, sim_json
-    )
-)
+    except mysql.connector.IntegrityError as e:
+        cursor.close()
+        db.close()
+        if "idx_unique_asignacion" in str(e) or "Duplicate entry" in str(e):
+            raise HTTPException(status_code=400, detail=f"Ya existe un reporte de servicio para la asignación {reporte.asignacion_id}")
+        else:
+            raise HTTPException(status_code=500, detail=f"Error de integridad en la base de datos: {str(e)}")
+    except mysql.connector.Error as e:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=500, detail=f"Error al guardar reporte de servicio: {str(e)}")
     # NUEVO: marcar IMEIs y SIMs involucrados como "Vendido"
     nuevo_id = cursor.lastrowid
     imeis_a_vender = set()
@@ -1796,18 +1822,21 @@ def get_reporte_servicio(asignacion_id: int = Query(...)):
     reporte = cursor.fetchone()
     cursor.close()
     db.close()
+    
+    if not reporte:
+        raise HTTPException(status_code=404, detail=f"No se encontró reporte de servicio para la asignación {asignacion_id}")
+    
     # Deserializar JSON si aplica
-    if reporte:
-        try:
-            if isinstance(reporte.get("imeis_articulos"), str):
-                reporte["imeis_articulos"] = json.loads(reporte["imeis_articulos"]) if reporte["imeis_articulos"] else []
-        except Exception:
-            pass
-        try:
-            if isinstance(reporte.get("sim_series"), str):
-                reporte["sim_series"] = json.loads(reporte["sim_series"]) if reporte["sim_series"] else []
-        except Exception:
-            pass
+    try:
+        if isinstance(reporte.get("imeis_articulos"), str):
+            reporte["imeis_articulos"] = json.loads(reporte["imeis_articulos"]) if reporte["imeis_articulos"] else []
+    except Exception:
+        pass
+    try:
+        if isinstance(reporte.get("sim_series"), str):
+            reporte["sim_series"] = json.loads(reporte["sim_series"]) if reporte["sim_series"] else []
+    except Exception:
+        pass
     return reporte
 
 # NUEVO: detalle por ID

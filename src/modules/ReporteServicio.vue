@@ -579,6 +579,25 @@ async function guardar() {
   }
   if(!formCompleto.value){ scrollFocusFirstIssue(); }
   if (!validarAsignacionesImeis()) { scrollFocusFirstIssue(); return; }
+  
+  // Verificar si ya existe un reporte para esta asignación
+  try {
+    const reporteExistente = await getReportePorAsignacion(asignacionIdCentral.value);
+    if (reporteExistente) {
+      resultMessage.value = `Ya existe un reporte de servicio para esta asignación (ID: ${reporteExistente.id}). No se pueden crear reportes duplicados.`;
+      saveSuccess.value = false;
+      showResultDialog.value = true;
+      return;
+    }
+  } catch (error) {
+    // Si el error es 404, significa que no existe reporte, podemos continuar
+    if (error.response && error.response.status !== 404) {
+      resultMessage.value = 'Error al verificar reportes existentes. Intenta nuevamente.';
+      showResultDialog.value = true;
+      return;
+    }
+  }
+  
   loading.value = true;
   try {
     saveSuccess.value = false;
@@ -711,7 +730,19 @@ async function guardar() {
     emit('saved');
   } catch (e) {
     console.error('Error en guardar:', e);
-    resultMessage.value = 'Error al guardar el reporte de servicio.';
+    
+    // Manejar diferentes tipos de errores
+    if (e.response && e.response.status === 400) {
+      // Error de validación o duplicado
+      resultMessage.value = e.response.data.detail || 'Ya existe un reporte para esta asignación.';
+    } else if (e.response && e.response.status === 500) {
+      // Error del servidor
+      resultMessage.value = e.response.data.detail || 'Error interno del servidor al guardar el reporte.';
+    } else {
+      // Error genérico
+      resultMessage.value = 'Error al guardar el reporte de servicio. Verifica tu conexión e intenta nuevamente.';
+    }
+    
     saveSuccess.value = false;
   } finally {
     loading.value = false;
