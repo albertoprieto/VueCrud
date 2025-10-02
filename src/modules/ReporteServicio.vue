@@ -766,7 +766,7 @@ function formatoMoneda(valor) {
   return valor.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 });
 }
 
-const baseObligatorios = ['subtotal','total'];
+const baseObligatorios = ['subtotal','total','imei','imeis_articulos'];
 function isCampoObligatorio(c){
   return baseObligatorios.includes(c);
 }
@@ -774,6 +774,16 @@ function isCampoInvalido(c){
   if(!isCampoObligatorio(c)) return false;
   if(c === 'tipo_servicio'){
     return lineItems.value.some(li => !li.tipo_servicio);
+  }
+  if(c === 'imeis_articulos'){
+    // Validar que al menos un IMEI esté presente
+    if (lineItems.value.length) {
+      // Para artículos: verificar que al menos una línea tenga IMEIs
+      return !lineItems.value.some(li => li.selecciones.some(Boolean));
+    } else {
+      // Para manuales: verificar que al menos un IMEI manual esté presente
+      return !form.value.imeisManuales.some(Boolean);
+    }
   }
   const val = form.value[c];
   if(c === 'total') return val === null || val === undefined || val === '' || isNaN(val);
