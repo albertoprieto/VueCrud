@@ -1713,7 +1713,7 @@ def add_reporte_servicio(reporte: ReporteServicio):
             usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador,
             total, monto_tecnico, viaticos, imeis_articulos, sim_series
         ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s,
