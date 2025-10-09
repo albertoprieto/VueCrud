@@ -2135,6 +2135,292 @@ def get_usuario_actual(request: Request, token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return user
 
+# ---------------------
+# Tickets: endpoints básicos
+# ---------------------
+
+class TicketCreate(BaseModel):
+    reporteId: int
+    titulo: str
+    descripcion: str
+    prioridad: str = 'media'            # baja | media | alta | crítica
+    tipo: str = 'soporte'               # soporte | garantía | posventa | otro
+    imeis: list[str] | None = None
+    clienteId: int | None = None
+    clienteNombre: str | None = None
+    createdByUserId: int | None = None
+    autor: str | None = None
+
+class TicketUpdate(BaseModel):
+    titulo: str | None = None
+    descripcion: str | None = None
+    prioridad: str | None = None
+    tipo: str | None = None
+    estado: str | None = None
+    imeis: list[str] | None = None
+
+class TicketComment(BaseModel):
+    comment: str
+
+@app.post("/tickets")
+def create_ticket(ticket: TicketCreate):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    try:
+        imeis_json = json.dumps(ticket.imeis) if ticket.imeis is not None else None
+        cursor.execute(
+            """
+            INSERT INTO tickets (
+              reporte_id, titulo, descripcion, prioridad, tipo, estado,
+              imeis, cliente_id, cliente_nombre, autor, created_by_user_id
+            ) VALUES (%s,%s,%s,%s,%s,'nuevo',%s,%s,%s,%s,%s)
+            """,
+            (
+                ticket.reporteId, ticket.titulo, ticket.descripcion, ticket.prioridad, ticket.tipo,
+                imeis_json, ticket.clienteId, ticket.clienteNombre, ticket.autor, ticket.createdByUserId
+            )
+        )
+        db.commit()
+        new_id = cursor.lastrowid
+    except mysql.connector.Error as e:
+        db.rollback(); cursor.close(); db.close()
+        raise HTTPException(status_code=500, detail=f"Error al crear ticket: {str(e)}")
+    cursor.close(); db.close()
+    return {"id": new_id}
+
+@app.get("/tickets")
+def list_tickets(estado: str | None = Query(None), reporteId: int | None = Query(None)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    try:
+        base = "SELECT * FROM tickets"
+        where = []
+        vals = []
+        if estado:
+            where.append("estado=%s"); vals.append(estado)
+        if reporteId:
+            where.append("reporte_id=%s"); vals.append(reporteId)
+        sql = base + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC"
+        cursor.execute(sql, tuple(vals))
+        rows = cursor.fetchall() or []
+        for r in rows:
+            try:
+                if isinstance(r.get("imeis"), str):
+                    r["imeis"] = json.loads(r["imeis"]) if r["imeis"] else []
+            except Exception:
+                r["imeis"] = []
+    except mysql.connector.Error as e:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=500, detail=f"Error al listar tickets: {str(e)}")
+    cursor.close(); db.close()
+    return rows
+
+@app.get("/tickets/{ticket_id}")
+def get_ticket(ticket_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cur = db.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT * FROM tickets WHERE id=%s", (ticket_id,))
+        row = cur.fetchone()
+        if not row:
+            cur.close(); db.close()
+            raise HTTPException(status_code=404, detail="Ticket no encontrado")
+        try:
+            if isinstance(row.get("imeis"), str):
+                row["imeis"] = json.loads(row["imeis"]) if row["imeis"] else []
+        except Exception:
+            row["imeis"] = []
+        # Comentarios
+        try:
+            c2 = db.cursor(dictionary=True)
+            c2.execute("SELECT id, text, created_at FROM ticket_comments WHERE ticket_id=%s ORDER BY id ASC", (ticket_id,))
+            row["comentarios"] = c2.fetchall() or []
+            c2.close()
+        except Exception:
+            row["comentarios"] = []
+    except mysql.connector.Error as e:
+        cur.close(); db.close()
+        raise HTTPException(status_code=500, detail=f"Error al obtener ticket: {str(e)}")
+    cur.close(); db.close()
+    return row
+
+@app.patch("/tickets/{ticket_id}")
+def update_ticket(ticket_id: int, patch: TicketUpdate):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    try:
+        campos = []
+        valores = []
+        data = patch.model_dump(exclude_unset=True)
+        for k, v in data.items():
+            col = None
+            if k == 'titulo': col = 'titulo'
+            elif k == 'descripcion': col = 'descripcion'
+            elif k == 'prioridad': col = 'prioridad'
+            elif k == 'tipo': col = 'tipo'
+            elif k == 'estado': col = 'estado'
+            elif k == 'imeis':
+                col = 'imeis'
+                v = json.dumps(v) if v is not None else None
+            if col:
+                campos.append(f"{col}=%s")
+                valores.append(v)
+        if not campos:
+            cursor.close(); db.close()
+            raise HTTPException(status_code=400, detail="Sin campos para actualizar")
+        valores.append(ticket_id)
+        sql = f"UPDATE tickets SET {', '.join(campos)} WHERE id=%s"
+        cursor.execute(sql, valores)
+        db.commit()
+    except mysql.connector.Error as e:
+        db.rollback(); cursor.close(); db.close()
+        raise HTTPException(status_code=500, detail=f"Error al actualizar ticket: {str(e)}")
+    cursor.close(); db.close()
+    return {"message": "Ticket actualizado"}
+
+@app.post("/tickets/{ticket_id}/comments")
+def add_ticket_comment(ticket_id: int, body: TicketComment):
+    text = (body.comment or '').strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Comentario vacío")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cur = db.cursor()
+    try:
+        cur.execute("INSERT INTO ticket_comments (ticket_id, text) VALUES (%s,%s)", (ticket_id, text))
+        db.commit()
+    except mysql.connector.Error as e:
+        db.rollback(); cur.close(); db.close()
+        raise HTTPException(status_code=500, detail=f"Error al comentar: {str(e)}")
+    cur.close(); db.close()
+    return {"message": "Comentario agregado"}
+
+@app.delete("/tickets/{ticket_id}")
+def delete_ticket(ticket_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cur = db.cursor()
+    try:
+        # Primero borrar comentarios asociados
+        cur.execute("DELETE FROM ticket_comments WHERE ticket_id=%s", (ticket_id,))
+        # Luego el ticket
+        cur.execute("DELETE FROM tickets WHERE id=%s", (ticket_id,))
+        db.commit()
+    except mysql.connector.Error as e:
+        db.rollback(); cur.close(); db.close()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar ticket: {str(e)}")
+    cur.close(); db.close()
+    return {"message": "Ticket eliminado"}
+
+@app.get("/reportes-servicio/{reporte_id}/context")
+def get_reporte_context(reporte_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    base = None
+    try:
+        cursor.execute(
+            """
+            SELECT rs.id AS reporte_id, rs.folio AS folio_reporte, rs.fecha AS fecha_reporte,
+                   vt.id AS asignacion_id, v.id AS venta_id, v.folio AS folio_venta,
+                   v.cliente_id, cte.nombre AS cliente_nombre, cte.correo AS cliente_correo,
+                   cot.id AS cotizacion_id, cot.status AS cotizacion_status,
+                   cot.autorizada AS cotizacion_autorizada, cot.fecha_autorizacion
+            FROM reportes_servicio rs
+            JOIN venta_tecnico vt ON vt.id = rs.asignacion_id
+            JOIN ventas v ON v.id = vt.venta_id
+            LEFT JOIN clientes cte ON cte.id = v.cliente_id
+            LEFT JOIN cotizaciones cot ON cot.venta_id = v.id
+            WHERE rs.id = %s
+            LIMIT 1
+            """,
+            (reporte_id,)
+        )
+        base = cursor.fetchone()
+        if not base:
+            cursor.close(); db.close()
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+        # IMEIs desde reporte
+        imeis_set = set()
+        try:
+            c2 = db.cursor(dictionary=True)
+            c2.execute("SELECT imei, imeis_articulos FROM reportes_servicio WHERE id=%s", (reporte_id,))
+            rep = c2.fetchone() or {}
+            c2.close()
+            if rep.get("imei"):
+                s = (rep["imei"] or '').strip()
+                if s:
+                    imeis_set.add(s)
+            ia = rep.get("imeis_articulos")
+            if isinstance(ia, (str, bytes)):
+                try: ia = json.loads(ia)
+                except Exception: ia = None
+            if isinstance(ia, list):
+                for li in ia:
+                    try:
+                        for im in (li.get('imeis') or []):
+                            v = (im or '').strip()
+                            if v: imeis_set.add(v)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        # IMEIs desde detalle_venta
+        try:
+            venta_id = base.get('venta_id')
+            if venta_id:
+                c3 = db.cursor()
+                c3.execute("SELECT imei FROM detalle_venta WHERE venta_id=%s AND imei IS NOT NULL AND imei<>''", (venta_id,))
+                for (im,) in c3.fetchall() or []:
+                    vv = (im or '').strip()
+                    if vv: imeis_set.add(vv)
+                c3.close()
+        except Exception:
+            pass
+        # Filtrar números de 10-20 dígitos
+        def is_valid_imei(s: str) -> bool:
+            return s.isdigit() and (10 <= len(s) <= 20)
+        imeis_list = [s for s in sorted(imeis_set) if is_valid_imei(s)]
+        base['imeis_json'] = imeis_list
+        base['imeis_concat'] = ','.join(imeis_list) if imeis_list else None
+    except mysql.connector.Error as e:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=500, detail=f"Error al obtener contexto: {str(e)}")
+    cursor.close(); db.close()
+    return base
+
 @app.get("/ubicaciones/{ubicacion_id}/articulos-stock")
 def get_articulos_stock_por_ubicacion(ubicacion_id: int):
     db = mysql.connector.connect(
