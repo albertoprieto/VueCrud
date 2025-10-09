@@ -28,6 +28,9 @@ import ReporteServicio from '@/modules/ReporteServicio.vue';
 import TransferirImeis from '@/modules/TransferirImeis.vue';
 import Cotizador from '@/modules/Cotizador.vue';
 import CalendarioTecnicosTablaDual from '@/components/CalendarioTecnicosTablaDual.vue';
+import TicketsList from '@/modules/TicketsList.vue';
+import TicketNew from '@/modules/TicketNew.vue';
+import TicketDetail from '@/modules/TicketDetail.vue';
 
 const routes = [
   { path: '/', name: 'home', component: Informacion },
@@ -60,6 +63,9 @@ const routes = [
   { path: '/cotizador', name: 'cotizador', component: Cotizador },
   { path: '/calendario-tecnicos', name: 'calendario-tecnicos', component: CalendarioTecnicosTablaDual }
   ,{ path: '/dinero', name: 'dinero', component: Dinero }
+  ,{ path: '/tickets', name: 'tickets', component: TicketsList }
+  ,{ path: '/tickets/new', name: 'ticket-new', component: TicketNew }
+  ,{ path: '/tickets/:id', name: 'ticket-detail', component: TicketDetail }
 ];
 
 const router = createRouter({

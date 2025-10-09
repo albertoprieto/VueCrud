@@ -6,6 +6,7 @@ import PrimeVue from 'primevue/config';
 import 'primeicons/primeicons.css';
 import Aura from '@primevue/themes/aura';
 import ToastService from 'primevue/toastservice';
+import ConfirmationService from 'primevue/confirmationservice';
 import App from './App.vue'
 import router from './router'
 
@@ -13,6 +14,7 @@ import router from './router'
 import Button from 'primevue/button';
 import Menubar from 'primevue/menubar';
 import Toast from 'primevue/toast';
+import ConfirmDialog from 'primevue/confirmdialog';
 import axios from 'axios';
 
 const app = createApp(App)
@@ -28,9 +30,11 @@ app.use(PrimeVue, {
     }
  });
 app.use(ToastService)
+app.use(ConfirmationService)
 app.component('Button', Button);
 app.component('Menubar', Menubar);
 app.component('Toast', Toast);
+app.component('ConfirmDialog', ConfirmDialog);
 app.use(createPinia())
 app.use(router)
 
