@@ -76,9 +76,14 @@ const groupedItems = computed(() => {
         { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', desc: 'Histórico de cotizaciones' },
         { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar' },
         { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' },
-        { label: 'Tickets', route: '/tickets', icon: 'pi pi-fw pi-ticket', desc: 'Abrir y consultar tickets' },
-        { label: 'Nuevo Ticket', route: '/tickets/new', icon: 'pi pi-fw pi-plus-circle', desc: 'Crear ticket desde reporte' },
         { label: 'Dinero', route: '/dinero', icon: 'pi pi-fw pi-wallet', desc: 'Ver movimientos y saldo de dinero' }
+      ]
+    },
+    {
+      title: 'Tickets',
+      items: [
+        { label: 'Tickets', route: '/tickets', icon: 'pi pi-fw pi-ticket', desc: 'Abrir y consultar tickets' },
+        { label: 'Nuevo Ticket', route: '/tickets/new', icon: 'pi pi-fw pi-plus-circle', desc: 'Crear ticket desde reporte' }
       ]
     },
     {
