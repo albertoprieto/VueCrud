@@ -9,7 +9,7 @@
           <th>Título</th>
           <th>Estado</th>
           <th>Prioridad</th>
-          <th>Reporte</th>
+          <!-- <th>Reporte</th> -->
           <th>Cliente</th>
           <th>Autor</th>
           <th>Actualizado</th>
@@ -22,8 +22,7 @@
           <td :data-label="labels.titulo">{{ t.titulo || '-' }}</td>
           <td :data-label="labels.estado">{{ t.estado }}</td>
           <td :data-label="labels.prioridad">{{ t.prioridad }}</td>
-          <td :data-label="labels.reporte">#{{ t.reporteId }}</td>
-          <td :data-label="labels.cliente">{{ t.clienteNombre || t._ctx_nombre_cliente || '-' }}</td>
+          <td :data-label="labels.cliente">{{ t.cliente || '-' }}</td>
           <td :data-label="labels.autor">{{ t.autor || '-' }}</td>
           <td :data-label="labels.actualizado">{{ (t.updatedAt || t.createdAt || '').replace('T',' ').slice(0,19) }}</td>
           <td :data-label="labels.acciones">

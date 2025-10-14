@@ -39,9 +39,10 @@ export const useTicketsStore = defineStore('tickets', {
       return t;
     },
     async comment(id, text) {
-      const t = await addComment(id, text);
-      await this.fetchOne(id);
-      return t;
+  // Recibe id, texto y usuario por separado
+  const t = await addComment(id, { comment: text, usuario: arguments[2] });
+  await this.fetchOne(id);
+  return t;
     },
     async remove(id) {
       const ok = await deleteTicket(id);

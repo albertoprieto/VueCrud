@@ -2140,16 +2140,16 @@ def get_usuario_actual(request: Request, token: str = Depends(oauth2_scheme)):
 # ---------------------
 
 class TicketCreate(BaseModel):
-    reporteId: int
+    cliente: str | None = None
+    telefono: str
+    usuario_plataforma: str
     titulo: str
     descripcion: str
-    prioridad: str = 'media'            # baja | media | alta | crítica
-    tipo: str = 'soporte'               # soporte | garantía | posventa | otro
-    imeis: list[str] | None = None
-    clienteId: int | None = None
-    clienteNombre: str | None = None
-    createdByUserId: int | None = None
-    autor: str | None = None
+    prioridad: str
+    tipo: str
+    imeis: list[str]
+    autor: str
+    created_by_user_id: int | None = None
 
 class TicketUpdate(BaseModel):
     titulo: str | None = None
@@ -2161,6 +2161,7 @@ class TicketUpdate(BaseModel):
 
 class TicketComment(BaseModel):
     comment: str
+    usuario: str
 
 @app.post("/tickets")
 def create_ticket(ticket: TicketCreate):
@@ -2172,17 +2173,18 @@ def create_ticket(ticket: TicketCreate):
     )
     cursor = db.cursor()
     try:
-        imeis_json = json.dumps(ticket.imeis) if ticket.imeis is not None else None
+        imeis_json = json.dumps(ticket.imeis)
         cursor.execute(
             """
             INSERT INTO tickets (
-              reporte_id, titulo, descripcion, prioridad, tipo, estado,
-              imeis, cliente_id, cliente_nombre, autor, created_by_user_id
-            ) VALUES (%s,%s,%s,%s,%s,'nuevo',%s,%s,%s,%s,%s)
+              cliente, telefono, usuario_plataforma, titulo, descripcion, prioridad, tipo,
+              imeis, autor, created_by_user_id, estado
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'nuevo')
             """,
             (
-                ticket.reporteId, ticket.titulo, ticket.descripcion, ticket.prioridad, ticket.tipo,
-                imeis_json, ticket.clienteId, ticket.clienteNombre, ticket.autor, ticket.createdByUserId
+                ticket.cliente, ticket.telefono, ticket.usuario_plataforma, ticket.titulo,
+                ticket.descripcion, ticket.prioridad, ticket.tipo, imeis_json,
+                ticket.autor, ticket.created_by_user_id
             )
         )
         db.commit()
@@ -2208,8 +2210,6 @@ def list_tickets(estado: str | None = Query(None), reporteId: int | None = Query
         vals = []
         if estado:
             where.append("estado=%s"); vals.append(estado)
-        if reporteId:
-            where.append("reporte_id=%s"); vals.append(reporteId)
         sql = base + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC"
         cursor.execute(sql, tuple(vals))
         rows = cursor.fetchall() or []
@@ -2248,7 +2248,7 @@ def get_ticket(ticket_id: int):
         # Comentarios
         try:
             c2 = db.cursor(dictionary=True)
-            c2.execute("SELECT id, text, created_at FROM ticket_comments WHERE ticket_id=%s ORDER BY id ASC", (ticket_id,))
+            c2.execute("SELECT id, text, usuario, created_at FROM ticket_comments WHERE ticket_id=%s ORDER BY id ASC", (ticket_id,))
             row["comentarios"] = c2.fetchall() or []
             c2.close()
         except Exception:
@@ -2282,6 +2282,12 @@ def update_ticket(ticket_id: int, patch: TicketUpdate):
             elif k == 'imeis':
                 col = 'imeis'
                 v = json.dumps(v) if v is not None else None
+            # Add support for new fields
+            elif k == 'cliente': col = 'cliente'
+            elif k == 'telefono': col = 'telefono'
+            elif k == 'usuario_plataforma': col = 'usuario_plataforma'
+            elif k == 'autor': col = 'autor'
+            elif k == 'created_by_user_id': col = 'created_by_user_id'
             if col:
                 campos.append(f"{col}=%s")
                 valores.append(v)
@@ -2301,8 +2307,11 @@ def update_ticket(ticket_id: int, patch: TicketUpdate):
 @app.post("/tickets/{ticket_id}/comments")
 def add_ticket_comment(ticket_id: int, body: TicketComment):
     text = (body.comment or '').strip()
+    usuario = (body.usuario or '').strip()
     if not text:
         raise HTTPException(status_code=400, detail="Comentario vacío")
+    if not usuario:
+        raise HTTPException(status_code=400, detail="Usuario vacío")
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -2311,7 +2320,7 @@ def add_ticket_comment(ticket_id: int, body: TicketComment):
     )
     cur = db.cursor()
     try:
-        cur.execute("INSERT INTO ticket_comments (ticket_id, text) VALUES (%s,%s)", (ticket_id, text))
+        cur.execute("INSERT INTO ticket_comments (ticket_id, text, usuario) VALUES (%s,%s,%s)", (ticket_id, text, usuario))
         db.commit()
     except mysql.connector.Error as e:
         db.rollback(); cur.close(); db.close()

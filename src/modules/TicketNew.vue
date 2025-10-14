@@ -4,22 +4,25 @@
     <form @submit.prevent="submit">
       <div class="grid">
         <div class="col">
-          <label>Reporte de servicio</label>
-          <AutoComplete
-            v-model="selectedReporte"
-            :suggestions="reporteOptions"
-            optionLabel="__label"
-            :minLength="1"
-            :delay="200"
-            :dropdown="true"
-            forceSelection
-            placeholder="Busca por folio, cliente, id..."
-            class="w-100"
-            @complete="searchReportes"
-            @item-select="onReporteSelect"
-          />
-          <small v-if="ctx">Folio: {{ ctx.folio_reporte || '-' }} · Venta: {{ ctx.folio_venta || '-' }} · Cliente: {{ ctx.nombre_cliente || ctx.cliente_nombre || '-' }}</small>
+          <label>Cliente</label>
+          <input v-model="cliente" type="text" class="p-inputtext" placeholder="Nombre del cliente (opcional)" />
         </div>
+        <div class="col">
+          <label>Teléfono de contacto</label>
+          <input v-model="telefono" type="text" required class="p-inputtext" placeholder="Teléfono de contacto" />
+        </div>
+      </div>
+      <div class="grid">
+        <div class="col">
+          <label>Usuario Plataforma</label>
+          <input v-model="usuarioPlataforma" type="text" required class="p-inputtext" placeholder="Usuario plataforma" />
+        </div>
+        <div class="col">
+          <label>IMEIs asociados</label>
+          <textarea v-model="imeisManual" class="p-inputtextarea" rows="2" required placeholder="Captura los IMEIs separados por coma o salto de línea" />
+        </div>
+      </div>
+      <div class="grid">
         <div class="col">
           <label>Título</label>
           <input v-model="titulo" type="text" required class="p-inputtext" placeholder="Resumen corto"/>
@@ -38,13 +41,13 @@
         </div>
       </div>
 
-      <div class="mt-2 card">
+      <!-- <div class="mt-2 card">
         <div class="section-title">IMEIs del reporte</div>
         <div class="chips">
           <span v-for="i in imeis" :key="i" class="chip">{{ i }}</span>
           <span v-if="!imeis.length" class="muted">(sin IMEIs en contexto)</span>
         </div>
-      </div>
+      </div> -->
 
       <div class="mt-3 actions">
         <button class="p-button" type="submit"><span class="pi pi-save mr-2"/>Crear</button>
@@ -57,9 +60,13 @@
 </template>
 
 <script setup>
+const cliente = ref('');
+const telefono = ref('');
+const usuarioPlataforma = ref('');
+const imeisManual = ref('');
 import { ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { useTicketsStore } from '@/stores/ticketsStore';
+import { createTicket, getTickets, addComment } from '@/services/ticketsService';
 import AutoComplete from 'primevue/autocomplete';
 import { getReportesServicioTodos } from '@/services/reportesService';
 import { useToast } from 'primevue/usetoast';
@@ -70,11 +77,16 @@ import { getTickets as apiGetTickets } from '@/services/ticketsService';
 
 const router = useRouter();
 const route = useRoute();
-const store = useTicketsStore();
+// Eliminado: store, ahora se usa API directa
 const toast = useToast();
 const confirm = useConfirm();
 const login = useLoginStore();
-
+const tipoOptions = [
+  { label: 'Soporte', value: 'soporte' },
+  { label: 'Garantía', value: 'garantía' },
+  { label: 'Posventa', value: 'posventa' },
+  { label: 'Otro', value: 'otro' },
+];
 const reporteId = ref(Number(route.query.reporteId) || undefined);
 const selectedReporte = ref(null);
 const reporteOptions = ref([]);
@@ -83,77 +95,34 @@ const imeis = ref([]);
 
 const titulo = ref('');
 const descripcion = ref('');
-const prioridad = ref('media');
+const prioridad = ref('baja');
 const tipo = ref('soporte');
 const autor = ref(login?.user?.username || login?.user?.nombre || login?.user?.email || '');
 const prioridadOptions = [
   { label: 'Baja', value: 'baja' },
   { label: 'Media', value: 'media' },
   { label: 'Alta', value: 'alta' },
-  { label: 'Crítica', value: 'crítica' },
+  { label: 'Crítica', value: 'crítica' }
 ];
-const tipoOptions = [
-  { label: 'Soporte', value: 'soporte' },
-  { label: 'Garantía', value: 'garantía' },
-  { label: 'Posventa', value: 'posventa' },
-  { label: 'Otro', value: 'otro' },
-];
-
-async function loadContext() {
-  if (!reporteId.value) { ctx.value = null; imeis.value = []; return; }
-  const c = await store.getContext(reporteId.value);
-  ctx.value = c || null;
-  // Soportar imeis_json (array) o imeis_concat
-  if (Array.isArray(c?.imeis_json)) imeis.value = c.imeis_json.filter(Boolean);
-  else if (typeof c?.imeis_concat === 'string' && c.imeis_concat.length) imeis.value = c.imeis_concat.split(',').map(s=>s.trim()).filter(Boolean);
-  else imeis.value = [];
-}
-
-if (reporteId.value) loadContext();
-
-async function searchReportes(e) {
-  const q = String(e?.query || '').toLowerCase().trim();
-  try {
-    const all = await getReportesServicioTodos();
-    const mapped = (Array.isArray(all) ? all : []).map(r => ({
-      ...r,
-      __label: makeReporteLabel(r)
-    }));
-    let out = mapped;
-    if (q) {
-      out = mapped.filter(r =>
-        String(r.id || '').includes(q) ||
-        String(r.folio || '').toLowerCase().includes(q) ||
-        String(r.nombre_cliente || '').toLowerCase().includes(q) ||
-        String(r.nombre_instalador || '').toLowerCase().includes(q)
-      );
-    }
-    reporteOptions.value = out.slice(0, 25);
-  } catch (err) {
-    reporteOptions.value = [];
+function submit() {
+  // ...validaciones y confirm.require...
+  // Validar campos obligatorios
+  if (!telefono.value) {
+    toast.add({ severity: 'warn', summary: 'Falta teléfono', detail: 'El teléfono de contacto es obligatorio', life: 2500 });
+    return;
   }
-}
-
-function makeReporteLabel(r) {
-  const id = r?.id ?? '-';
-  const folio = r?.folio ?? '-';
-  const cliente = r?.nombre_cliente ?? '-';
-  const fecha = (r?.fecha || '').toString().slice(0, 10);
-  return `#${id} · ${folio} · ${cliente} · ${fecha}`;
-}
-
-function onReporteSelect(ev) {
-  const item = ev?.value;
-  if (item?.id) {
-    reporteId.value = Number(item.id);
-    loadContext();
-    checkOpenTicket();
+  if (!usuarioPlataforma.value) {
+    toast.add({ severity: 'warn', summary: 'Falta usuario plataforma', detail: 'El usuario plataforma es obligatorio', life: 2500 });
+    return;
   }
-}
-
-async function submit() {
-  if (!reporteId.value) {
-    toast.add({ severity: 'warn', summary: 'Falta reporte', detail: 'Selecciona un reporte de servicio', life: 2500 });
+  if (!descripcion.value) {
+    toast.add({ severity: 'warn', summary: 'Falta descripción', detail: 'La descripción del problema es obligatoria', life: 2500 });
+    return;
+  }
+  // Validar IMEIs
+  const imeisArray = imeisManual.value.split(/[,\n]+/).map(i => i.trim()).filter(Boolean);
+  if (!imeisArray.length) {
+    toast.add({ severity: 'warn', summary: 'Faltan IMEIs', detail: 'Debes capturar al menos un IMEI', life: 2500 });
     return;
   }
   confirm.require({
@@ -165,20 +134,25 @@ async function submit() {
     accept: async () => {
       try {
         const payload = {
-          reporteId: reporteId.value,
+          cliente: cliente.value,
+          telefono: telefono.value,
+          usuario_plataforma: usuarioPlataforma.value,
           titulo: titulo.value,
           descripcion: descripcion.value,
           prioridad: prioridad.value,
           tipo: tipo.value,
-          imeis: imeis.value,
-          clienteId: ctx.value?.cliente_id,
-          clienteNombre: ctx.value?.nombre_cliente || ctx.value?.cliente_nombre || selectedReporte.value?.nombre_cliente,
-          autor: autor.value || undefined,
-          createdByUserId: login?.user?.id || undefined,
+          imeis: imeisArray,
+          autor: autor.value,
+          created_by_user_id: login?.user?.id,
         };
-        const t = await store.create(payload);
+        const t = await createTicket(payload);
         toast.add({ severity: 'success', summary: 'Ticket creado', detail: `Ticket #${t.id}`, life: 2500 });
-        router.push(`/tickets/${t.id}`);
+        // router.push(`/tickets/${t.id}`);
+// Ejemplo de función para agregar comentario con usuario
+async function comentarTicket(ticketId, textoComentario) {
+  const usuarioActual = login?.user?.username || '';
+  await addComment(ticketId, { comment: textoComentario, usuario: usuarioActual });
+}
       } catch (err) {
         toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo crear el ticket', life: 3000 });
       }
@@ -186,30 +160,6 @@ async function submit() {
   });
 }
 
-async function checkOpenTicket() {
-  try {
-    if (!reporteId.value) return;
-    const list = await apiGetTickets({ reporteId: reporteId.value });
-    const abiertos = (Array.isArray(list) ? list : []).filter(t => ['nuevo','en_progreso','en_espera'].includes(t.estado));
-    if (abiertos.length) {
-      confirm.require({
-        message: `Ya existe un ticket abierto para este reporte (p. ej. #${abiertos[0].id}).`,
-        header: 'Ticket existente',
-        icon: 'pi pi-info-circle',
-        acceptLabel: 'Entendido',
-        rejectClass: 'hidden',
-        accept: () => {}
-      });
-    }
-  } catch {
-    // ignore
-  }
-}
-
-if (reporteId.value) {
-  // si llega preseleccionado por query, validar abiertos
-  checkOpenTicket();
-}
 </script>
 
 <style scoped>

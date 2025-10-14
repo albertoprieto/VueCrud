@@ -15,39 +15,19 @@
 
       <div class="ticket-grid">
         <div class="card-section">
-          <div class="field-row">
-            <label>Título</label>
-            <div class="value">{{ ticket.titulo }}</div>
-          </div>
-          <div class="field-row">
-            <label>Autor</label>
-            <div class="value">{{ ticket.autor || '-' }}</div>
-          </div>
-          <div class="field-row">
-            <label>Estado</label>
-            <div class="value">
-              <Dropdown
-                v-model="estado"
-                :options="estadoOptions"
-                optionLabel="label"
-                optionValue="value"
-                class="select"
-                @change="onEstadoChange"
-              />
-            </div>
-          </div>
-          <div class="field-row">
-            <label>Prioridad</label>
-            <div class="value">{{ ticket.prioridad }}</div>
-          </div>
-          <div class="field-row">
-            <label>Tipo</label>
-            <div class="value">{{ ticket.tipo }}</div>
-          </div>
-          <div class="field-row">
-            <label>Cliente</label>
-            <div class="value">{{ ticket.clienteNombre || ctxDetail?.nombre_cliente || ctxDetail?.cliente_nombre || '-' }}</div>
-          </div>
+          <div class="field-row"><label>ID</label><div class="value">{{ ticket.id }}</div></div>
+          <div class="field-row"><label>Título</label><div class="value">{{ ticket.titulo }}</div></div>
+          <div class="field-row"><label>Descripción</label><div class="value">{{ ticket.descripcion }}</div></div>
+          <div class="field-row"><label>Prioridad</label><div class="value">{{ ticket.prioridad }}</div></div>
+          <div class="field-row"><label>Tipo</label><div class="value">{{ ticket.tipo }}</div></div>
+          <div class="field-row"><label>Estado</label><div class="value">{{ ticket.estado }}</div></div>
+          <div class="field-row"><label>Cliente</label><div class="value">{{ ticket.cliente || '-' }}</div></div>
+          <div class="field-row"><label>Teléfono</label><div class="value">{{ ticket.telefono || '-' }}</div></div>
+          <div class="field-row"><label>Usuario plataforma</label><div class="value">{{ ticket.usuario_plataforma || '-' }}</div></div>
+          <div class="field-row"><label>Autor</label><div class="value">{{ ticket.autor || '-' }}</div></div>
+          <div class="field-row"><label>ID usuario creador</label><div class="value">{{ ticket.created_by_user_id || '-' }}</div></div>
+          <div class="field-row"><label>Creado</label><div class="value">{{ (ticket.created_at || '').replace('T',' ').slice(0,19) }}</div></div>
+          <div class="field-row"><label>Actualizado</label><div class="value">{{ (ticket.updated_at || '').replace('T',' ').slice(0,19) }}</div></div>
         </div>
 
         <div class="card-section">
@@ -64,8 +44,9 @@
       <div class="section-title">Comentarios</div>
       <div class="comments">
         <div v-for="c in ticket.comentarios || []" :key="c.id" class="comment">
-          <div class="when">{{ (c.createdAt || '').replace('T',' ').slice(0,19) }}</div>
+          <div class="when">{{ (c.created_at || c.createdAt || '').replace('T',' ').slice(0,19) }}</div>
           <div class="text">{{ c.text }}</div>
+          <div class="usuario muted">por {{ c.usuario || '-' }}</div>
         </div>
         <div v-if="!(ticket.comentarios && ticket.comentarios.length)" class="muted">Sin comentarios.</div>
       </div>
@@ -93,6 +74,7 @@ import Loader from '@/components/Loader.vue';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
 import Dropdown from 'primevue/dropdown';
+import { useLoginStore } from '@/stores/loginStore';
 
 const route = useRoute();
 const store = useTicketsStore();
@@ -132,10 +114,19 @@ watch(() => route.params.id, load);
 async function sendComment() {
   const txt = (comment.value || '').trim();
   if (!txt) return;
+  const loginStore = useLoginStore();
+  const usuario = loginStore.user?.username;
+  if (!usuario) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No hay usuario firmado. No se puede comentar.', life: 3000 });
+    return;
+  }
   try {
-    await store.comment(ticket.value.id, txt);
+    // Llamar el servicio directamente, sin store
+    const { addComment } = await import('@/services/ticketsService');
+    await addComment(ticket.value.id, { comment: txt, usuario });
     comment.value = '';
     toast.add({ severity: 'success', summary: 'Comentario agregado', life: 2200 });
+    await load();
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo agregar el comentario', life: 3000 });
   }
