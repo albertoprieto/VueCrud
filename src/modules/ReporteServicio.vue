@@ -329,8 +329,15 @@ function buildSimSerieOptions(){
 
 function buildLineItems(){
   if(!detalleVentaRaw.value.length || !imeisStockRaw.value.length) { lineItems.value = []; return; }
+  // Filtrar artículos que NO son servicios
+  const noServicio = detalleVentaRaw.value.filter(d => !esArticuloServicio(d));
+  // Si no hay artículos que no sean servicios, no mostrar slots IMEI/SIM
+  if (noServicio.length === 0) {
+    lineItems.value = [];
+    return;
+  }
   const resultado = [];
-  for(const d of detalleVentaRaw.value){
+  for(const d of noServicio){
     if(esSimArticuloNombre(d.articulo_nombre)) continue;
     if(/instalacion/.test(normalizeTexto(d.articulo_nombre||''))) continue;
     const cantidad = Number(d.cantidad || d.cantidad_articulos || 1) || 1;
@@ -561,6 +568,10 @@ onMounted(async () => {
     form.value.asignacion_id = asignacion.value.id;
     await cargarDatosTecnico();
     await cargarDatosCliente();
+      // LOG de artículos de la orden de servicio
+      console.log('Artículos de la orden de servicio:', detalleVentaRaw.value);
+      // LOG de stock del técnico (IMEIs disponibles en la ubicación)
+      console.log('Stock del técnico (IMEIs disponibles):', imeisStockRaw.value);
     form.value.tipo_servicio = tiposServicio[0] || '';
     try { await cargarPagos(); } catch (e) { console.error('Error en cargarPagos:', e); }
     loading.value = false;
