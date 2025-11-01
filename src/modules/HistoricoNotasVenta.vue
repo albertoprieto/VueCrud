@@ -84,6 +84,14 @@
           </span>
         </template>
       </Column>
+        <!-- Columna de atención por reporte de servicio -->
+        <Column field="statusAtencion" header="Atención">
+          <template #body="slotProps">
+            <span :style="{color: slotProps.data.statusAtencion === 'Atendido' ? 'green' : 'orange', fontWeight: 'bold'}">
+              {{ slotProps.data.statusAtencion }}
+            </span>
+          </template>
+        </Column>
       <Column field="terminos_pago" header="Términos de Pago">
         <template #body="slotProps">
           {{ slotProps.data.terminos_pago || '-' }}
@@ -272,6 +280,7 @@
 
 <script setup>
 import { computed, ref, onMounted, nextTick } from 'vue';
+import { getReportesServicioTodos } from '@/services/reportesService';
 import DataTable from 'primevue/datatable';
 import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
@@ -345,25 +354,40 @@ const filtroImei = ref('');
 // Cargar ventas y técnicos asignados
 onMounted(async () => {
   loading.value = true;
-  const ventasRaw = await getVentas();
-  const clientes = await getClientes();
-  // Para cada venta, consulta el técnico asignado y agrega constancia_path del cliente
+  const [ventasRaw, clientes, reportes] = await Promise.all([
+    getVentas(),
+    getClientes(),
+    getReportesServicioTodos()
+  ]);
+  // Indexar reportes por folio para búsqueda rápida
+  const reportesPorFolio = Array.isArray(reportes)
+    ? reportes.reduce((acc, r) => {
+        if (r.folio) acc[r.folio] = true;
+        return acc;
+      }, {})
+    : {};
   const ventasConTecnico = await Promise.all(
     ventasRaw.map(async v => {
       const tecnico = await getTecnicoVenta(v.id);
       const cliente = clientes.find(c => c.id === v.cliente_id);
+      // Consultar si tiene reporte de servicio asociado por folio
+      let statusAtencion = 'No atendido';
+      const folioVenta = v.folio ?? v.id;
+      if (folioVenta && reportesPorFolio[folioVenta]) {
+        statusAtencion = 'Atendido';
+      }
       return {
         ...v,
         cliente_nombre: String(v.cliente_nombre ?? ''),
         tecnicoNombre: tecnico ? String(tecnico.username) : '',
         status: tecnico ? 'Asignado' : 'Sin asignar',
         constancia_path: cliente?.constancia_path || null,
-        rfc: cliente?.rfc || null
+        rfc: cliente?.rfc || null,
+        statusAtencion // NUEVO
       };
     })
   );
   ventas.value = ventasConTecnico;
-  
   loading.value = false;
 });
 
