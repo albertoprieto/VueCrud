@@ -111,46 +111,48 @@
         </template>
       </Column>
       <Column header="Acciones">
-        <template #body="slotProps">
-          <Button
-            :icon="slotProps.data.tecnicoNombre ? 'pi pi-user-edit' : 'pi pi-user-plus'"
-            :label="slotProps.data.tecnicoNombre ? 'Cambiar técnico' : 'Asignar técnico'"
-            class="p-button-sm p-button-info"
-            @click="abrirAsignarTecnico(slotProps.data)"
-          />
-          <Button
-            v-if="slotProps.data.tecnicoNombre"
-            icon="pi pi-trash"
-            label="Eliminar asignación"
-            class="p-button-sm p-button-danger ml-2"
-            @click="eliminarAsignacion(slotProps.data)"
-          />
-          <Button
-            v-if="slotProps.data.status === 'Asignado'"
-            icon="pi pi-file-pdf"
-            label="Orden de Servicio"
-            class="p-button-sm p-button-success ml-2"
-            @click="descargarPDF(slotProps.data)"
-          />
-          <!-- Nueva acción: descargar constancia fiscal -->
-          <a
-            v-if="slotProps.data.constancia_path"
-            :href="getConstanciaUrl(slotProps.data.constancia_path)"
-            download
-            class="p-button p-button-sm p-button-warning ml-2"
-            :title="slotProps.data.rfc ? 'Descargar Constancia RFC ' + slotProps.data.rfc : 'Descargar constancia fiscal'"
-          >
-            <i class="pi pi-file-pdf"></i>
-            <span class="p-button-label">Constancia Fiscal</span>
-          </a>
-          <i v-else class="pi pi-file-pdf ml-2" style="opacity:0.25" :title="'Sin constancia'" />
-          <Button
-            icon="pi pi-times"
-            label="Eliminar orden"
-            class="p-button-sm p-button-danger ml-2"
-            @click="confirmarEliminarOrden(slotProps.data)"
-          />
-        </template>
+          <template #body="slotProps">
+            <div class="acciones-flex">
+              <Button
+                :icon="slotProps.data.tecnicoNombre ? 'pi pi-user-edit' : 'pi pi-user-plus'"
+                :label="slotProps.data.tecnicoNombre ? 'Cambiar técnico' : 'Asignar técnico'"
+                class="p-button-sm p-button-info acciones-btn"
+                @click="abrirAsignarTecnico(slotProps.data)"
+              />
+              <Button
+                v-if="slotProps.data.tecnicoNombre"
+                icon="pi pi-trash"
+                label="Eliminar asignación"
+                class="p-button-sm p-button-danger acciones-btn"
+                @click="eliminarAsignacion(slotProps.data)"
+              />
+              <Button
+                v-if="slotProps.data.status === 'Asignado'"
+                icon="pi pi-file-pdf"
+                label="Orden de Servicio"
+                class="p-button-sm p-button-success acciones-btn"
+                @click="descargarPDF(slotProps.data)"
+              />
+              <!-- Nueva acción: descargar constancia fiscal -->
+              <a
+                v-if="slotProps.data.constancia_path"
+                :href="getConstanciaUrl(slotProps.data.constancia_path)"
+                download
+                class="p-button p-button-sm p-button-warning acciones-btn"
+                :title="slotProps.data.rfc ? 'Descargar Constancia RFC ' + slotProps.data.rfc : 'Descargar constancia fiscal'"
+              >
+                <i class="pi pi-file-pdf"></i>
+                <span class="p-button-label">Constancia Fiscal</span>
+              </a>
+              <i v-else class="pi pi-file-pdf acciones-btn" style="opacity:0.25" :title="'Sin constancia'" />
+              <Button
+                icon="pi pi-times"
+                label="Eliminar orden"
+                class="p-button-sm p-button-danger acciones-btn"
+                @click="confirmarEliminarOrden(slotProps.data)"
+              />
+            </div>
+          </template>
       </Column>
     </DataTable>
     <Dialog v-model:visible="showDialog" header="Nota de Venta" :modal="true" class="historico-dialog">
@@ -171,6 +173,23 @@
         </div>
         <div class="asignar-col">
           <label>Plataforma <span class="req">*</span></label>
+
+    /* Alineación simétrica de los botones de acciones */
+    .acciones-flex {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      align-items: center;
+      min-width: 260px;
+    }
+    .acciones-btn {
+      margin: 0 !important;
+      flex: 1 1 0;
+      min-width: 110px;
+      max-width: 160px;
+      text-align: center;
+    }
           <Dropdown
             v-model="ordenClienteInfo.plataforma"
             :options="plataformasCliente"
