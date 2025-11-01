@@ -1,0 +1,1 @@
+-- Archivo movido a utilidades/sql para organización
