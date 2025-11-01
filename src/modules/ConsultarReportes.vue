@@ -68,57 +68,59 @@
         </template>
       </Column>
       <Column header="Acciones">
-        <template #body="slotProps">
-          <Button
-            v-if="!slotProps.data.pagado"  
-            icon="pi pi-pencil"
-            class="p-button-sm p-button-info"
-            label="Editar"
-            @click="abrirEditar(slotProps.data)"
-          />
-          <Button
-            v-if="!slotProps.data.pagado"
-            icon="pi pi-trash"
-            class="p-button-sm p-button-danger ml-2"
-            label="Eliminar"
-            @click="confirmarEliminarReporte(slotProps.data)"
-          />
-          <Button
-            icon="pi pi-file-pdf"
-            class="p-button-sm p-button-warning ml-2"
-            label="Reporte de servicio"
-            @click="descargarReporteServicio(slotProps.data)"
-          />
-          <!-- Ver comprobante cuando existe -->
-          <a v-if="slotProps.data.comprobante_path" :href="urlComprobante(slotProps.data)" target="_blank" rel="noopener noreferrer">
-            <Button
-              icon="pi pi-download"
-              class="p-button-sm p-button-secondary ml-2"
-              label="Ver comprobante"
-            />
-          </a>
-          <Button
-            v-if="!slotProps.data.pagado && !slotProps.data.comprobante_path"
-            icon="pi pi-upload"
-            class="p-button-sm p-button-success ml-2"
-            label="Marcar como pagado"
-            @click="marcarComoPagado(slotProps.data)"
-          />
-          <Button
-            v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
-            icon="pi pi-check-circle"
-            class="p-button-sm p-button-success ml-2"
-            label="Aprobar comprobante"
-            @click="aprobarComprobante(slotProps.data)"
-          />
-          <Button
-            v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
-            icon="pi pi-times-circle"
-            class="p-button-sm p-button-danger ml-2"
-            label="Rechazar comprobante"
-            @click="rechazarComprobante(slotProps.data)"
-          />
-        </template>
+          <template #body="slotProps">
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-start; align-items: center; min-width: 320px;">
+              <Button
+                v-if="!slotProps.data.pagado"  
+                icon="pi pi-pencil"
+                class="p-button-sm p-button-info"
+                label="Editar"
+                @click="abrirEditar(slotProps.data)"
+              />
+              <Button
+                v-if="!slotProps.data.pagado"
+                icon="pi pi-trash"
+                class="p-button-sm p-button-danger"
+                label="Eliminar"
+                @click="confirmarEliminarReporte(slotProps.data)"
+              />
+              <Button
+                icon="pi pi-file-pdf"
+                class="p-button-sm p-button-warning"
+                label="Reporte de servicio"
+                @click="descargarReporteServicio(slotProps.data)"
+              />
+              <!-- Ver comprobante cuando existe -->
+              <a v-if="slotProps.data.comprobante_path" :href="urlComprobante(slotProps.data)" target="_blank" rel="noopener noreferrer" style="display: contents;">
+                <Button
+                  icon="pi pi-download"
+                  class="p-button-sm p-button-secondary"
+                  label="Ver comprobante"
+                />
+              </a>
+              <Button
+                v-if="!slotProps.data.pagado && !slotProps.data.comprobante_path"
+                icon="pi pi-upload"
+                class="p-button-sm p-button-success"
+                label="Marcar como pagado"
+                @click="marcarComoPagado(slotProps.data)"
+              />
+              <Button
+                v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
+                icon="pi pi-check-circle"
+                class="p-button-sm p-button-success"
+                label="Aprobar comprobante"
+                @click="aprobarComprobante(slotProps.data)"
+              />
+              <Button
+                v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
+                icon="pi pi-times-circle"
+                class="p-button-sm p-button-danger"
+                label="Rechazar comprobante"
+                @click="rechazarComprobante(slotProps.data)"
+              />
+            </div>
+          </template>
       </Column>
     </DataTable>
 
