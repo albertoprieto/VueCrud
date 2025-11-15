@@ -1,4 +1,7 @@
 <script setup>
+
+
+
 import { ref, computed, watch, onMounted } from 'vue';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
@@ -40,13 +43,28 @@ const {
 
 const articulos = ref([]);
 const vendedores = ref([]);
-
+// Muestra Cliente / Usuario en el dropdown
+function clienteLabel(cliente) {
+  if (Array.isArray(cliente.usuarios) && cliente.usuarios.length > 0) {
+    return `${cliente.nombre} / ${cliente.usuarios[0]}`;
+  }
+  return cliente.nombre;
+}
 // Búsqueda por nombre para la selección de cliente
 const clienteFiltro = ref('');
 const clientesFiltrados = computed(() => {
   const q = (clienteFiltro.value || '').toLowerCase().trim();
   if (!q) return clientes.value || [];
-  return (clientes.value || []).filter(c => String(c?.nombre || '').toLowerCase().includes(q));
+  return (clientes.value || []).filter(c => {
+    // Buscar por nombre de cliente
+    const nombreCliente = String(c?.nombre || '').toLowerCase();
+    if (nombreCliente.includes(q)) return true;
+    // Buscar por nombre de usuario asociado
+    if (Array.isArray(c.usuarios)) {
+      return c.usuarios.some(u => String(u || '').toLowerCase().includes(q));
+    }
+    return false;
+  });
 });
 
 onMounted(async () => {
@@ -563,7 +581,7 @@ function descargarPDFCotizacion() {
       tableHeader: { bold: true, fillColor: '#666', color: '#fff', fontSize: 10, alignment: 'center' },
       totalLabel: { bold: true, fontSize: 11, alignment: 'right', color: '#333' },
       totalValue: { bold: true, fontSize: 11, alignment: 'right', color: '#444' },
-      notas: { fontSize: 9, color: '#444', margin: [0, 2, 0, 2] }
+      notas: { fontSize: 9, color: '#444', margin: [0, 2, 0, 2] }   
     },
     defaultStyle: {
       fontSize: 9
@@ -593,15 +611,16 @@ function descargarPDFCotizacion() {
             <Dropdown
               v-model="cotizacion.cliente_id"
               :options="clientesFiltrados"
-              optionLabel="nombre"
+              :optionLabel="clienteLabel"
               optionValue="id"
               placeholder="Selecciona un cliente"
               class="w-full"
               :class="{'p-invalid': !cotizacion.cliente_id}"
               filter
-              filterPlaceholder="Filtrar en la lista..."
+              filterPlaceholder="Filtrar por cliente o usuario..."
               showClear
             />
+
           </div>
           <div class="form-group">
             <label>Nuevo</label>
