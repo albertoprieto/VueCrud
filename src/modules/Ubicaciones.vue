@@ -76,7 +76,13 @@
       </template>
     </Dialog>
     <Dialog v-model:visible="showConfirmDelete" header="Confirmar" :modal="true" class="ubicaciones-dialog">
-      <span>¿Eliminar esta ubicación?</span>
+      <span>
+        ¿Eliminar esta ubicación?
+        <template v-if="ubicacionToDelete != null">
+          <br>
+          <strong>{{ ubicaciones.find(u => u.id === ubicacionToDelete)?.nombre || '' }}</strong>
+        </template>
+      </span>
       <template #footer>
         <Button label="Cancelar" @click="showConfirmDelete = false" />
         <Button label="Eliminar" class="p-button-danger" @click="eliminarUbicacion" />
@@ -128,18 +134,27 @@ const estados = [
   { label: 'Activa', value: 'activa' },
   { label: 'Inactiva', value: 'inactiva' }
 ];
+const ubicacionToDelete = ref(null);
 
 const guardarUbicacion = async () => {
   form.value.telefonos = form.value.telefonos.filter(t => t);
-  if (form.value.capacidad_maxima) {
-    form.value.capacidad_maxima = Number(form.value.capacidad_maxima);
+  // Solo convertir capacidad_maxima si tiene valor
+  let payload = { ...form.value };
+  if (!editando.value) {
+    // Enviar id como 0 al crear
+    payload.id = 0;
+  }
+  if (payload.capacidad_maxima === '' || payload.capacidad_maxima == null) {
+    delete payload.capacidad_maxima;
+  } else {
+    payload.capacidad_maxima = Number(payload.capacidad_maxima);
   }
   try {
     if (editando.value) {
-      await updateUbicacion(form.value.id, form.value);
+      await updateUbicacion(form.value.id, payload);
       resultMessage.value = 'Ubicación actualizada correctamente.';
     } else {
-      await addUbicacion(form.value);
+      await addUbicacion(payload);
       resultMessage.value = 'Ubicación agregada correctamente.';
     }
     showResultDialog.value = true;
