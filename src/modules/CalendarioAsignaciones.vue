@@ -435,29 +435,19 @@ onMounted(async () => {
   loading.value = false;
   
   await cargarReportesServicios();
-  
-  // Función para generar color consistente basado en el nombre del instalador
-  const generarColorConsistente = (nombre) => {
-    let hash = 0;
-    for (let i = 0; i < nombre.length; i++) {
-      hash = nombre.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const color = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    return '#' + '00000'.substring(0, 6 - color.length) + color;
-  };
-  
-  // Asignar colores consistentes por instalador (mismo nombre_instalador = mismo color)
-  const instaladoresUnicos = [...new Set(Object.values(reportesPorAsignacion.value).map(r => r.nombre_instalador).filter(Boolean))];
-  const coloresInstaladores = {};
-  instaladoresUnicos.forEach(instalador => {
-    coloresInstaladores[instalador] = generarColorConsistente(instalador);
+
+  // Generar colores maximamente diferentes para cada técnico
+  const tecnicosUnicos = [...new Set(asignaciones.value.map(a => a.tecnico).filter(Boolean))];
+  const coloresTecnicos = {};
+  const total = tecnicosUnicos.length;
+  tecnicosUnicos.forEach((tecnico, idx) => {
+    // Espaciar los colores en el círculo cromático
+    const hue = Math.round((360 / total) * idx);
+    coloresTecnicos[tecnico] = `hsl(${hue}, 80%, 50%)`;
   });
-  
+
   // Mapeamos los eventos con colores y horas correctas
   events.value = asignaciones.value.map(a => {
-    const rep = reporteDeAsignacion(a);
-    const instalador = rep?.nombre_instalador || 'Sin asignar';
-    
     // Crear fecha de inicio en formato ISO para FullCalendar
     let startDateTime = a.fecha_servicio;
     if (a.hora_servicio) {
@@ -465,7 +455,7 @@ onMounted(async () => {
       const horaCompleta = a.hora_servicio.length === 5 ? `${a.hora_servicio}:00` : a.hora_servicio;
       startDateTime = `${a.fecha_servicio}T${horaCompleta}`;
     }
-    
+
     // Crear fecha de fin (1 hora después)
     let endDateTime = null;
     if (a.hora_servicio) {
@@ -474,14 +464,14 @@ onMounted(async () => {
       const endDate = new Date(startDate.getTime() + (60 * 60 * 1000)); // +1 hora
       endDateTime = endDate.toISOString();
     }
-    
+
     return {
       title: a.tecnico ? `Técnico: ${a.tecnico}` : 'Asignación',
       start: startDateTime,
       end: endDateTime,
       description: `Cliente: ${a.cliente || a.cliente_id || ''}\nVenta: ${a.venta_folio || a.venta_id || ''}`,
       id: a.id ?? a.venta_id,
-      backgroundColor: coloresInstaladores[instalador] || '#3788d8',
+      backgroundColor: coloresTecnicos[a.tecnico] || '#3788d8',
       extendedProps: {
         fecha_servicio: a.fecha_servicio,
         hora_servicio: a.hora_servicio,
