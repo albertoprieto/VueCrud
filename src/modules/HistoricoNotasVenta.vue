@@ -210,16 +210,29 @@
             />
           </div>
           <div class="asignar-col">
-            <label>Hora <span class="req">*</span></label>
+            <label>Hora inicio <span class="req">*</span></label>
             <Calendar
               v-model="horaServicio"
               timeOnly
               hourFormat="24"
               iconDisplay="input"
-              placeholder="Hora"
+              placeholder="Hora inicio"
               class="asignar-input"
               :required="true"
               :invalid="!horaServicio"
+            />
+          </div>
+          <div class="asignar-col">
+            <label>Hora fin <span class="req">*</span></label>
+            <Calendar
+              v-model="horaFin"
+              timeOnly
+              hourFormat="24"
+              iconDisplay="input"
+              placeholder="Hora fin"
+              class="asignar-input"
+              :required="true"
+              :invalid="!horaFin"
             />
           </div>
         </div>
@@ -239,7 +252,7 @@
         </div>
         <div class="asignar-actions">
           <Button label="Asignar" icon="pi pi-check" type="submit"
-            :disabled="!tecnicoSeleccionado || !fechaServicio || !horaServicio || !ordenClienteInfo.plataforma || !ordenClienteInfo.telefonos || !ordenClienteInfo.usuario || !ordenClienteInfo.descripcion || !direccionServicio || !cpServicio || !linkUbicacion"
+            :disabled="!tecnicoSeleccionado || !fechaServicio || !horaServicio || !horaFin || !ordenClienteInfo.plataforma || !ordenClienteInfo.telefonos || !ordenClienteInfo.usuario || !ordenClienteInfo.descripcion || !direccionServicio || !cpServicio || !linkUbicacion"
             class="p-button-success" />
           <Button label="Cancelar" icon="pi pi-times" @click="showAsignarDialog = false" class="p-button-secondary ml-2" />
         </div>
@@ -313,7 +326,8 @@ const ventaParaAsignar = ref(null);
 const tecnicos = ref([]);
 const tecnicoSeleccionado = ref(null);
 const fechaServicio = ref(null); // NUEVO: fecha de servicio
-const horaServicio = ref(null); // NUEVO: hora de servicio
+const horaServicio = ref(null); // NUEVO: hora de inicio
+const horaFin = ref(null); // NUEVO: hora de fin
 // Nuevos campos adicionales
 const direccionServicio = ref('');
 const cpServicio = ref('');
@@ -535,11 +549,17 @@ async function asignarTecnico() {
     : (typeof horaServicio.value === 'string' && horaServicio.value.match(/^[0-9]{2}:[0-9]{2}/))
       ? horaServicio.value.slice(0,5)
       : null;
+  const horaFinFormateada = horaFin.value instanceof Date
+    ? horaFin.value.toTimeString().slice(0,5)
+    : (typeof horaFin.value === 'string' && horaFin.value.match(/^[0-9]{2}:[0-9]{2}/))
+      ? horaFin.value.slice(0,5)
+      : null;
 
   const payloadExtendido = {
     tecnico_id: tecnicoSeleccionado.value,
     fecha_servicio: fechaFormateada,
     hora_servicio: horaFormateada || null,
+    hora_fin: horaFinFormateada || null,
     direccion: direccionServicio.value?.trim() || null,
     cp: cpServicio.value?.trim() || null,
     link_ubicacion: linkUbicacion.value?.trim() || null,
@@ -603,6 +623,7 @@ function abrirEditarAsignacion({ ventaId, asignacion }) {
   tecnicoSeleccionado.value = asignacion.tecnico_id || venta.tecnicoAsignado || null;
   fechaServicio.value = asignacion.fecha_servicio || null;
   horaServicio.value = asignacion.hora_servicio || null;
+  horaFin.value = asignacion.hora_fin || null;
   direccionServicio.value = asignacion.direccion || '';
   cpServicio.value = asignacion.cp || '';
   linkUbicacion.value = asignacion.link_ubicacion || '';
