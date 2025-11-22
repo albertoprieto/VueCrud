@@ -38,7 +38,10 @@
               <strong>Descripcion:</strong> {{ selectedEvent.extendedProps?.descripcion || 'Sin descripción' }}
             </div>
             <div class="dialog-section" v-if="selectedEvent.extendedProps?.hora_servicio">
-              <strong>Hora Servicio:</strong> {{ selectedEvent.extendedProps.hora_servicio }}
+              <strong>Hora Inicio:</strong> {{ selectedEvent.extendedProps.hora_servicio }}
+            </div>
+            <div class="dialog-section" v-if="selectedEvent.extendedProps?.hora_fin">
+              <strong>Hora Fin:</strong> {{ selectedEvent.extendedProps.hora_fin }}
             </div>
             <div class="dialog-section" v-if="selectedEvent.extendedProps?.direccion">
               <strong>Dirección:</strong> {{ selectedEvent.extendedProps.direccion }}
@@ -108,7 +111,8 @@
         </div>
         <DataTable :value="asignacionesFiltradasOrdenadas" :loading="loading" responsiveLayout="scroll">
           <Column field="fecha_servicio" header="Fecha" sortable />
-          <Column field="hora_servicio" header="Hora" sortable />
+          <Column field="hora_servicio" header="Hora Inicio" sortable />
+          <Column field="hora_fin" header="Hora Fin" sortable />
           <Column field="tecnico" header="Técnico" sortable />
           <Column field="cliente" header="Cliente" sortable />
           <Column field="direccion" header="Dirección" />
@@ -448,23 +452,21 @@ onMounted(async () => {
 
   // Mapeamos los eventos con colores y horas correctas
   events.value = asignaciones.value.map(a => {
-    // Crear fecha de inicio en formato ISO para FullCalendar
     let startDateTime = a.fecha_servicio;
     if (a.hora_servicio) {
-      // Asegurar formato HH:MM si viene sin segundos
       const horaCompleta = a.hora_servicio.length === 5 ? `${a.hora_servicio}:00` : a.hora_servicio;
       startDateTime = `${a.fecha_servicio}T${horaCompleta}`;
     }
-
-    // Crear fecha de fin (1 hora después)
     let endDateTime = null;
-    if (a.hora_servicio) {
+    if (a.hora_fin) {
+      const horaFinCompleta = a.hora_fin.length === 5 ? `${a.hora_fin}:00` : a.hora_fin;
+      endDateTime = `${a.fecha_servicio}T${horaFinCompleta}`;
+    } else if (a.hora_servicio) {
       const horaCompleta = a.hora_servicio.length === 5 ? `${a.hora_servicio}:00` : a.hora_servicio;
       const startDate = new Date(`${a.fecha_servicio}T${horaCompleta}`);
-      const endDate = new Date(startDate.getTime() + (60 * 60 * 1000)); // +1 hora
+      const endDate = new Date(startDate.getTime() + (60 * 60 * 1000));
       endDateTime = endDate.toISOString();
     }
-
     return {
       title: a.tecnico ? `Técnico: ${a.tecnico}` : 'Asignación',
       start: startDateTime,
@@ -475,6 +477,7 @@ onMounted(async () => {
       extendedProps: {
         fecha_servicio: a.fecha_servicio,
         hora_servicio: a.hora_servicio,
+        hora_fin: a.hora_fin,
         direccion: a.direccion,
         link_ubicacion: a.link_ubicacion,
         cliente_info: a.cliente_info,
