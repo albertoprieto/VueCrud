@@ -1,6 +1,18 @@
 <template>
   <div class="consultar-reportes-container">
-    <h2 class="consultar-reportes-title">Consultar Reportes de Servicio</h2>
+    <!-- Botón global para agregar reporte de servicio -->
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 1.5rem;">
+      <Button
+        label="Agregar Reporte"
+        icon="pi pi-plus"
+        class="p-button-success"
+        @click="irReporteServicioGlobal"
+      />
+    </div>
+    <div v-if="showNuevoReporteDialog">
+      <NuevoReporteDeServicio @close="showNuevoReporteDialog = false" />
+    </div>
+    <h2 class="consultar-reportes-title">Reportes de Servicio</h2>
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
       <InputText v-model="filtroCliente" placeholder="Filtrar por cliente" class="filtro-input" clearable />
       <InputText v-model="filtroSO" placeholder="Filtrar por Orden de servicio" class="filtro-input" clearable />
@@ -308,11 +320,14 @@ import { useToast } from 'primevue/usetoast';
 import { generarReporteServicioPDF } from '@/services/reporteServicioPdfService.js';
 import { useLoginStore } from '@/stores/loginStore';
 import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
+import { useRouter } from 'vue-router';
+import NuevoReporteDeServicio from './NuevoReporteDeServicio.vue';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
 
 const toast = useToast();
 const loginStore = useLoginStore();
+const router = useRouter();
 const user = computed(() => loginStore.user || {});
 
 const reportes = ref([]);
@@ -327,6 +342,7 @@ const reporteSeleccionado = ref(null);
 const reporteAEliminar = ref(null);
 const showComprobanteDialog = ref(false);
 const archivoComprobante = ref(null);
+const showNuevoReporteDialog = ref(false);
 
 const ventaSeleccionada = ref(null);
 const clienteSeleccionado = ref(null);
@@ -1005,6 +1021,11 @@ async function rechazarComprobante(reporte) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo rechazar el comprobante.', life: 4000 });
   }
   loading.value = false;
+}
+
+// Función para agregar reporte de servicio global (sin datos previos)
+function irReporteServicioGlobal() {
+  router.push({ path: '/nuevo-reporte-servicio' });
 }
 </script>
 

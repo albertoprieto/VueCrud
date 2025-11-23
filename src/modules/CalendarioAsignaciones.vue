@@ -64,7 +64,7 @@
             </div>
             <div class="dialog-actions" style="display:flex; gap:1rem; margin-top:1.5rem; flex-wrap:wrap;">
               <template v-if="!reporteDeAsignacion(selectedEvent.extendedProps.asignacion)">
-                <Button label="Agregar Reporte" icon="pi pi-plus" class="p-button-success p-button-sm" @click="irReporteServicio(selectedEvent.extendedProps.asignacion)" />
+                <!-- <Button label="Agregar Reporte" icon="pi pi-plus" class="p-button-success p-button-sm" @click="irReporteServicio(selectedEvent.extendedProps.asignacion)" /> -->
               </template>
               <template v-else>
                 <Button label="Consultar Reporte" icon="pi pi-file-pdf" class="p-button-warning p-button-sm" @click="consultarReporte(selectedEvent.extendedProps.asignacion)" />
@@ -130,12 +130,12 @@
           <Column header="Acciones">
             <template #body="slotProps">
               <template v-if="!reporteDeAsignacion(slotProps.data)">
-                <Button
+<!--                 <Button
                   label="Agregar Reporte"
                   icon="pi pi-plus"
                   class="p-button-success mr-2"
                   @click="irReporteServicio(slotProps.data)"
-                />
+                /> -->
               </template>
               <template v-else>
                 <Button

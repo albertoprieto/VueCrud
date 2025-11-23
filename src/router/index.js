@@ -31,8 +31,10 @@ import CalendarioTecnicosTablaDual from '@/components/CalendarioTecnicosTablaDua
 import TicketsList from '@/modules/TicketsList.vue';
 import TicketNew from '@/modules/TicketNew.vue';
 import TicketDetail from '@/modules/TicketDetail.vue';
+import NuevoReporteDeServicio from '@/modules/NuevoReporteDeServicio.vue';
 
 const routes = [
+  { path: '/nuevo-reporte-servicio', name: 'nuevo-reporte-servicio', component: NuevoReporteDeServicio },
   { path: '/', name: 'home', component: Informacion },
   { path: '/login', name: 'login', component: Login },
   { path: '/informacion', name: 'informacion', component: Informacion },
