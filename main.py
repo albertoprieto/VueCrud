@@ -1628,7 +1628,7 @@ class ReporteServicio(BaseModel):
     ubicacion_gps: str = ""
     ubicacion_bloqueo: str = ""
     # ...existing code...
-    asignacion_id: int
+    asignacion_id: Optional[int] = None
     tipo_servicio: str
     lugar_instalacion: str = ""
     marca: str = ""
@@ -1659,6 +1659,7 @@ class ReporteServicio(BaseModel):
     firma_cliente: str = ""
     nombre_instalador: str = ""
     firma_instalador: str = ""
+    vendedor: str = ""
     total: float = 0
     monto_tecnico: float = 0
     viaticos: float = 0
@@ -1676,35 +1677,53 @@ def add_reporte_servicio(reporte: ReporteServicio):
     )
     cursor = db.cursor(dictionary=True)
     
-    # Validar que no exista ya un reporte para esta asignación
-    try:
-        cursor.execute("SELECT id FROM reportes_servicio WHERE asignacion_id = %s", (reporte.asignacion_id,))
-        existing_report = cursor.fetchone()
-        if existing_report:
+    # Permitir reportes con o sin asignacion_id
+    folio_venta = None
+    if getattr(reporte, "asignacion_id", None):
+        # ...existing code para asignación...
+        try:
+            cursor.execute("SELECT id FROM reportes_servicio WHERE asignacion_id = %s", (reporte.asignacion_id,))
+            existing_report = cursor.fetchone()
+            if existing_report:
+                cursor.close()
+                db.close()
+                raise HTTPException(status_code=400, detail=f"Ya existe un reporte de servicio para la asignación {reporte.asignacion_id}")
+        except mysql.connector.Error as e:
             cursor.close()
             db.close()
-            raise HTTPException(status_code=400, detail=f"Ya existe un reporte de servicio para la asignación {reporte.asignacion_id}")
-    except mysql.connector.Error as e:
-        cursor.close()
-        db.close()
-        raise HTTPException(status_code=500, detail=f"Error al validar reporte existente: {str(e)}")
-    
-    # Obtener el folio de la venta asociada a la asignación
-    folio_venta = None
-    try:
-        cursor.execute("SELECT venta_id FROM venta_tecnico WHERE id=%s", (reporte.asignacion_id,))
-        row = cursor.fetchone()
-        if row and row.get("venta_id"):
-            cursor.execute("SELECT folio FROM ventas WHERE id=%s", (row["venta_id"],))
-            v = cursor.fetchone()
-            folio_venta = v.get("folio") if v else None
-    except Exception:
-        folio_venta = None
+            raise HTTPException(status_code=500, detail=f"Error al validar reporte existente: {str(e)}")
+        try:
+            cursor.execute("SELECT venta_id FROM venta_tecnico WHERE id=%s", (reporte.asignacion_id,))
+            row = cursor.fetchone()
+            if row and row.get("venta_id"):
+                cursor.execute("SELECT folio FROM ventas WHERE id=%s", (row["venta_id"],))
+                v = cursor.fetchone()
+                folio_venta = v.get("folio") if v else None
+        except Exception:
+            folio_venta = None
+    else:
+        # Generar folio consecutivo para reportes sin asignación
+        cursor.execute("SELECT folio FROM reportes_servicio WHERE folio LIKE 'SERVICIO-%' ORDER BY id DESC LIMIT 1")
+        last_folio_row = cursor.fetchone()
+        if last_folio_row and last_folio_row.get("folio"):
+            import re
+            match = re.match(r"SERVICIO-(\d+)", last_folio_row["folio"])
+            last_num = int(match.group(1)) if match else 0
+        else:
+            last_num = 0
+        folio_venta = f"SERVICIO-{str(last_num + 1).zfill(5)}"
     
     # Serializar campos JSON si vienen en el payload
     imeis_json = json.dumps(reporte.imeis_articulos) if getattr(reporte, "imeis_articulos", None) is not None else None
     sim_json = json.dumps(reporte.sim_series) if getattr(reporte, "sim_series", None) is not None else None
     
+    # Buscar nombre del cliente y técnico si no vienen en el payload
+    nombre_cliente = reporte.nombre_cliente
+    if not nombre_cliente and getattr(reporte, "cliente_id", None):
+        cursor.execute("SELECT nombre FROM clientes WHERE id=%s", (reporte.cliente_id,))
+        row = cursor.fetchone()
+        nombre_cliente = row["nombre"] if row else ""
+    nombre_instalador = reporte.nombre_instalador
     try:
         cursor.execute(
         """
@@ -1713,24 +1732,24 @@ def add_reporte_servicio(reporte: ReporteServicio):
             equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria,
             ignicion, corte, ubicacion_corte, modelo_gps, ubicacion_gps, ubicacion_bloqueo, observaciones, plataforma,
             usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador,
-            total, monto_tecnico, viaticos, imeis_articulos, sim_series, hora_fin
+            vendedor, total, monto_tecnico, viaticos, imeis_articulos, sim_series, hora_fin
         ) VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s
         )
         """,
         (
-            reporte.asignacion_id, folio_venta, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
+            getattr(reporte, "asignacion_id", None), folio_venta, reporte.tipo_servicio, reporte.lugar_instalacion, reporte.marca, reporte.submarca,
             reporte.modelo, reporte.placas, reporte.color, reporte.numero_economico, reporte.equipo_plan,
             reporte.imei, reporte.serie, reporte.accesorios, reporte.sim_proveedor, reporte.sim_serie,
             reporte.sim_instalador, reporte.sim_telefono, reporte.bateria, reporte.ignicion, reporte.corte,
             reporte.ubicacion_corte, reporte.modelo_gps, reporte.ubicacion_gps, reporte.ubicacion_bloqueo,
             reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
-            reporte.forma_pago, int(reporte.pagado), reporte.nombre_cliente, reporte.firma_cliente,
-            reporte.nombre_instalador, reporte.firma_instalador, reporte.total,
+            reporte.forma_pago, int(reporte.pagado), nombre_cliente, reporte.firma_cliente,
+            nombre_instalador, reporte.firma_instalador, reporte.vendedor, reporte.total,
             reporte.monto_tecnico, reporte.viaticos, imeis_json, sim_json, reporte.hora_fin
         )
     )
@@ -1881,7 +1900,7 @@ def get_reportes_servicio_todos():
     reportes = cursor.fetchall()
     cursor.close()
     db.close()
-    # Deserializar JSON en colección
+    # Deserializar JSON en colección y asegurar campo vendedor
     for rep in reportes or []:
         try:
             if isinstance(rep.get("imeis_articulos"), str):
@@ -1893,6 +1912,8 @@ def get_reportes_servicio_todos():
                 rep["sim_series"] = json.loads(rep["sim_series"]) if rep["sim_series"] else []
         except Exception:
             pass
+        if "vendedor" not in rep:
+            rep["vendedor"] = ""
     return reportes
 
 @app.put("/reportes-servicio/{reporte_id}")
