@@ -12,6 +12,18 @@
           <Dropdown v-model="tipo_servicio" :options="tiposServicio" placeholder="Selecciona" class="w-full mb-4" />
         </div>
       </div>
+      <div class="full-width-row" v-if="instaladores.length">
+        <div class="field-group">
+          <label class="required-label">Instalador</label>
+          <Dropdown v-model="instalador" :options="instaladores" optionLabel="username" optionValue="username" placeholder="Selecciona instalador" class="w-full mb-4" />
+        </div>
+      </div>
+      <div class="full-width-row" v-if="vendedores.length">
+        <div class="field-group">
+          <label class="required-label">Vendedor</label>
+          <Dropdown v-model="vendedor" :options="vendedores" optionLabel="username" optionValue="username" placeholder="Selecciona vendedor" class="w-full mb-4" />
+        </div>
+      </div>
       <div class="full-width-row">
         <div class="field-group">
           <label class="required-label">Cliente</label>
@@ -156,7 +168,13 @@
       </div>
       <!-- Ubicación dropdown moved above -->
     </div>
-    <Button label="Cerrar" class="p-button-secondary mt-3" @click="$emit('close')" />
+    <Button label="Generar reporte" class="p-button-primary mt-3" @click="generarReporte" />
+    <Dialog v-model:visible="showDialog" :header="dialogTitle" modal :style="{ width: '400px' }">
+      <pre style="white-space:pre-wrap;word-break:break-word">{{ dialogMessage }}</pre>
+      <template #footer>
+        <Button label="Cerrar" @click="showDialog = false" class="p-button-secondary" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -166,6 +184,7 @@ import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
 import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
 import axios from 'axios';
 import { getIMEIs } from '@/services/imeiService';
 
@@ -193,6 +212,10 @@ const observaciones = ref('');
 const cliente = ref(null);
 const clientes = ref([]);
 const usuario = ref(null);
+const instalador = ref(null);
+const instaladores = ref([]);
+const vendedor = ref(null);
+const vendedores = ref([]);
 const plataforma = ref(null);
 const usuariosOptions = ref([]);
 const plataformasOptions = ref([]);
@@ -227,6 +250,15 @@ onMounted(async () => {
   } catch (e) {
     ubicaciones.value = [];
   }
+  try {
+    const res = await axios.get(`${import.meta.env.VITE_API_URL}/usuarios`);
+    const usuarios = res.data || [];
+    instaladores.value = usuarios.filter(u => u.perfil === 'Tecnico');
+    vendedores.value = usuarios.filter(u => u.perfil === 'Vendedor');
+  } catch (e) {
+    instaladores.value = [];
+    vendedores.value = [];
+  }
 });
 
 watch(cliente, async (nuevoClienteId) => {
@@ -235,6 +267,9 @@ watch(cliente, async (nuevoClienteId) => {
   plataformasOptions.value = seleccionado?.plataformas || [];
   usuario.value = null;
   plataforma.value = null;
+  if (seleccionado) {
+    console.log('Cliente seleccionado:', seleccionado.nombre);
+  }
 });
 
 watch(ubicacion, async (nuevaUbicacionId) => {
@@ -272,6 +307,66 @@ watch(ubicacion, async (nuevaUbicacionId) => {
     console.log('Error obteniendo stock de la ubicación:', e);
   }
 });
+
+const showDialog = ref(false);
+const dialogMessage = ref('');
+const dialogTitle = ref('');
+
+// Función para generar el reporte y hacer POST al endpoint
+const generarReporte = async () => {
+  // Obtener el nombre del cliente seleccionado
+  const clienteSeleccionado = clientes.value.find(c => c.id === cliente.value);
+  const nombreCliente = clienteSeleccionado ? clienteSeleccionado.nombre : '';
+  const payload = {
+    tipo_servicio: tipo_servicio.value,
+    cliente_id: cliente.value,
+    nombre_cliente: nombreCliente,
+    usuario: usuario.value,
+    nombre_instalador: instalador.value,
+    vendedor: vendedor.value,
+    plataforma: plataforma.value,
+    lugar_instalacion: lugar_instalacion.value,
+    ubicacion_id: ubicacion.value,
+    imei: imei.value,
+    sim_serie: sim.value,
+    marca: marca.value,
+    submarca: submarca.value,
+    modelo: modelo.value,
+    placas: placas.value,
+    color: color.value,
+    numero_economico: numero_economico.value,
+    modelo_gps: modelo_gps.value,
+    accesorios: accesorios.value,
+    ubicacion_gps: ubicacion_gps.value,
+    ubicacion_bloqueo: ubicacion_bloqueo.value,
+    subtotal: total.value,
+    total: total.value,
+    monto_tecnico: monto_tecnico.value,
+    forma_pago: metodo_pago.value,
+    viaticos: viaticos.value,
+    observaciones: observaciones.value
+  };
+  try {
+    const res = await axios.post(`${import.meta.env.VITE_API_URL}/reportes-servicio`, payload);
+    // Cambiar status del IMEI a "Vendido" en el frontend
+    if (sim.value) {
+      const imeiUpdate = await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${sim.value}`, { status: 'Vendido' });
+      console.log('IMEI actualizado:', imeiUpdate.data);
+    }
+    if (imei.value) {
+      const imeiUpdate = await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${imei.value}`, { status: 'Vendido' });
+      console.log('IMEI actualizado:', imeiUpdate.data);
+    }
+    dialogTitle.value = 'Reporte generado exitosamente';
+    dialogMessage.value = JSON.stringify(res.data.message, null, 2);
+    showDialog.value = true;
+  } catch (e) {
+    dialogTitle.value = 'Error al generar el reporte';
+    dialogMessage.value = e?.response?.data ? JSON.stringify(e.response.data, null, 2) : e.message;
+    showDialog.value = true;
+    console.error(e);
+  }
+};
 </script>
 
 <style scoped>
