@@ -28,6 +28,18 @@
           <td :data-label="labels.acciones">
             <router-link :to="`/tickets/${t.id}`" class="p-button p-button-text p-button-sm">Ver</router-link>
             <button class="p-button p-button-text p-button-sm p-button-danger" @click="confirmDelete(t)">Eliminar</button>
+            <button class="estado-edit-btn" @click="openEstadoMenu(t)">
+              <i class="pi pi-pencil"></i>
+            </button>
+            <div v-if="estadoMenuTicket && estadoMenuTicket.id === t.id" class="estado-dropdown" @keydown.esc="closeEstadoMenu" tabindex="0">
+              <div class="estado-dropdown-header">Cambiar estado</div>
+              <ul>
+                <li v-for="estado in estadosPosibles" :key="estado">
+                  <button @click="setEstado(t, estado)" :class="{'selected': t.estado === estado}">{{ estado }}</button>
+                </li>
+              </ul>
+              <button class="close-btn" @click="closeEstadoMenu">Cerrar</button>
+            </div>
           </td>
         </tr>
       </tbody>
@@ -39,7 +51,43 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
+import { updateTicket } from '@/services/ticketsService';
+const estadosPosibles = ['Abierto', 'En Proceso', 'Resuelto', 'Cancelado'];
+const estadoMenuTicket = ref(null);
+
+function openEstadoMenu(ticket) {
+  estadoMenuTicket.value = ticket;
+  setTimeout(() => {
+    const el = document.querySelector('.estado-dropdown');
+    if (el) el.focus();
+  }, 50);
+  document.addEventListener('mousedown', clickOutsideMenu);
+}
+
+function closeEstadoMenu() {
+  estadoMenuTicket.value = null;
+  document.removeEventListener('mousedown', clickOutsideMenu);
+}
+
+function clickOutsideMenu(e) {
+  const menu = document.querySelector('.estado-dropdown');
+  if (menu && !menu.contains(e.target)) {
+    closeEstadoMenu();
+  }
+}
+
+async function setEstado(ticket, nuevoEstado) {
+  if (ticket.estado === nuevoEstado) return;
+  try {
+    await updateTicket(ticket.id, { estado: nuevoEstado });
+    ticket.estado = nuevoEstado;
+    toast.add({ severity: 'success', summary: 'Estado actualizado', life: 1200 });
+    closeEstadoMenu();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cambiar el estado', life: 2500 });
+  }
+}
 import { useTicketsStore } from '@/stores/ticketsStore';
 import Loader from '@/components/Loader.vue';
 import { useToast } from 'primevue/usetoast';
@@ -100,8 +148,79 @@ function confirmDelete(t) {
 </script>
 
 <style scoped>
-.p-datatable {
+/* Botón para editar estado */
+.estado-edit-btn {
+  background: #fff;
+  border: 1px solid #1976d2;
+  color: #1976d2;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+  box-shadow: 0 1px 4px rgba(25,118,210,0.08);
+}
+.estado-edit-btn:hover {
+  background: #e3f2fd;
+  box-shadow: 0 2px 8px rgba(25,118,210,0.12);
+}
+.estado-dropdown {
+  position: absolute;
+  z-index: 10;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid #1976d2;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(25,118,210,0.12);
+  padding: 0.5rem 1rem 0.8rem 1rem;
+  margin-top: 8px;
+  right: 0;
+}
+.estado-dropdown-header {
+  font-weight: 600;
+  color: #1976d2;
+  margin-bottom: 0.5rem;
+}
+.estado-dropdown ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.5rem 0;
+}
+.estado-dropdown li {
+  margin-bottom: 0.3rem;
+}
+.estado-dropdown button {
+  background: none;
+  border: none;
+  color: #1976d2;
+  font-weight: 500;
+  padding: 4px 0;
   width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.estado-dropdown button.selected {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+.estado-dropdown .close-btn {
+  background: #f7fafd;
+  border: 1px solid #1976d2;
+  color: #1976d2;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 0.95rem;
+  margin-top: 0.5rem;
+  cursor: pointer;
+}
+.p-datatable {
+  width: 90%;
   border-collapse: collapse;
 }
 .p-datatable th, .p-datatable td {
