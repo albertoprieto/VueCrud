@@ -60,40 +60,128 @@
             <label class="required-label">Ubicación</label>
             <Dropdown v-model="servicio.ubicacion" :options="ubicaciones" optionLabel="nombre" optionValue="id" placeholder="Selecciona ubicación" class="w-full mb-4" />
           </div>
-        </div>      
-        <div class="full-width-row"><h4 class="section-header">Asignación de IMEIs y SIM</h4></div>
-        <div class="field-group">
-          <label>IMEI 1</label>
-          <Dropdown
-            v-if="imeiOptions.length"
-            v-model="servicio.imei"
-            :options="imeiOptions"
-            optionLabel="label"
-            optionValue="imei"
-            placeholder="Selecciona IMEI"
-            class="w-full mb-4"
-            filter
-            :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-            :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-          />
-          <InputText v-else v-model="servicio.imei" class="w-full mb-4" placeholder="Captura IMEI manualmente" />
         </div>
-        <div class="field-group">
-          <label>SIM 1</label>
-          <Dropdown
-            v-if="simOptions.length"
-            v-model="servicio.sim"
-            :options="simOptions"
-            optionLabel="label"
-            optionValue="imei"
-            placeholder="Selecciona SIM"
-            class="w-full mb-4"
-            filter
-            :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-            :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-          />
-          <InputText v-else v-model="servicio.sim" class="w-full mb-4" placeholder="Captura SIM manualmente" />
+      
+      </div>
+        
+        
+        <div style="margin-bottom:2rem;">
+          <h4 style="font-size:1.1em; font-weight:bold; margin-bottom:1em;">Asignación de IMEIs y SIM</h4>
+          <div style="margin-bottom:1em;">
+            <label style="display:flex;align-items:center;gap:0.5em;">
+              <input type="checkbox" v-model="servicio.noModificaStock" />
+              No modifica stock
+            </label>
+            <span style="color:#888; margin-left:2em; font-size:0.95em;">Si está marcado, los IMEI y SIM se capturan manualmente y no modifican el stock.</span>
+          </div>
         </div>
+
+
+<div class="field-group" style="flex:2;">
+          <template v-if="servicio.tipo_servicio === 'Cambio de Equipo'">
+            <div style="display:flex;gap:1em;margin-bottom:1em;">
+              <div style="flex:1;display:flex;flex-direction:column;">
+                <label>IMEI nuevo</label>
+                <Dropdown
+                  v-if="!servicio.noModificaStock && imeiOptions.length"
+                  v-model="servicio.imei"
+                  :options="imeiOptions.filter(opt => opt.status === 'Disponible')"
+                  optionLabel="label"
+                  optionValue="imei"
+                  placeholder="Selecciona IMEI nuevo"
+                  filter
+                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
+                />
+                <InputText v-else v-model="servicio.imei" placeholder="Captura IMEI nuevo" />
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;">
+                <label>SIM nuevo</label>
+                <Dropdown
+                  v-if="!servicio.noModificaStock && simOptions.length"
+                  v-model="servicio.sim"
+                  :options="simOptions.filter(opt => opt.status === 'Disponible')"
+                  optionLabel="label"
+                  optionValue="imei"
+                  placeholder="Selecciona SIM nuevo"
+                  filter
+                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
+                />
+                <InputText v-else v-model="servicio.sim" placeholder="Captura SIM nuevo" />
+              </div>
+            </div>
+            <div style="display:flex;gap:1em;margin-bottom:1em;">
+              <div style="flex:1;display:flex;flex-direction:column;">
+                <label>IMEI a devolver</label>
+                <Dropdown
+                  v-if="!servicio.noModificaStock && imeiOptions.length"
+                  v-model="servicio.imeiDevolver"
+                  :options="imeiOptions.filter(opt => opt.status === 'Devuelto')"
+                  optionLabel="label"
+                  optionValue="imei"
+                  placeholder="Selecciona IMEI a devolver"
+                  filter
+                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
+                />
+                <InputText v-else v-model="servicio.imeiDevolver" placeholder="Captura IMEI a devolver" />
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;">
+                <label>SIM a devolver</label>
+                <Dropdown
+                  v-if="!servicio.noModificaStock && simOptions.length"
+                  v-model="servicio.simDevolver"
+                  :options="simOptions.filter(opt => opt.status === 'Devuelto')"
+                  optionLabel="label"
+                  optionValue="imei"
+                  placeholder="Selecciona SIM a devolver"
+                  filter
+                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
+                />
+                <InputText v-else v-model="servicio.simDevolver" placeholder="Captura SIM a devolver" />
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <div style="display:flex;gap:1em;margin-bottom:1em;">
+              <div style="flex:1;display:flex;flex-direction:column;">
+                <label>IMEI 1</label>
+                <Dropdown
+                  v-if="!servicio.noModificaStock && imeiOptions.length"
+                  v-model="servicio.imei"
+                  :options="imeiOptions.filter(opt => opt.status === 'Disponible')"
+                  optionLabel="label"
+                  optionValue="imei"
+                  placeholder="Selecciona IMEI"
+                  filter
+                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
+                />
+                <InputText v-else v-model="servicio.imei" placeholder="Captura IMEI manualmente" />
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;">
+                <label>SIM 1</label>
+                <Dropdown
+                  v-if="!servicio.noModificaStock && simOptions.length"
+                  v-model="servicio.sim"
+                  :options="simOptions.filter(opt => opt.status === 'Disponible')"
+                  optionLabel="label"
+                  optionValue="imei"
+                  placeholder="Selecciona SIM"
+                  filter
+                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
+                />
+                <InputText v-else v-model="servicio.sim" placeholder="Captura SIM manualmente" />
+              </div>
+            </div>
+          </template>
+</div>
+
+         <div class="reporte-fields">
+        
         <div class="full-width-row"><h4 class="section-header">Datos del vehículo</h4></div>
         <div class="field-group">
           <label>Marca</label>
@@ -208,6 +296,10 @@ function servicioVacio() {
     ubicacion_bloqueo: '',
     imei: null,
     sim: null,
+    imeiDevolver: '',
+    simDevolver: '',
+    validacionMsg: '',
+    validacionOk: false,
     total: '',
     monto_tecnico: '',
     viaticos: '',
@@ -219,7 +311,36 @@ function servicioVacio() {
     plataforma: null,
     ubicacion: null,
     metodo_pago: '',
+    noModificaStock: false,
   };
+}
+
+// Validación de IMEI/SIM para Cambio de Equipo
+function validarImeiSim(servicio) {
+  servicio.validacionMsg = '';
+  servicio.validacionOk = false;
+  if (!servicio.imei || !servicio.sim || !servicio.imeiDevolver || !servicio.simDevolver) {
+    servicio.validacionMsg = 'Completa todos los campos para validar.';
+    return;
+  }
+  getIMEIs().then(imeis => {
+    const imeiList = imeis.map(i => i.imei);
+    const okNuevo = imeiList.includes(servicio.imei);
+    const okSim = imeiList.includes(servicio.sim);
+    const okDevImei = imeiList.includes(servicio.imeiDevolver);
+    const okDevSim = imeiList.includes(servicio.simDevolver);
+    if (okNuevo && okSim && okDevImei && okDevSim) {
+      servicio.validacionMsg = 'Todos los IMEI y SIM existen.';
+      servicio.validacionOk = true;
+    } else {
+      let msg = 'No existen: ';
+      if (!okNuevo) msg += 'IMEI nuevo. ';
+      if (!okSim) msg += 'SIM nuevo. ';
+      if (!okDevImei) msg += 'IMEI a devolver. ';
+      if (!okDevSim) msg += 'SIM a devolver.';
+      servicio.validacionMsg = msg;
+    }
+  });
 }
 
 if (serviciosReporteStore.servicios.length === 0) {
@@ -255,15 +376,17 @@ function setupServicioWatchers(servicio) {
     }
     try {
       const imeis = await getIMEIs();
-      const stock = imeis.filter(i => i.ubicacion_id === nuevaUbicacionId && i.status === 'Disponible');
+      const stock = imeis.filter(i => i.ubicacion_id === nuevaUbicacionId);
       stockUbicacion.value = stock;
       imeiOptions.value = stock.filter(i => !i.articulo_nombre.toLowerCase().includes('sim')).map(i => ({
         imei: i.imei,
-        label: `${i.imei} — ${i.articulo_nombre}`
+        label: `${i.imei} — ${i.articulo_nombre}`,
+        status: i.status
       }));
       simOptions.value = stock.filter(i => i.articulo_nombre.toLowerCase().includes('sim')).map(i => ({
         imei: i.imei,
-        label: `${i.imei} — ${i.articulo_nombre}`
+        label: `${i.imei} — ${i.articulo_nombre}`,
+        status: i.status
       }));
       servicio.imei = null;
       servicio.sim = null;
@@ -459,11 +582,21 @@ const generarReportesMultiples = async () => {
     };
     try {
       const res = await axios.post(`${import.meta.env.VITE_API_URL}/reportes-servicio`, payload);
+      // Marcar como Vendido los nuevos
       if (servicio.sim) {
         await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${servicio.sim}`, { status: 'Vendido' });
       }
       if (servicio.imei) {
         await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${servicio.imei}`, { status: 'Vendido' });
+      }
+      // Marcar como Devuelto los que se devuelven en Cambio de Equipo
+      if (servicio.tipo_servicio === 'Cambio de Equipo') {
+        if (servicio.imeiDevolver) {
+          await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${servicio.imeiDevolver}`, { status: 'Devuelto' });
+        }
+        if (servicio.simDevolver) {
+          await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${servicio.simDevolver}`, { status: 'Devuelto' });
+        }
       }
       resultados.push({ idx: i+1, status: 'ok', message: res.data.message });
     } catch (e) {
