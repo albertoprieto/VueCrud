@@ -123,7 +123,7 @@ const empresa = {
               {
                 table: {
                   headerRows: 1,
-                  widths: ['*', '*', '*'],
+                  widths: [70, 70, 70],
                   body: [
                     [
                       { text: 'Marca', style: 'tableHeader' },
@@ -165,7 +165,7 @@ const empresa = {
               {
                 table: {
                   headerRows: 1,
-                  widths: ['*', '*', '*'],
+                  widths: [70, 70, 70],
                   body: [
                     [
                       { text: 'Modelo GPS', style: 'tableHeader' },
