@@ -236,5 +236,13 @@ const empresa = {
     }
   };
 
-  pdfMake.createPdf(docDefinition).open();
+  // Generar nombre del archivo: N° de servicio, Técnico, IMEI, Usuario
+  const nombreServicio = (reporte.folio || `SERVICIO-${String(reporte.id).padStart(5, '0')}`).replace(/[^a-zA-Z0-9-_]/g, '');
+  const nombreTecnico = (reporte.nombre_instalador || 'SinTecnico').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '').replace(/\s+/g, '_');
+  const imeiStr = (reporte.imei || 'SinIMEI').replace(/[^a-zA-Z0-9]/g, '');
+  const usuarioStr = (reporte.usuario || 'SinUsuario').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '').replace(/\s+/g, '_');
+  
+  const nombreArchivo = `${nombreServicio}_${nombreTecnico}_${imeiStr}_${usuarioStr}.pdf`;
+
+  pdfMake.createPdf(docDefinition).download(nombreArchivo);
 }
