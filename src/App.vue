@@ -5,15 +5,27 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import login from './modules/login.vue';
 import dashboard from './modules/dashboard.vue';
+import { useLoginStore } from '@/stores/loginStore';
 
-const logged = ref(false)
-const session = (event) =>{
-  logged.value = event
-}
+const loginStore = useLoginStore();
+const logged = ref(false);
+
+// Restaurar sesión al cargar la app
+onMounted(() => {
+  if (loginStore.restoreSession()) {
+    logged.value = true;
+  }
+});
+
+const session = (event) => {
+  logged.value = event;
+};
+
 const handleLogout = () => {
+  loginStore.logout();
   logged.value = false;
-}
+};
 </script>
