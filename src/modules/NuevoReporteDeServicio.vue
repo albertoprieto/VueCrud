@@ -73,6 +73,7 @@
 
 
 <div class="field-group" style="flex:2;">
+          <!-- CAMBIO DE EQUIPO: Solo IMEI nuevo + IMEI a devolver (sin SIM) -->
           <template v-if="tipo_servicio === 'Cambio de Equipo'">
             <div style="display:flex;gap:1em;margin-bottom:1em;">
               <div style="flex:1;display:flex;flex-direction:column;">
@@ -91,6 +92,26 @@
                 <InputText v-else v-model="imei" placeholder="Captura IMEI nuevo" />
               </div>
               <div style="flex:1;display:flex;flex-direction:column;">
+                <label>IMEI a devolver</label>
+                <Dropdown
+                  v-if="!noModificaStock && imeiOptions.length"
+                  v-model="imeiDevolver"
+                  :options="imeiOptions"
+                  optionLabel="label"
+                  optionValue="imei"
+                  placeholder="Selecciona IMEI a devolver"
+                  filter
+                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
+                />
+                <InputText v-else v-model="imeiDevolver" placeholder="Captura IMEI a devolver" />
+              </div>
+            </div>
+          </template>
+          <!-- CAMBIO DE CHIP: Solo SIM nuevo + SIM a devolver (sin IMEI) -->
+          <template v-else-if="tipo_servicio === 'Cambio de Chip'">
+            <div style="display:flex;gap:1em;margin-bottom:1em;">
+              <div style="flex:1;display:flex;flex-direction:column;">
                 <label>SIM nuevo</label>
                 <Dropdown
                   v-if="!noModificaStock && simOptions.length"
@@ -105,37 +126,9 @@
                 />
                 <InputText v-else v-model="sim" placeholder="Captura SIM nuevo" />
               </div>
-            </div>
-            <div style="display:flex;gap:1em;margin-bottom:1em;">
               <div style="flex:1;display:flex;flex-direction:column;">
-                <label>IMEI a devolver</label>
-                <Dropdown
-                  v-if="!noModificaStock && imeiOptions.length"
-                  v-model="imeiDevolver"
-                  :options="imeiOptions.filter(opt => opt.status === 'Devuelto')"
-                  optionLabel="label"
-                  optionValue="imei"
-                  placeholder="Selecciona IMEI a devolver"
-                  filter
-                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-                />
-                <InputText v-else v-model="imeiDevolver" placeholder="Captura IMEI a devolver" />
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;">
-                <label>SIM a devolver</label>
-                <Dropdown
-                  v-if="!noModificaStock && simOptions.length"
-                  v-model="simDevolver"
-                  :options="simOptions.filter(opt => opt.status === 'Devuelto')"
-                  optionLabel="label"
-                  optionValue="imei"
-                  placeholder="Selecciona SIM a devolver"
-                  filter
-                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-                />
-                <InputText v-else v-model="simDevolver" placeholder="Captura SIM a devolver" />
+                <label>SIM a devolver (no regresa a stock)</label>
+                <InputText v-model="simDevolver" placeholder="Captura SIM a devolver" />
               </div>
             </div>
           </template>
@@ -469,14 +462,10 @@ const generarReporte = async () => {
       if (imei.value) {
         await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${imei.value}`, { status: 'Vendido' });
       }
-      // Marcar como Devuelto los que se devuelven en Cambio de Equipo
-      if (tipo_servicio.value === 'Cambio de Equipo') {
-        if (imeiDevolver.value) {
-          await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${imeiDevolver.value}`, { status: 'Devuelto' });
-        }
-        if (simDevolver.value) {
-          await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${simDevolver.value}`, { status: 'Devuelto' });
-        }
+      // Solo en Cambio de Equipo: el IMEI devuelto regresa al stock como "Devuelto"
+      // En Cambio de Chip: el SIM que se quita NO regresa al stock
+      if (tipo_servicio.value === 'Cambio de Equipo' && imeiDevolver.value) {
+        await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${imeiDevolver.value}`, { status: 'Devuelto' });
       }
     }
     dialogTitle.value = 'Reporte generado';
