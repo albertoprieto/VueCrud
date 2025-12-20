@@ -12,165 +12,130 @@
         <div class="full-width-row" v-if="instaladores.length">
           <div class="field-group">
             <label class="required-label">Instalador</label>
-            <Dropdown v-model="instalador" :options="instaladores" optionLabel="username" optionValue="username" placeholder="Selecciona instalador" class="w-full mb-4" />
+            <Dropdown v-model="instalador" :options="instaladores" optionLabel="username" optionValue="username"
+              placeholder="Selecciona instalador" class="w-full mb-4" />
           </div>
         </div>
         <div class="full-width-row" v-if="vendedores.length">
           <div class="field-group">
             <label class="required-label">Vendedor</label>
-            <Dropdown v-model="vendedor" :options="vendedores" optionLabel="username" optionValue="username" placeholder="Selecciona vendedor" class="w-full mb-4" />
+            <Dropdown v-model="vendedor" :options="vendedores" optionLabel="username" optionValue="username"
+              placeholder="Selecciona vendedor" class="w-full mb-4" />
           </div>
         </div>
         <div class="full-width-row">
           <div class="field-group">
             <label class="required-label">Cliente</label>
-            <Dropdown
-              v-model="cliente"
-              :options="clientes"
-              optionLabel="nombre"
-              optionValue="id"
-              placeholder="Selecciona cliente"
-              class="w-full mb-4"
-              filter
-              :filterPlaceholder="'Buscar cliente'"
-            />
+            <Dropdown v-model="cliente" :options="clientes" optionLabel="nombre" optionValue="id"
+              placeholder="Selecciona cliente" class="w-full mb-4" filter :filterPlaceholder="'Buscar cliente'" />
           </div>
         </div>
         <div class="row-group">
           <div class="field-group" v-if="plataformasOptions.length" style="flex:1; margin-right:1rem;">
             <label>Plataforma</label>
-            <Dropdown v-model="plataforma" :options="plataformasOptions" placeholder="Selecciona plataforma" class="w-full mb-4" />
+            <Dropdown v-model="plataforma" :options="plataformasOptions" placeholder="Selecciona plataforma"
+              class="w-full mb-4" />
           </div>
           <div class="field-group" style="flex:1;">
-              <label>Lugar / Centro de instalación</label>
+            <label>Lugar / Centro de instalación</label>
             <InputText v-model="lugar_instalacion" class="w-full" placeholder="Opcional" />
           </div>
         </div>
         <div class="row-group">
           <div class="field-group" v-if="usuariosOptions.length" style="flex:1; margin-right:1rem;">
             <label>Usuario</label>
-            <Dropdown v-model="usuario" :options="usuariosOptions" placeholder="Selecciona usuario" class="w-full mb-4" />
+            <Dropdown v-model="usuario" :options="usuariosOptions" placeholder="Selecciona usuario"
+              class="w-full mb-4" />
           </div>
           <div class="field-group" style="flex:1;">
             <label class="required-label">Ubicación</label>
-            <Dropdown v-model="ubicacion" :options="ubicaciones" optionLabel="nombre" optionValue="id" placeholder="Selecciona ubicación" class="w-full mb-4" />
+            <Dropdown v-model="ubicacion" :options="ubicaciones" optionLabel="nombre" optionValue="id"
+              placeholder="Selecciona ubicación" class="w-full mb-4" />
           </div>
         </div>
-      
+
       </div>
-        
-        
-        <div style="margin-bottom:2rem;">
-          <h4 style="font-size:1.1em; font-weight:bold; margin-bottom:1em;">Asignación de IMEIs y SIM</h4>
-          <div style="margin-bottom:1em;">
-            <label style="display:flex;align-items:center;gap:0.5em;">
-              <input type="checkbox" v-model="noModificaStock" />
-              No modifica stock
-            </label>
-            <span style="color:#888; margin-left:2em; font-size:0.95em;">Si está marcado, los IMEI y SIM se capturan manualmente y no modifican el stock.</span>
-          </div>
+
+
+      <div style="margin-bottom:2rem;" v-if="!tiposSinStock.includes(tipo_servicio)">
+        <h4 style="font-size:1.1em; font-weight:bold; margin-bottom:1em;">Asignación de IMEIs y SIM</h4>
+        <div style="margin-bottom:1em;">
+          <label style="display:flex;align-items:center;gap:0.5em;">
+            <input type="checkbox" v-model="noModificaStock" />
+            No modifica stock
+          </label>
+          <span style="color:#888; margin-left:2em; font-size:0.95em;">Si está marcado, los IMEI y SIM se capturan
+            manualmente y no modifican el stock.</span>
         </div>
+      </div>
 
 
-<div class="field-group" style="flex:2;">
-          <!-- CAMBIO DE EQUIPO: Solo IMEI nuevo + IMEI a devolver (sin SIM) -->
-          <template v-if="tipo_servicio === 'Cambio de Equipo'">
-            <div style="display:flex;gap:1em;margin-bottom:1em;">
-              <div style="flex:1;display:flex;flex-direction:column;">
-                <label>IMEI nuevo</label>
-                <Dropdown
-                  v-if="!noModificaStock && imeiOptions.length"
-                  v-model="imei"
-                  :options="imeiOptions.filter(opt => opt.status === 'Disponible')"
-                  optionLabel="label"
-                  optionValue="imei"
-                  placeholder="Selecciona IMEI nuevo"
-                  filter
-                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-                />
-                <InputText v-else v-model="imei" placeholder="Captura IMEI nuevo" />
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;">
-                <label>IMEI a devolver</label>
-                <Dropdown
-                  v-if="!noModificaStock && imeiOptions.length"
-                  v-model="imeiDevolver"
-                  :options="imeiOptions"
-                  optionLabel="label"
-                  optionValue="imei"
-                  placeholder="Selecciona IMEI a devolver"
-                  filter
-                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-                />
-                <InputText v-else v-model="imeiDevolver" placeholder="Captura IMEI a devolver" />
-              </div>
+      <div class="field-group" style="flex:2;">
+        <!-- CAMBIO DE EQUIPO: Solo IMEI nuevo + IMEI a devolver (sin SIM) -->
+        <template v-if="tipo_servicio === 'Cambio de Equipo'">
+          <div style="display:flex;gap:1em;margin-bottom:1em;">
+            <div style="flex:1;display:flex;flex-direction:column;">
+              <label>IMEI nuevo</label>
+              <Dropdown v-if="!noModificaStock && imeiOptions.length" v-model="imei"
+                :options="imeiOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
+                placeholder="Selecciona IMEI nuevo" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
+              <InputText v-else v-model="imei" placeholder="Captura IMEI nuevo" />
             </div>
-          </template>
-          <!-- CAMBIO DE CHIP: Solo SIM nuevo + SIM a devolver (sin IMEI) -->
-          <template v-else-if="tipo_servicio === 'Cambio de Chip'">
-            <div style="display:flex;gap:1em;margin-bottom:1em;">
-              <div style="flex:1;display:flex;flex-direction:column;">
-                <label>SIM nuevo</label>
-                <Dropdown
-                  v-if="!noModificaStock && simOptions.length"
-                  v-model="sim"
-                  :options="simOptions.filter(opt => opt.status === 'Disponible')"
-                  optionLabel="label"
-                  optionValue="imei"
-                  placeholder="Selecciona SIM nuevo"
-                  filter
-                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-                />
-                <InputText v-else v-model="sim" placeholder="Captura SIM nuevo" />
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;">
-                <label>SIM a devolver (no regresa a stock)</label>
-                <InputText v-model="simDevolver" placeholder="Captura SIM a devolver" />
-              </div>
+            <div style="flex:1;display:flex;flex-direction:column;">
+              <label>IMEI a devolver</label>
+              <Dropdown v-if="!noModificaStock && imeiOptions.length" v-model="imeiDevolver" :options="imeiOptions"
+                optionLabel="label" optionValue="imei" placeholder="Selecciona IMEI a devolver" filter
+                :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
+              <InputText v-else v-model="imeiDevolver" placeholder="Captura IMEI a devolver" />
             </div>
-          </template>
-          <template v-else>
-            <div style="display:flex;gap:1em;margin-bottom:1em;">
-              <div style="flex:1;display:flex;flex-direction:column;">
-                <label>IMEI 1</label>
-                <Dropdown
-                  v-if="!noModificaStock && imeiOptions.length"
-                  v-model="imei"
-                  :options="imeiOptions.filter(opt => opt.status === 'Disponible')"
-                  optionLabel="label"
-                  optionValue="imei"
-                  placeholder="Selecciona IMEI"
-                  filter
-                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-                />
-                <InputText v-else v-model="imei" placeholder="Captura IMEI manualmente" />
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;">
-                <label>SIM 1</label>
-                <Dropdown
-                  v-if="!noModificaStock && simOptions.length"
-                  v-model="sim"
-                  :options="simOptions.filter(opt => opt.status === 'Disponible')"
-                  optionLabel="label"
-                  optionValue="imei"
-                  placeholder="Selecciona SIM"
-                  filter
-                  :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                  :filterFunction="(value, option) => option.imei.slice(-6).includes(value)"
-                />
-                <InputText v-else v-model="sim" placeholder="Captura SIM manualmente" />
-              </div>
+          </div>
+        </template>
+        <!-- CAMBIO DE CHIP: Solo SIM nuevo + SIM a devolver (sin IMEI) -->
+        <template v-else-if="tipo_servicio === 'Cambio de Chip'">
+          <div style="display:flex;gap:1em;margin-bottom:1em;">
+            <div style="flex:1;display:flex;flex-direction:column;">
+              <label>SIM nuevo</label>
+              <Dropdown v-if="!noModificaStock && simOptions.length" v-model="sim"
+                :options="simOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
+                placeholder="Selecciona SIM nuevo" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
+              <InputText v-else v-model="sim" placeholder="Captura SIM nuevo" />
             </div>
-          </template>
-</div>
+            <div style="flex:1;display:flex;flex-direction:column;">
+              <label>SIM a devolver (no regresa a stock)</label>
+              <InputText v-model="simDevolver" placeholder="Captura SIM a devolver" />
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <div style="display:flex;gap:1em;margin-bottom:1em;">
+            <div style="flex:1;display:flex;flex-direction:column;">
+              <label>IMEI 1</label>
+              <Dropdown v-if="!noModificaStock && imeiOptions.length" v-model="imei"
+                :options="imeiOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
+                placeholder="Selecciona IMEI" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
+              <InputText v-else v-model="imei" placeholder="Captura IMEI manualmente" />
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;">
+              <label>SIM 1</label>
+              <Dropdown v-if="!noModificaStock && simOptions.length" v-model="sim"
+                :options="simOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
+                placeholder="Selecciona SIM" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
+                :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
+              <InputText v-else v-model="sim" placeholder="Captura SIM manualmente" />
+            </div>
+          </div>
+        </template>
+      </div>
 
-         <div class="reporte-fields">
-        
-        <div class="full-width-row"><h4 class="section-header">Datos del vehículo</h4></div>
+      <div class="reporte-fields">
+
+        <div class="full-width-row">
+          <h4 class="section-header">Datos del vehículo</h4>
+        </div>
         <div class="field-group">
           <label>Marca</label>
           <InputText v-model="marca" class="w-full" placeholder="Marca" />
@@ -195,7 +160,9 @@
           <label>Número económico</label>
           <InputText v-model="numero_economico" class="w-full" placeholder="Número económico" />
         </div>
-        <div class="full-width-row"><h4 class="section-header">Datos del dispositivo (opcionales)</h4></div>
+        <div class="full-width-row">
+          <h4 class="section-header">Datos del dispositivo (opcionales)</h4>
+        </div>
         <div class="field-group">
           <label>Modelo GPS</label>
           <InputText v-model="modelo_gps" class="w-full" placeholder="Modelo GPS" />
@@ -212,7 +179,9 @@
           <label>Ubicación del Bloqueo (Bomba/Switch/Ignición/Etc.)</label>
           <InputText v-model="ubicacion_bloqueo" class="w-full" placeholder="Ubicación Bloqueo" />
         </div>
-        <div class="full-width-row"><h4 class="section-header">Datos del cobro</h4></div>
+        <div class="full-width-row">
+          <h4 class="section-header">Datos del cobro</h4>
+        </div>
         <div class="field-group">
           <label>Total pagado por el cliente</label>
           <InputText v-model="total" class="w-full" placeholder="Total" />
@@ -223,7 +192,8 @@
         </div>
         <div class="field-group">
           <label>Método de pago</label>
-          <Dropdown v-model="metodo_pago" :options="metodoPagoOptions" optionLabel="label" optionValue="value" placeholder="Selecciona método de pago" class="w-full mb-4" />
+          <Dropdown v-model="metodo_pago" :options="metodoPagoOptions" optionLabel="label" optionValue="value"
+            placeholder="Selecciona método de pago" class="w-full mb-4" />
         </div>
         <div class="field-group">
           <label>Viáticos cobrados por el técnico</label>
@@ -297,6 +267,7 @@ const ubicaciones = ref([]);
 const stockUbicacion = ref([]);
 const tiposServicio = [
   'Instalación',
+  'Solo Venta',
   'Reinstalación',
   'Revisión',
   'Desinstalación',
@@ -305,6 +276,8 @@ const tiposServicio = [
   'Cambio de Chip',
   'Vuelta en falso'
 ];
+// Tipos de servicio que NO modifican inventario
+const tiposSinStock = ['Revisión', 'Desinstalación', 'Búsqueda', 'Vuelta en falso'];
 const metodo_pago = ref('');
 const metodoPagoOptions = [
   { label: 'Pago en efectivo con el técnico', value: 'efectivo_tecnico' },
@@ -426,14 +399,14 @@ const generarReporte = async () => {
     tipo_servicio: tipo_servicio.value,
     cliente_id: cliente.value,
     nombre_cliente: nombreCliente,
-    usuario: usuario.value,
-    nombre_instalador: instalador.value,
-    vendedor: vendedor.value,
-    plataforma: plataforma.value,
-    lugar_instalacion: lugar_instalacion.value,
+    usuario: usuario.value || '',
+    nombre_instalador: instalador.value || '',
+    vendedor: vendedor.value || '',
+    plataforma: plataforma.value || '',
+    lugar_instalacion: lugar_instalacion.value || '',
     ubicacion_id: ubicacion.value,
-    imei: imei.value,
-    sim_serie: sim.value,
+    imei: imei.value || '',
+    sim_serie: sim.value || '',
     marca: marca.value,
     submarca: submarca.value,
     modelo: modelo.value,
@@ -454,8 +427,9 @@ const generarReporte = async () => {
   };
   try {
     const res = await axios.post(`${import.meta.env.VITE_API_URL}/reportes-servicio`, payload);
-    // Marcar como Vendido los nuevos
-    if (!noModificaStock.value) {
+    // Marcar como Vendido los nuevos (solo si no es un tipo que no modifica stock)
+    const noModificaInventario = noModificaStock.value || tiposSinStock.includes(tipo_servicio.value);
+    if (!noModificaInventario) {
       if (sim.value) {
         await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${sim.value}`, { status: 'Vendido' });
       }
@@ -486,48 +460,58 @@ const generarReporte = async () => {
   margin: 1rem auto;
   padding: 1rem;
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
+
 .reporte-title {
   text-align: center;
   margin-bottom: 1rem;
 }
+
 .servicio-card {
   border-radius: 8px;
-  box-shadow: 0 2px 8px var(--card-shadow, rgba(0,0,0,0.07));
+  box-shadow: 0 2px 8px var(--card-shadow, rgba(0, 0, 0, 0.07));
   margin-bottom: 2rem;
   padding: 1rem;
   transition: box-shadow 0.2s;
   background: var(--card-bg, inherit);
 }
+
 .servicio-card:hover {
-  box-shadow: 0 4px 16px var(--card-shadow-hover, rgba(0,0,0,0.12));
+  box-shadow: 0 4px 16px var(--card-shadow-hover, rgba(0, 0, 0, 0.12));
 }
+
 .card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
 }
+
 .reporte-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
 }
+
 .full-width-row {
   grid-column: 1 / span 2;
 }
+
 .field-group {
   display: flex;
   flex-direction: column;
 }
+
 label {
   font-weight: 500;
   margin-bottom: 0.5rem;
 }
+
 .w-full {
   width: 100%;
 }
+
 .mt-3 {
   margin-top: 1.5rem;
 }
