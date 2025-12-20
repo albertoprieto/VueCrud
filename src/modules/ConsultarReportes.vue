@@ -20,6 +20,7 @@
       <InputText v-model="filtroFecha" placeholder="Filtrar por fecha (YYYY-MM-DD)" class="filtro-input" clearable />
       <InputText v-model="filtroTecnico" placeholder="Filtrar por técnico" class="filtro-input" clearable />
       <InputText v-model="filtroIMEI" placeholder="Filtrar por IMEI" class="filtro-input" clearable />
+      <InputText v-model="filtroSimSerie" placeholder="Filtrar por SIM Serie" class="filtro-input" clearable />
       <Dropdown
         v-model="filtroPagado"
         :options="[
@@ -409,6 +410,7 @@ const filtroVendedor = ref('');
 const filtroFecha = ref('');
 const filtroTecnico = ref('');
 const filtroIMEI = ref('');
+const filtroSimSerie = ref('');
 const filtroPagado = ref('');
 
 const reportesFiltrados = computed(() => {
@@ -430,8 +432,9 @@ const reportesFiltrados = computed(() => {
       const fechaOk = !filtroFecha.value || (r.fecha && r.fecha.includes(filtroFecha.value));
       const tecnicoOk = !filtroTecnico.value || (r.nombre_instalador && r.nombre_instalador.toLowerCase().includes(filtroTecnico.value.toLowerCase()));
       const imeiOk = !filtroIMEI.value || (r.imei && String(r.imei).toLowerCase().includes(filtroIMEI.value.toLowerCase()));
+      const simSerieOk = !filtroSimSerie.value || (r.sim_serie && String(r.sim_serie).toLowerCase().includes(filtroSimSerie.value.toLowerCase()));
       const pagadoOk = filtroPagado.value === '' || r.pagado === filtroPagado.value;
-      return clienteOk && soOk && vendedorOk && fechaOk && tecnicoOk && imeiOk && pagadoOk;
+      return clienteOk && soOk && vendedorOk && fechaOk && tecnicoOk && imeiOk && simSerieOk && pagadoOk;
     });
 });
 
