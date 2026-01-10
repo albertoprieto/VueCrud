@@ -49,6 +49,9 @@
 
       <!-- Vista lista plana -->
       <DataTable v-if="!viewGrouped" :value="filteredQuotationsList" responsiveLayout="scroll" :paginator="true" :rows="10" :rowsPerPageOptions="[10,20,50]" dataKey="id" :sortField="'fecha'" :sortOrder="-1">
+        <template #loading>
+          <DataTableLoader text="Cargando cotizaciones..." />
+        </template>
         <Column field="folio" header="Folio" sortable />
         <Column field="fecha" header="Fecha" sortable>
           <template #body="row">
@@ -83,6 +86,9 @@
 
       <!-- Vista agrupada por cliente (original) -->
       <DataTable v-else :value="cotizacionesFiltradas" dataKey="cliente_id" rowExpansion v-model:expandedRows="expandedRows" responsiveLayout="scroll">
+        <template #loading>
+          <DataTableLoader text="Cargando cotizaciones..." />
+        </template>
         <Column type="expander" style="width: 3em" />
         <Column field="cliente" header="Cliente" />
         <Column header="Teléfonos">
@@ -299,6 +305,7 @@ import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getUsuarios } from '@/services/usuariosService';
 import DataTable from 'primevue/datatable';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
