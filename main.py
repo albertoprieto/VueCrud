@@ -1666,6 +1666,8 @@ class ReporteServicio(BaseModel):
     # NUEVO: soporte multi-instalación
     imeis_articulos: Optional[List[dict]] = None
     sim_series: Optional[List[str]] = None
+    # NUEVO: indica si el reporte NO debe modificar el stock de IMEIs
+    no_modifica_stock: bool = False
 
 @app.post("/reportes-servicio")
 def add_reporte_servicio(reporte: ReporteServicio):
@@ -1767,27 +1769,32 @@ def add_reporte_servicio(reporte: ReporteServicio):
     # NUEVO: marcar IMEIs y SIMs involucrados como "Vendido"
     nuevo_id = cursor.lastrowid
     imeis_a_vender = set()
-    def _add(v):
-        vv = (v or '').strip()
-        if vv:
-            imeis_a_vender.add(vv)
-    try:
-        _add(reporte.imei)
-        _add(reporte.sim_serie)
-        if getattr(reporte, 'imeis_articulos', None):
-            for li in (reporte.imeis_articulos or []):
-                try:
-                    for im in (li.get('imeis') or []):
-                        _add(im)
-                    for s in (li.get('sims') or []):
-                        _add(s)
-                except Exception:
-                    continue
-        if getattr(reporte, 'sim_series', None):
-            for s in (reporte.sim_series or []):
-                _add(s)
-    except Exception:
-        pass
+    
+    # Solo recolectar IMEIs para actualizar si NO está marcado no_modifica_stock
+    no_modifica_stock = getattr(reporte, 'no_modifica_stock', False)
+    
+    if not no_modifica_stock:
+        def _add(v):
+            vv = (v or '').strip()
+            if vv:
+                imeis_a_vender.add(vv)
+        try:
+            _add(reporte.imei)
+            _add(reporte.sim_serie)
+            if getattr(reporte, 'imeis_articulos', None):
+                for li in (reporte.imeis_articulos or []):
+                    try:
+                        for im in (li.get('imeis') or []):
+                            _add(im)
+                        for s in (li.get('sims') or []):
+                            _add(s)
+                    except Exception:
+                        continue
+            if getattr(reporte, 'sim_series', None):
+                for s in (reporte.sim_series or []):
+                    _add(s)
+        except Exception:
+            pass
 
     imeis_actualizados = 0
     if imeis_a_vender:
