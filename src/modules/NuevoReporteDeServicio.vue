@@ -283,7 +283,8 @@ const metodoPagoOptions = [
   { label: 'Pago en efectivo con el técnico', value: 'efectivo_tecnico' },
   { label: 'Pago con Tarjeta de Crédito', value: 'tarjeta_credito' },
   { label: 'Pago con Tarjeta de Débito', value: 'tarjeta_debito' },
-  { label: 'Transferencia', value: 'transferencia' }
+  { label: 'Transferencia', value: 'transferencia' },
+  { label: 'Pago en Oficina', value: 'efectivo_oficina' }
 ];
 
 onMounted(async () => {
