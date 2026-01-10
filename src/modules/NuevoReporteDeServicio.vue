@@ -395,6 +395,9 @@ const limpiarFormulario = () => {
 const generarReporte = async () => {
   const clienteSeleccionado = clientes.value.find(c => c.id === cliente.value);
   const nombreCliente = clienteSeleccionado ? clienteSeleccionado.nombre : '';
+  // Determinar si no debe modificar stock
+  const noModificaInventario = noModificaStock.value === true || tiposSinStock.includes(tipo_servicio.value);
+  
   const payload = {
     tipo_servicio: tipo_servicio.value,
     cliente_id: cliente.value,
@@ -407,6 +410,8 @@ const generarReporte = async () => {
     ubicacion_id: ubicacion.value,
     imei: imei.value || '',
     sim_serie: sim.value || '',
+    // NUEVO: indicar al backend si NO debe modificar stock
+    no_modifica_stock: noModificaInventario,
     marca: marca.value,
     submarca: submarca.value,
     modelo: modelo.value,
@@ -427,21 +432,7 @@ const generarReporte = async () => {
   };
   try {
     const res = await axios.post(`${import.meta.env.VITE_API_URL}/reportes-servicio`, payload);
-    // Marcar como Vendido los nuevos (solo si no es un tipo que no modifica stock)
-    const noModificaInventario = noModificaStock.value || tiposSinStock.includes(tipo_servicio.value);
-    if (!noModificaInventario) {
-      if (sim.value) {
-        await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${sim.value}`, { status: 'Vendido' });
-      }
-      if (imei.value) {
-        await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${imei.value}`, { status: 'Vendido' });
-      }
-      // Solo en Cambio de Equipo: el IMEI devuelto regresa al stock como "Devuelto"
-      // En Cambio de Chip: el SIM que se quita NO regresa al stock
-      if (tipo_servicio.value === 'Cambio de Equipo' && imeiDevolver.value) {
-        await axios.put(`${import.meta.env.VITE_API_URL}/imeis/${imeiDevolver.value}`, { status: 'Devuelto' });
-      }
-    }
+    // El backend ahora maneja la actualización de IMEIs según el campo no_modifica_stock
     dialogTitle.value = 'Reporte generado';
     dialogMessage.value = res.data.message || 'Reporte creado exitosamente';
     showDialog.value = true;
