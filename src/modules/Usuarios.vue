@@ -5,6 +5,9 @@
       <Button label="Agregar Usuario" icon="pi pi-plus" @click="abrirModal" />
     </div>
     <DataTable :value="tecnicos" class="tecnicos-table" :loading="loading">
+      <template #loading>
+        <DataTableLoader text="Cargando usuarios..." />
+      </template>
       <Column field="id" header="ID" />
       <Column field="username" header="Usuario" />
       <Column field="perfil" header="Perfil" />
@@ -39,6 +42,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import DataTable from 'primevue/datatable';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';

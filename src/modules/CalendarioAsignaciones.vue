@@ -110,6 +110,9 @@
           />
         </div>
         <DataTable :value="asignacionesFiltradasOrdenadas" :loading="loading" responsiveLayout="scroll">
+          <template #loading>
+            <DataTableLoader text="Cargando asignaciones..." />
+          </template>
           <Column field="fecha_servicio" header="Fecha" sortable />
           <Column field="hora_servicio" header="Hora Inicio" sortable />
           <Column field="hora_fin" header="Hora Fin" sortable />
@@ -177,6 +180,7 @@
 import { ref, computed, onMounted, watch, defineProps } from 'vue';
 import { useRouter } from 'vue-router';
 import DataTable from 'primevue/datatable';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import AutoComplete from 'primevue/autocomplete';
