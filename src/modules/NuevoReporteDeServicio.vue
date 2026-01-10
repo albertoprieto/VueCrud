@@ -421,6 +421,9 @@ const generarReporte = async () => {
     ubicacion_id: ubicacion.value,
     imei: imei.value || '',
     sim_serie: sim.value || '',
+    // Campos para Cambio de Equipo y Cambio de Chip
+    imei_devolver: imeiDevolver.value || '',
+    sim_devolver: simDevolver.value || '',
     // Flags separados para IMEI y SIM
     // Si es tipo sin stock, ambos se marcan true; si no, respeta los checkboxes
     no_modifica_imei: esTipoSinStock || noModificaImei.value,

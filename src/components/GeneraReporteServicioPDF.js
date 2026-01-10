@@ -195,7 +195,38 @@ const empresa = {
                   hLineColor: function () { return '#ccc'; },
                   vLineColor: function () { return '#ccc'; }
                 }
-              }
+              },
+              // Sección especial para Cambio de Equipo / Cambio de Chip
+              ...((['Cambio de Equipo', 'Cambio de Chip'].includes(reporte.tipo_servicio) && (reporte.imei_devolver || reporte.sim_devolver)) ? [
+                { text: '', margin: [0, 8, 0, 0] },
+                { 
+                  text: '⚠️ EQUIPO DEVUELTO', 
+                  style: 'devueltoHeader',
+                  alignment: 'center'
+                },
+                {
+                  table: {
+                    widths: ['*', '*'],
+                    body: [
+                      [
+                        { text: 'IMEI Devuelto', style: 'devueltoLabel', alignment: 'center' },
+                        { text: 'SIM Devuelto', style: 'devueltoLabel', alignment: 'center' }
+                      ],
+                      [
+                        { text: reporte.imei_devolver || 'N/A', style: 'devueltoValue', alignment: 'center' },
+                        { text: reporte.sim_devolver || 'N/A', style: 'devueltoValue', alignment: 'center' }
+                      ]
+                    ]
+                  },
+                  layout: {
+                    fillColor: function (rowIndex) {
+                      return rowIndex === 0 ? '#fff3cd' : '#fef9e7';
+                    },
+                    hLineColor: function () { return '#f0ad4e'; },
+                    vLineColor: function () { return '#f0ad4e'; }
+                  }
+                }
+              ] : [])
             ]
           }
         ],
@@ -228,7 +259,10 @@ const empresa = {
       notas: { fontSize: 9, color: '#666', margin: [0, 2, 0, 2] },
       folio: { fontSize: 12, bold: true, color: '#444', margin: [0, 0, 0, 10] },
       firma: { fontSize: 12, color: '#888', margin: [0, 10, 0, 10] },
-      clienteLabel: { fontSize: 10, color: '#888', margin: [0, 2, 0, 2] }
+      clienteLabel: { fontSize: 10, color: '#888', margin: [0, 2, 0, 2] },
+      devueltoHeader: { fontSize: 11, bold: true, color: '#856404', fillColor: '#fff3cd', margin: [0, 4, 0, 4] },
+      devueltoLabel: { fontSize: 10, bold: true, color: '#856404' },
+      devueltoValue: { fontSize: 10, color: '#856404', bold: true }
     },
     defaultStyle: {
       fontSize: 9

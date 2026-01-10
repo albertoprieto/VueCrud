@@ -1670,6 +1670,9 @@ class ReporteServicio(BaseModel):
     no_modifica_stock: bool = False  # mantener por compatibilidad
     no_modifica_imei: bool = False
     no_modifica_sim: bool = False
+    # NUEVO: campos para Cambio de Equipo y Cambio de Chip
+    imei_devolver: str = ""  # IMEI que se devuelve en Cambio de Equipo
+    sim_devolver: str = ""   # SIM que se devuelve en Cambio de Chip
 
 @app.post("/reportes-servicio")
 def add_reporte_servicio(reporte: ReporteServicio):
@@ -1736,13 +1739,13 @@ def add_reporte_servicio(reporte: ReporteServicio):
             equipo_plan, imei, serie, accesorios, sim_proveedor, sim_serie, sim_instalador, sim_telefono, bateria,
             ignicion, corte, ubicacion_corte, modelo_gps, ubicacion_gps, ubicacion_bloqueo, observaciones, plataforma,
             usuario, subtotal, forma_pago, pagado, nombre_cliente, firma_cliente, nombre_instalador, firma_instalador,
-            vendedor, total, monto_tecnico, viaticos, imeis_articulos, sim_series, hora_fin
+            vendedor, total, monto_tecnico, viaticos, imeis_articulos, sim_series, hora_fin, imei_devolver, sim_devolver
         ) VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s
         )
         """,
         (
@@ -1754,7 +1757,8 @@ def add_reporte_servicio(reporte: ReporteServicio):
             reporte.observaciones, reporte.plataforma, reporte.usuario, reporte.subtotal,
             reporte.forma_pago, int(reporte.pagado), nombre_cliente, reporte.firma_cliente,
             nombre_instalador, reporte.firma_instalador, reporte.vendedor, reporte.total,
-            reporte.monto_tecnico, reporte.viaticos, imeis_json, sim_json, reporte.hora_fin
+            reporte.monto_tecnico, reporte.viaticos, imeis_json, sim_json, reporte.hora_fin,
+            reporte.imei_devolver or None, reporte.sim_devolver or None
         )
     )
     except mysql.connector.IntegrityError as e:
@@ -1857,9 +1861,50 @@ def add_reporte_servicio(reporte: ReporteServicio):
         sincronizar_stock_articulos()
     except Exception:
         pass
+    
+    # NUEVO: Lógica para Cambio de Equipo - devolver IMEI al stock
+    imei_devuelto = False
+    if reporte.tipo_servicio == 'Cambio de Equipo' and reporte.imei_devolver:
+        try:
+            cur_dev = db.cursor()
+            # Marcar el IMEI devuelto como 'Devuelto' (disponible nuevamente)
+            cur_dev.execute(
+                "UPDATE imeis SET status='Devuelto' WHERE imei=%s",
+                (reporte.imei_devolver,)
+            )
+            db.commit()
+            imei_devuelto = cur_dev.rowcount > 0
+            cur_dev.close()
+            # Registrar movimiento de devolución
+            if imei_devuelto:
+                try:
+                    cur_info = db.cursor(dictionary=True)
+                    cur_info.execute("SELECT articulo_id, articulo_nombre FROM imeis WHERE imei=%s", (reporte.imei_devolver,))
+                    row_info = cur_info.fetchone() or {}
+                    cur_info.close()
+                    registrar_movimiento(
+                        reporte.usuario or 'sistema',
+                        'devolucion_cambio_equipo',
+                        row_info.get('articulo_id'),
+                        row_info.get('articulo_nombre', ''),
+                        reporte.imei_devolver,
+                        None, None,
+                        f'reporte_servicio_id={nuevo_id}'
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    
     cursor.close()
     db.close()
-    return {"message": "Reporte de servicio creado exitosamente", "reporte_id": nuevo_id, "imeis_actualizados": imeis_actualizados}
+    return {
+        "message": "Reporte de servicio creado exitosamente",
+        "reporte_id": nuevo_id,
+        "imeis_actualizados": imeis_actualizados,
+        "imei_devuelto": imei_devuelto,
+        "tipo_servicio": reporte.tipo_servicio
+    }
 
 @app.get("/reportes-servicio")
 def get_reporte_servicio(asignacion_id: int = Query(...)):
