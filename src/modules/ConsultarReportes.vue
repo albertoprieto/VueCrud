@@ -35,7 +35,16 @@
         showClear
       />
     </div>
-    <DataTable :value="reportesFiltrados" responsiveLayout="scroll" :loading="loading">
+    <DataTable 
+      :value="reportesFiltrados" 
+      responsiveLayout="scroll" 
+      :loading="loading"
+      :paginator="true"
+      :rows="10"
+      :rowsPerPageOptions="[5, 10, 20, 50]"
+      paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
+      currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} reportes"
+    >
       <Column field="tipo_servicio" header="Tipo" />
       <Column field="nombre_cliente" header="Cliente" />
       <Column header="Orden">
@@ -360,8 +369,10 @@ const ventaSeleccionada = ref(null);
 const clienteSeleccionado = ref(null);
 const articulosSeleccionados = ref([]);
 
-
+// Cachear datos para evitar peticiones duplicadas
 let asignaciones = [];
+let ventasCache = [];
+let clientesCache = [];
 
 const showMessageDialog = ref(false);
 const messageDialogText = ref('');
@@ -438,40 +449,56 @@ const reportesFiltrados = computed(() => {
     });
 });
 
-async function cargarReportes() {
-  loading.value = true;
-  try {
-    const res = await axios.get(`${API_URL}-todos`);
-    reportes.value = res.data;
-    asignaciones = await getAsignacionesTecnicos();
-    const ventasGlobal = Array.isArray(window.ventasGlobal) ? window.ventasGlobal : await getVentas();
-    const clientesGlobal = await getClientes();
-    reportes.value = reportes.value.map(r => {
-      const asignacion = asignaciones.find(a => a.id == r.asignacion_id);
-      let folio = r.folio;
-      let vendedor = r.vendedor;
-      let nombre_cliente = r.nombre_cliente;
-      let nombre_instalador = r.nombre_instalador;
-      let monto_tecnico = r.monto_tecnico;
-      let viaticos = r.viaticos;
-      let total = r.total;
-      let venta = null;
-      if (asignacion && asignacion.venta_id && Array.isArray(ventasGlobal)) {
-        venta = ventasGlobal.find(v => v.id == asignacion.venta_id);
-        if (venta) {
-          folio = venta.folio || (venta.id ? `SO-${String(venta.id).padStart(5, '0')}` : folio);
-          vendedor = venta.vendedor || vendedor;
-          const cliente = clientesGlobal.find(c => c.id === venta.cliente_id);
-          if (cliente) {
-            nombre_cliente = cliente.nombre;
-          }
-        }
-        if (asignacion.tecnico) {
-          nombre_instalador = asignacion.tecnico;
+// Función para mapear reportes con datos de ventas, clientes y asignaciones
+function mapearReportes(reportesData, ventasData, clientesData, asignacionesData) {
+  return reportesData.map(r => {
+    const asignacion = asignacionesData.find(a => a.id == r.asignacion_id);
+    let folio = r.folio;
+    let vendedor = r.vendedor;
+    let nombre_cliente = r.nombre_cliente;
+    let nombre_instalador = r.nombre_instalador;
+    let monto_tecnico = r.monto_tecnico;
+    let viaticos = r.viaticos;
+    let total = r.total;
+    let venta = null;
+    if (asignacion && asignacion.venta_id && Array.isArray(ventasData)) {
+      venta = ventasData.find(v => v.id == asignacion.venta_id);
+      if (venta) {
+        folio = venta.folio || (venta.id ? `SO-${String(venta.id).padStart(5, '0')}` : folio);
+        vendedor = venta.vendedor || vendedor;
+        const cliente = clientesData.find(c => c.id === venta.cliente_id);
+        if (cliente) {
+          nombre_cliente = cliente.nombre;
         }
       }
-      return { ...r, folio, vendedor, nombre_cliente, nombre_instalador, monto_tecnico, viaticos, total };
-    });
+      if (asignacion.tecnico) {
+        nombre_instalador = asignacion.tecnico;
+      }
+    }
+    return { ...r, folio, vendedor, nombre_cliente, nombre_instalador, monto_tecnico, viaticos, total };
+  });
+}
+
+async function cargarReportes(forceReload = false) {
+  loading.value = true;
+  try {
+    // Cargar reportes
+    const res = await axios.get(`${API_URL}-todos`);
+    
+    // Solo recargar datos auxiliares si es necesario o si forceReload
+    if (forceReload || asignaciones.length === 0) {
+      asignaciones = await getAsignacionesTecnicos();
+    }
+    if (forceReload || ventasCache.length === 0) {
+      ventasCache = await getVentas();
+      window.ventasGlobal = ventasCache;
+    }
+    if (forceReload || clientesCache.length === 0) {
+      clientesCache = await getClientes();
+    }
+    
+    // Mapear reportes con datos cacheados
+    reportes.value = mapearReportes(res.data, ventasCache, clientesCache, asignaciones);
   } catch (e) {
     reportes.value = [];
     asignaciones = [];
@@ -492,8 +519,8 @@ async function mostrarNota(reporte) {
     showMessageDialog.value = true;
     return;
   }
-  const ventas = await getVentas();
-  const venta = ventas.find(v => v.id == asignacion.venta_id);
+  // Usar datos cacheados
+  const venta = ventasCache.find(v => v.id == asignacion.venta_id);
   if (!venta) {
     loading.value = false;
     toast.add({ severity: 'warn', summary: 'No encontrada', detail: 'No se encontró la nota de venta.', life: 4000 });
@@ -502,8 +529,7 @@ async function mostrarNota(reporte) {
     return;
   }
   ventaSeleccionada.value = venta;
-  const clientes = await getClientes();
-  clienteSeleccionado.value = clientes.find(c => c.id === venta.cliente_id) || {};
+  clienteSeleccionado.value = clientesCache.find(c => c.id === venta.cliente_id) || {};
   const articulos = await getTodosArticulos();
   const detalle = await getDetalleVenta(venta.id);
   articulosSeleccionados.value = detalle.map(item => {
@@ -620,8 +646,8 @@ async function descargarOrdenVenta(reporte) {
       showMessageDialog.value = true;
       return;
     }
-    const ventas = await getVentas();
-    const venta = ventas.find(v => v.id == asignacion.venta_id);
+    // Usar datos cacheados
+    const venta = ventasCache.find(v => v.id == asignacion.venta_id);
     if (!venta) {
       loading.value = false;
       toast.add({ severity: 'warn', summary: 'No encontrada', detail: 'No se encontró la nota de venta.', life: 4000 });
@@ -629,8 +655,7 @@ async function descargarOrdenVenta(reporte) {
       showMessageDialog.value = true;
       return;
     }
-    const clientes = await getClientes();
-    const cliente = clientes.find(c => c.id === venta.cliente_id) || {};
+    const cliente = clientesCache.find(c => c.id === venta.cliente_id) || {};
     const articulos = await getTodosArticulos();
     const detalle = await getDetalleVenta(venta.id);
     const articulosSeleccionados = detalle.map(item => {
@@ -665,13 +690,11 @@ async function descargarReporteServicio(reporte, empresa) {
     } catch (_) {
       detalleReporte = null;
     }
-    // Buscar venta y cliente si hay asignación
+    // Buscar venta y cliente si hay asignación - usar datos cacheados
     const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
     if (asignacion && asignacion.venta_id) {
-      const ventas = await getVentas();
-      venta = ventas.find(v => v.id == asignacion.venta_id);
-      const clientes = await getClientes();
-      cliente = venta ? (clientes.find(c => c.id === venta.cliente_id) || {}) : {};
+      venta = ventasCache.find(v => v.id == asignacion.venta_id);
+      cliente = venta ? (clientesCache.find(c => c.id === venta.cliente_id) || {}) : {};
     }
     // Unir campos relevantes
     const reporteCampos = {
@@ -707,43 +730,9 @@ function obtenerSO(reporte) {
   return '-';
 }
 
-// Carga ventas globalmente para acceso rápido en la tabla
+// Carga inicial de datos - todo en una sola función para evitar duplicaciones
 onMounted(async () => {
-  window.ventasGlobal = await getVentas();
-  const clientesGlobal = await getClientes();
-  asignaciones = await getAsignacionesTecnicos();
-  await cargarReportes();
-  // Mapea folio, vendedor, nombre_cliente y nombre_instalador a cada reporte
-  reportes.value = reportes.value.map(r => {
-    let folio = r.folio;
-    let vendedor = r.vendedor;
-    let nombre_cliente = r.nombre_cliente;
-    let nombre_instalador = r.nombre_instalador;
-    // Mantén los valores originales, no los fuerces a string
-    let monto_tecnico = r.monto_tecnico;
-    let viaticos = r.viaticos;
-    let total = r.total;
-    // Busca la asignación y la venta asociada
-    const asignacion = asignaciones.find(a => a.id == r.asignacion_id);
-    let venta = null;
-    if (asignacion && asignacion.venta_id && Array.isArray(window.ventasGlobal)) {
-      venta = window.ventasGlobal.find(v => v.id == asignacion.venta_id);
-      if (venta) {
-        folio = venta.folio || (venta.id ? `SO-${String(venta.id).padStart(5, '0')}` : folio);
-        vendedor = venta.vendedor || vendedor;
-        // Busca el cliente
-        const cliente = clientesGlobal.find(c => c.id === venta.cliente_id);
-        if (cliente) {
-          nombre_cliente = cliente.nombre;
-        }
-      }
-      // Busca el técnico
-      if (asignacion.tecnico) {
-        nombre_instalador = asignacion.tecnico;
-      }
-    }
-    return { ...r, folio, vendedor, nombre_cliente, nombre_instalador, monto_tecnico, viaticos, total };
-  });
+  await cargarReportes(true); // forceReload=true para cargar todo la primera vez
 });
 
 function marcarComoPagado(reporte) {
@@ -923,10 +912,9 @@ async function abrirFacturaDialog(reporte) {
   if (reporte.asignacion_id) {
     const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
     if (asignacion && asignacion.venta_id) {
-      const ventas = await getVentas();
-      venta = ventas.find(v => v.id == asignacion.venta_id);
-      const clientes = await getClientes();
-      cliente = venta ? (clientes.find(c => c.id === venta.cliente_id) || {}) : {};
+      // Usar datos cacheados en lugar de hacer nuevas peticiones
+      venta = ventasCache.find(v => v.id == asignacion.venta_id);
+      cliente = venta ? (clientesCache.find(c => c.id === venta.cliente_id) || {}) : {};
     }
   }
   facturaData.value = {
