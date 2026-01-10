@@ -48,7 +48,7 @@
       </div>
 
       <!-- Vista lista plana -->
-      <DataTable v-if="!viewGrouped" :value="filteredQuotationsList" responsiveLayout="scroll" :paginator="true" :rows="10" :rowsPerPageOptions="[10,20,50]" dataKey="id" :sortField="'fecha'" :sortOrder="-1">
+      <DataTable v-if="!viewGrouped" :value="filteredQuotationsList" :loading="loading" responsiveLayout="scroll" :paginator="true" :rows="10" :rowsPerPageOptions="[10,20,50]" dataKey="id" :sortField="'fecha'" :sortOrder="-1">
         <template #loading>
           <DataTableLoader text="Cargando cotizaciones..." />
         </template>
@@ -85,7 +85,7 @@
       </DataTable>
 
       <!-- Vista agrupada por cliente (original) -->
-      <DataTable v-else :value="cotizacionesFiltradas" dataKey="cliente_id" rowExpansion v-model:expandedRows="expandedRows" responsiveLayout="scroll">
+      <DataTable v-else :value="cotizacionesFiltradas" :loading="loading" dataKey="cliente_id" rowExpansion v-model:expandedRows="expandedRows" responsiveLayout="scroll">
         <template #loading>
           <DataTableLoader text="Cargando cotizaciones..." />
         </template>
@@ -324,6 +324,7 @@ const vendedores = ref([]);
 const groupedQuotations = ref([]);
 const expandedRows = ref([]);
 const articulos = ref([]);
+const loading = ref(true);
 const cotizacionesDelCliente = ref([]);
 const cotizacionesDialogVisible = ref(false);
 const detalleDialogVisible = ref(false);
@@ -358,6 +359,7 @@ const cotizacionesFiltradas = computed(() => {
 });
 
 async function reloadQuotations() {
+  loading.value = true;
   const [cotizaciones, clientesList, articulosList, usuarios] = await Promise.all([
     getQuotations(),
     getClientes(),
@@ -388,6 +390,7 @@ async function reloadQuotations() {
   });
   groupedQuotations.value = Object.values(map);
   quotations.value = groupedQuotations.value.flatMap(g => g.cotizaciones);
+  loading.value = false;
 }
 
 onMounted(reloadQuotations);
