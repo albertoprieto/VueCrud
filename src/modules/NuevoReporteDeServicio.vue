@@ -57,7 +57,7 @@
       </div>
 
 
-      <div style="margin-bottom:2rem;" v-if="!tiposSinStock.includes(tipo_servicio)">
+      <div style="margin-bottom:2rem;" >
         <h4 style="font-size:1.1em; font-weight:bold; margin-bottom:1em;">Asignación de IMEIs y SIM</h4>
         <div style="margin-bottom:1em;">
           <label style="display:flex;align-items:center;gap:0.5em;">
