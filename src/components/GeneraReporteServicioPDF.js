@@ -102,11 +102,10 @@ const empresa = {
             width: '33%',
             stack: [
               { text: 'Cobro', style: 'cardHeader' },
-              { text: `Subtotal: $${Number(reporte.subtotal || 0).toFixed(2)}`, style: 'cardValue' },
-              { text: `Viáticos: $${Number(reporte.viaticos || 0).toFixed(2)}`, style: 'cardValue' },
               { text: `Total: $${Number(reporte.total || 0).toFixed(2)}`, style: 'cardValue' },
               { text: `Forma de pago: ${reporte.forma_pago || '-'}`, style: 'cardValue' },
-              { text: `Monto técnico: $${Number(reporte.monto_tecnico || 0).toFixed(2)}`, style: 'cardValue' }
+              { text: `Monto técnico: $${Number(reporte.monto_tecnico || 0).toFixed(2)}`, style: 'cardValue' },
+              { text: `Viáticos: $${Number(reporte.viaticos || 0).toFixed(2)}`, style: 'cardValue' },
             ],
             fillColor: '#fafafa',
             border: [false, false, false, false]
