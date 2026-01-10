@@ -19,6 +19,9 @@
     <div v-if="error" class="dinero-error">{{ error }}</div>
     <div v-else>
       <DataTable :value="movimientos" :paginator="true" :rows="10" class="dinero-table" :loading="cargando">
+        <template #loading>
+          <DataTableLoader text="Cargando movimientos..." />
+        </template>
         <Column field="fecha" header="Fecha" sortable />
         <Column field="tipo" header="Tipo" sortable />
         <Column field="concepto" header="Concepto" sortable />
@@ -53,6 +56,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import DataTable from 'primevue/datatable';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import axios from 'axios';

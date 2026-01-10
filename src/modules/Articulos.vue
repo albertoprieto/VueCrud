@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { getArticulos, getTodosArticulos, addArticulo, updateArticulo, deleteArticulo as deleteArticuloService } from '@/services/articulosService';
 import { getIMEIs } from '@/services/imeiService';
 import DataTable from 'primevue/datatable';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
@@ -246,6 +247,9 @@ const exportToExcel = () => {
     </div>
     <div class="articulos-table-card">
       <DataTable :value="filteredArticulos" :loading="loadingArticulos" paginator rows="10" :sortField="sortField" :sortOrder="sortOrder" class="datatable-responsive articulos-table">
+        <template #loading>
+          <DataTableLoader text="Cargando artículos..." />
+        </template>
         <Column field="sku" header="SKU" :sortable="true" />
         <Column field="tipo" header="Tipo" :sortable="true" />
         <Column field="precioVenta" header="Precio Venta" :sortable="true" :body="formatoMoneda" />

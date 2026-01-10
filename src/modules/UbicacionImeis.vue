@@ -25,6 +25,9 @@
     </div>
 
     <DataTable :value="imeisFiltrados" :loading="loading">
+      <template #loading>
+        <DataTableLoader text="Cargando IMEIs..." />
+      </template>
       <Column field="imei" header="IMEI" />
       <!-- <Column field="articulo_nombre" header="Artículo" /> -->
       <Column field="sku" header="SKU" />
@@ -51,6 +54,7 @@ import { useRoute } from 'vue-router';
 import { getUbicaciones, getImeisPorUbicacion } from '@/services/ubicacionesService';
 import { devolverIMEI } from '@/services/imeiService';
 import DataTable from 'primevue/datatable';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Chip from 'primevue/chip';

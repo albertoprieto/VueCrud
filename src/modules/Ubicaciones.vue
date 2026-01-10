@@ -3,6 +3,9 @@
     <h2>Ubicaciones (Bodegas)</h2>
     <Button label="Agregar Ubicación" icon="pi pi-plus" @click="showModal = true" />
     <DataTable :value="ubicaciones" :loading="loading">
+      <template #loading>
+        <DataTableLoader text="Cargando ubicaciones..." />
+      </template>
       <Column field="nombre" header="Nombre" />
       <Column field="encargado" header="Encargado" />
       <Column field="telefonos" header="Teléfonos">
@@ -103,6 +106,7 @@ import { useRouter } from 'vue-router';
 import { getUbicaciones, addUbicacion, updateUbicacion, deleteUbicacion } from '@/services/ubicacionesService';
 import { getIMEIs } from '@/services/imeiService';
 import DataTable from 'primevue/datatable';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';

@@ -45,6 +45,9 @@
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
       currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} reportes"
     >
+      <template #loading>
+        <DataTableLoader text="Cargando reportes..." />
+      </template>
       <Column field="tipo_servicio" header="Tipo" />
       <Column field="nombre_cliente" header="Cliente" />
       <Column header="Orden">
@@ -313,6 +316,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import DataTable from 'primevue/datatable';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
