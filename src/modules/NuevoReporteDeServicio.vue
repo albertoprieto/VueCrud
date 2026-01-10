@@ -59,13 +59,21 @@
 
       <div style="margin-bottom:2rem;" >
         <h4 style="font-size:1.1em; font-weight:bold; margin-bottom:1em;">Asignación de IMEIs y SIM</h4>
-        <div style="margin-bottom:1em;">
-          <label style="display:flex;align-items:center;gap:0.5em;">
-            <input type="checkbox" v-model="noModificaStock" />
-            No modifica stock
-          </label>
-          <span style="color:#888; margin-left:2em; font-size:0.95em;">Si está marcado, los IMEI y SIM se capturan
-            manualmente y no modifican el stock.</span>
+        <div style="display:flex; gap:2rem; margin-bottom:1em; flex-wrap:wrap;">
+          <div>
+            <label style="display:flex;align-items:center;gap:0.5em;">
+              <input type="checkbox" v-model="noModificaImei" />
+              No modifica IMEI
+            </label>
+            <span style="color:#888; font-size:0.9em; display:block; margin-top:0.3em;">El IMEI se captura manualmente y no afecta el stock.</span>
+          </div>
+          <div>
+            <label style="display:flex;align-items:center;gap:0.5em;">
+              <input type="checkbox" v-model="noModificaSim" />
+              No modifica SIM
+            </label>
+            <span style="color:#888; font-size:0.9em; display:block; margin-top:0.3em;">El SIM se captura manualmente y no afecta el stock.</span>
+          </div>
         </div>
       </div>
 
@@ -76,7 +84,7 @@
           <div style="display:flex;gap:1em;margin-bottom:1em;">
             <div style="flex:1;display:flex;flex-direction:column;">
               <label>IMEI nuevo</label>
-              <Dropdown v-if="!noModificaStock && imeiOptions.length" v-model="imei"
+              <Dropdown v-if="!noModificaImei && imeiOptions.length" v-model="imei"
                 :options="imeiOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
                 placeholder="Selecciona IMEI nuevo" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
                 :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
@@ -84,7 +92,7 @@
             </div>
             <div style="flex:1;display:flex;flex-direction:column;">
               <label>IMEI a devolver</label>
-              <Dropdown v-if="!noModificaStock && imeiOptions.length" v-model="imeiDevolver" :options="imeiOptions"
+              <Dropdown v-if="!noModificaImei && imeiOptions.length" v-model="imeiDevolver" :options="imeiOptions"
                 optionLabel="label" optionValue="imei" placeholder="Selecciona IMEI a devolver" filter
                 :filterPlaceholder="'Buscar por últimos 6 dígitos'"
                 :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
@@ -97,7 +105,7 @@
           <div style="display:flex;gap:1em;margin-bottom:1em;">
             <div style="flex:1;display:flex;flex-direction:column;">
               <label>SIM nuevo</label>
-              <Dropdown v-if="!noModificaStock && simOptions.length" v-model="sim"
+              <Dropdown v-if="!noModificaSim && simOptions.length" v-model="sim"
                 :options="simOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
                 placeholder="Selecciona SIM nuevo" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
                 :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
@@ -113,7 +121,7 @@
           <div style="display:flex;gap:1em;margin-bottom:1em;">
             <div style="flex:1;display:flex;flex-direction:column;">
               <label>IMEI 1</label>
-              <Dropdown v-if="!noModificaStock && imeiOptions.length" v-model="imei"
+              <Dropdown v-if="!noModificaImei && imeiOptions.length" v-model="imei"
                 :options="imeiOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
                 placeholder="Selecciona IMEI" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
                 :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
@@ -121,7 +129,7 @@
             </div>
             <div style="flex:1;display:flex;flex-direction:column;">
               <label>SIM 1</label>
-              <Dropdown v-if="!noModificaStock && simOptions.length" v-model="sim"
+              <Dropdown v-if="!noModificaSim && simOptions.length" v-model="sim"
                 :options="simOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
                 placeholder="Selecciona SIM" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
                 :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
@@ -247,7 +255,8 @@ const sim = ref(null);
 const simOptions = ref([]);
 const imeiDevolver = ref('');
 const simDevolver = ref('');
-const noModificaStock = ref(false);
+const noModificaImei = ref(false);
+const noModificaSim = ref(false);
 const total = ref('');
 const monto_tecnico = ref('');
 const viaticos = ref('');
@@ -378,7 +387,8 @@ const limpiarFormulario = () => {
   sim.value = null;
   imeiDevolver.value = '';
   simDevolver.value = '';
-  noModificaStock.value = false;
+  noModificaImei.value = false;
+  noModificaSim.value = false;
   total.value = '';
   monto_tecnico.value = '';
   viaticos.value = '';
@@ -396,8 +406,8 @@ const limpiarFormulario = () => {
 const generarReporte = async () => {
   const clienteSeleccionado = clientes.value.find(c => c.id === cliente.value);
   const nombreCliente = clienteSeleccionado ? clienteSeleccionado.nombre : '';
-  // Determinar si no debe modificar stock
-  const noModificaInventario = noModificaStock.value === true || tiposSinStock.includes(tipo_servicio.value);
+  // Determinar si no debe modificar stock (por tipo de servicio o por checkbox)
+  const esTipoSinStock = tiposSinStock.includes(tipo_servicio.value);
   
   const payload = {
     tipo_servicio: tipo_servicio.value,
@@ -411,8 +421,10 @@ const generarReporte = async () => {
     ubicacion_id: ubicacion.value,
     imei: imei.value || '',
     sim_serie: sim.value || '',
-    // NUEVO: indicar al backend si NO debe modificar stock
-    no_modifica_stock: noModificaInventario,
+    // Flags separados para IMEI y SIM
+    // Si es tipo sin stock, ambos se marcan true; si no, respeta los checkboxes
+    no_modifica_imei: esTipoSinStock || noModificaImei.value,
+    no_modifica_sim: esTipoSinStock || noModificaSim.value,
     marca: marca.value,
     submarca: submarca.value,
     modelo: modelo.value,

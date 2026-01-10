@@ -1666,8 +1666,10 @@ class ReporteServicio(BaseModel):
     # NUEVO: soporte multi-instalación
     imeis_articulos: Optional[List[dict]] = None
     sim_series: Optional[List[str]] = None
-    # NUEVO: indica si el reporte NO debe modificar el stock de IMEIs
-    no_modifica_stock: bool = False
+    # NUEVO: indica si el reporte NO debe modificar el stock de IMEIs/SIMs (separados)
+    no_modifica_stock: bool = False  # mantener por compatibilidad
+    no_modifica_imei: bool = False
+    no_modifica_sim: bool = False
 
 @app.post("/reportes-servicio")
 def add_reporte_servicio(reporte: ReporteServicio):
@@ -1769,40 +1771,62 @@ def add_reporte_servicio(reporte: ReporteServicio):
     # NUEVO: marcar IMEIs y SIMs involucrados como "Vendido"
     nuevo_id = cursor.lastrowid
     imeis_a_vender = set()
+    sims_a_vender = set()
     
-    # Solo recolectar IMEIs para actualizar si NO está marcado no_modifica_stock
-    no_modifica_stock = getattr(reporte, 'no_modifica_stock', False)
+    # Obtener flags separados para IMEI y SIM
+    # Primero revisar si hay flag legacy no_modifica_stock (para compatibilidad)
+    no_modifica_stock_legacy = getattr(reporte, 'no_modifica_stock', False)
+    no_modifica_imei = getattr(reporte, 'no_modifica_imei', False) or no_modifica_stock_legacy
+    no_modifica_sim = getattr(reporte, 'no_modifica_sim', False) or no_modifica_stock_legacy
     
-    if not no_modifica_stock:
-        def _add(v):
-            vv = (v or '').strip()
-            if vv:
-                imeis_a_vender.add(vv)
-        try:
-            _add(reporte.imei)
-            _add(reporte.sim_serie)
+    def _add_imei(v):
+        vv = (v or '').strip()
+        if vv:
+            imeis_a_vender.add(vv)
+    
+    def _add_sim(v):
+        vv = (v or '').strip()
+        if vv:
+            sims_a_vender.add(vv)
+    
+    try:
+        # Solo recolectar IMEIs si no está marcado no_modifica_imei
+        if not no_modifica_imei:
+            _add_imei(reporte.imei)
             if getattr(reporte, 'imeis_articulos', None):
                 for li in (reporte.imeis_articulos or []):
                     try:
                         for im in (li.get('imeis') or []):
-                            _add(im)
+                            _add_imei(im)
+                    except Exception:
+                        continue
+        
+        # Solo recolectar SIMs si no está marcado no_modifica_sim
+        if not no_modifica_sim:
+            _add_sim(reporte.sim_serie)
+            if getattr(reporte, 'imeis_articulos', None):
+                for li in (reporte.imeis_articulos or []):
+                    try:
                         for s in (li.get('sims') or []):
-                            _add(s)
+                            _add_sim(s)
                     except Exception:
                         continue
             if getattr(reporte, 'sim_series', None):
                 for s in (reporte.sim_series or []):
-                    _add(s)
-        except Exception:
-            pass
+                    _add_sim(s)
+    except Exception:
+        pass
+    
+    # Combinar todos los items a actualizar
+    todos_a_vender = imeis_a_vender | sims_a_vender
 
     imeis_actualizados = 0
-    if imeis_a_vender:
+    if todos_a_vender:
         cur2 = db.cursor()
         try:
             cur2.executemany(
                 "UPDATE imeis SET status='Vendido' WHERE imei=%s",
-                [(i,) for i in imeis_a_vender]
+                [(i,) for i in todos_a_vender]
             )
             imeis_actualizados = cur2.rowcount or 0
         finally:
@@ -1811,7 +1835,7 @@ def add_reporte_servicio(reporte: ReporteServicio):
         try:
             cur3 = db.cursor(dictionary=True)
             usuario_evt = getattr(reporte, 'usuario', None) or 'sistema'
-            for imei_val in imeis_a_vender:
+            for imei_val in todos_a_vender:
                 try:
                     cur3.execute("SELECT articulo_id, articulo_nombre FROM imeis WHERE imei=%s", (imei_val,))
                     row = cur3.fetchone() or {}
