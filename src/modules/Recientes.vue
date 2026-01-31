@@ -217,7 +217,8 @@ const COLUMNAS_VISIBLES = [
   'Número de dispositivo',
   'Nombre del dispositivo',
   'Modelo de dispositivo',
-  'Número de tarjeta SIM'
+  'Número de tarjeta SIM',
+  'Hora de activación'
 ];
 
 // Columnas visibles (solo las definidas que existan en los datos)
