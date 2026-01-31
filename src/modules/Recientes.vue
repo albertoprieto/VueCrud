@@ -211,11 +211,21 @@ const totales = ref({ totalRegistros: 0, conReporte: 0, sinReporte: 0, sinIMEI: 
 const imeiColumn = ref(null);
 const activationColumn = ref(null);
 
-// Columnas visibles (excluye las internas que empiezan con _)
+// Columnas que se mostrarán en la tabla (solo estas, en este orden)
+const COLUMNAS_VISIBLES = [
+  'Cuenta',
+  'Número de dispositivo',
+  'Nombre del dispositivo',
+  'Modelo de dispositivo',
+  'Número de tarjeta SIM'
+];
+
+// Columnas visibles (solo las definidas que existan en los datos)
 const columnasVisibles = computed(() => {
   if (!dataEnriquecida.value.length) return [];
   const allCols = Object.keys(dataEnriquecida.value[0]);
-  return allCols.filter(col => !col.startsWith('_'));
+  // Filtrar solo las columnas definidas que existan en los datos
+  return COLUMNAS_VISIBLES.filter(col => allCols.includes(col));
 });
 
 // Métodos
