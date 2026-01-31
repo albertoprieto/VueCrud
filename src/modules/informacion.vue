@@ -32,6 +32,7 @@ import { computed } from 'vue';
 const router = useRouter();
 const loginStore = useLoginStore();
 const user = computed(() => loginStore.user || {});
+const esAdmin = computed(() => (user.value.perfil || '').toLowerCase() === 'admin');
 
 function goTo(route) {
   //
@@ -96,7 +97,8 @@ const groupedItems = computed(() => {
       title: 'Técnicos',
       items: [
         { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
-        { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' }
+        { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' },
+        ...(esAdmin.value ? [{ label: 'Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock', desc: 'Activaciones recientes desde CSV' }] : [])
       ]
     }
   ];
