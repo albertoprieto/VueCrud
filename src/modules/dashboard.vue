@@ -149,6 +149,7 @@ const loginStore = useLoginStore();
 const showSidebar = ref(false);
 const overlayRef = ref();
 const user = computed(() => loginStore.user || {});
+const esAdmin = computed(() => (user.value.perfil || '').toLowerCase() === 'admin');
 
 const isHomeRoute = computed(() => route.path === '/dashboard');
 
@@ -248,6 +249,7 @@ const items = computed(() => {
       items: [
         { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
+        ...(esAdmin.value ? [{ label: 'Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : [])
       ]
     },
     {
