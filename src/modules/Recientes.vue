@@ -1,6 +1,6 @@
 <template>
   <div class="recientes-container">
-    <h2 class="recientes-title">Activaciones Recientes</h2>
+    <h2 class="recientes-title">Dispositivos Recientes</h2>
     
     <!-- Zona de carga de archivo -->
     <div class="upload-section">
@@ -14,9 +14,8 @@
         />
         <span class="pi pi-cloud-upload upload-icon"></span>
         <p class="upload-text">
-          Arrastra un archivo Excel para agregar nuevas activaciones
+          Arrastra un archivo Excel para agregar nuevos dispositivos o haz clic para seleccionar uno
         </p>
-        <p class="upload-hint">Archivos .xlsx, .xls</p>
       </div>
       
       <div v-if="fileName" class="file-info">
@@ -24,18 +23,13 @@
         <span>{{ fileName }}</span>
         <Button icon="pi pi-times" class="p-button-text p-button-danger" @click="clearFile" />
         <Button 
-          label="Cargar activaciones" 
+          label="Cargar Registros" 
           icon="pi pi-upload" 
           class="p-button-success"
           :disabled="!selectedFile" 
           :loading="processing"
           @click="procesarYGuardar" 
         />
-      </div>
-
-      <div class="filtro-row">
-        <label for="dias">Mostrar últimos:</label>
-        <InputNumber id="dias" v-model="diasFiltro" :min="1" :max="365" suffix=" días" @input="recargarDatos" />
       </div>
     </div>
 
@@ -62,6 +56,20 @@
           <small>Sin reporte</small>
         </div>
       </div>
+      <div class="info-card-mini envio">
+        <span class="pi pi-truck"></span>
+        <div>
+          <strong>{{ totales.esEnvio }}</strong>
+          <small>Es envío</small>
+        </div>
+      </div>
+      <div class="info-card-mini no-requiere">
+        <span class="pi pi-minus-circle"></span>
+        <div>
+          <strong>{{ totales.noRequiere }}</strong>
+          <small>No requiere</small>
+        </div>
+      </div>
     </div>
 
     <!-- Error -->
@@ -84,10 +92,21 @@
     >
       <template #header>
         <div class="table-header">
-          <span>Activaciones - Ordenadas por fecha (más reciente primero)</span>
+          <div class="header-left">
+            <span class="pi pi-calendar"></span>
+            <span class="header-label">Últimos</span>
+            <InputNumber 
+              v-model="diasFiltro" 
+              :min="1" 
+              :max="365" 
+              suffix=" días" 
+              class="dias-input"
+              @input="recargarDatos" 
+            />
+          </div>
           <Button 
             icon="pi pi-file-excel" 
-            label="Exportar sin reporte (.xlsx)" 
+            label="Exportar sin reporte" 
             class="p-button-outlined p-button-sm p-button-success"
             @click="exportarSinReporte"
             :disabled="!dataEnriquecida.length"
@@ -261,7 +280,7 @@ const diasFiltro = ref(30);
 const processing = ref(false);
 const error = ref(null);
 const dataEnriquecida = ref([]);
-const totales = ref({ totalRegistros: 0, conReporte: 0, sinReporte: 0 });
+const totales = ref({ totalRegistros: 0, conReporte: 0, sinReporte: 0, esEnvio: 0, noRequiere: 0 });
 const imeiColumn = ref('Número de dispositivo');
 
 // Columnas que se mostrarán en la tabla (solo estas, en este orden)
@@ -423,10 +442,16 @@ const procesarYGuardar = async () => {
 // Actualizar totales
 const actualizarTotales = () => {
   const conReporte = dataEnriquecida.value.filter(d => d._tieneReporte).length;
+  const esEnvio = dataEnriquecida.value.filter(d => d._status === 'es_envio').length;
+  const noRequiere = dataEnriquecida.value.filter(d => d._status === 'no_requiere').length;
+  const sinReporte = dataEnriquecida.value.filter(d => !d._tieneReporte && d._status !== 'es_envio' && d._status !== 'no_requiere').length;
+  
   totales.value = {
     totalRegistros: dataEnriquecida.value.length,
     conReporte,
-    sinReporte: dataEnriquecida.value.length - conReporte
+    sinReporte,
+    esEnvio,
+    noRequiere
   };
 };
 
@@ -545,10 +570,15 @@ const marcarStatus = async (rowData, nuevoStatus) => {
     // Actualizar localmente
     rowData._status = nuevoStatus;
     
+    // Actualizar totales reactivamente
+    actualizarTotales();
+    
     toast.add({
       severity: 'success',
       summary: 'Estado actualizado',
-      detail: nuevoStatus === 'es_envio' ? 'Marcado como envío' : 'Marcado como no requiere reporte',
+      detail: nuevoStatus === 'es_envio' ? 'Marcado como envío' : 
+              nuevoStatus === 'no_requiere' ? 'Marcado como no requiere reporte' :
+              'Marcado como sin reporte',
       life: 3000
     });
   } catch (err) {
@@ -563,6 +593,7 @@ const marcarStatus = async (rowData, nuevoStatus) => {
 };
 
 const exportarSinReporte = () => {
+  // Filtrar registros que NO tienen reporte (incluye sin_reporte, es_envio, no_requiere)
   const sinReporte = dataEnriquecida.value.filter(row => !row._tieneReporte);
   
   if (!sinReporte.length) {
@@ -575,13 +606,21 @@ const exportarSinReporte = () => {
     return;
   }
 
-  // Preparar datos para Excel
-  const cols = columnasVisibles.value;
+  // Preparar datos para Excel - incluir columna Status
+  const cols = [...columnasVisibles.value, 'Status'];
+  
+  // Mapeo de status a texto legible
+  const statusLabels = {
+    'sin_reporte': 'Sin reporte',
+    'es_envio': 'Es envío',
+    'no_requiere': 'No requiere',
+    'pendiente': 'Sin reporte'
+  };
   
   // Crear datos con formato correcto
   const excelData = sinReporte.map(row => {
     const formattedRow = {};
-    cols.forEach(col => {
+    columnasVisibles.value.forEach(col => {
       let value = row[col];
       
       // Formatear números de dispositivo/IMEI como texto para evitar notación científica
@@ -615,6 +654,10 @@ const exportarSinReporte = () => {
         formattedRow[col] = value || '';
       }
     });
+    
+    // Agregar columna Status
+    formattedRow['Status'] = statusLabels[row._status] || 'Sin reporte';
+    
     return formattedRow;
   });
 
@@ -644,9 +687,17 @@ const exportarSinReporte = () => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Sin Reporte');
   
-  // Agregar hoja de resumen
+  // Agregar hoja de resumen con desglose por status
+  const cantSinReporte = sinReporte.filter(r => r._status === 'sin_reporte' || r._status === 'pendiente' || !r._status).length;
+  const cantEsEnvio = sinReporte.filter(r => r._status === 'es_envio').length;
+  const cantNoRequiere = sinReporte.filter(r => r._status === 'no_requiere').length;
+  
   const resumenData = [
     { Concepto: 'Total registros sin reporte', Valor: sinReporte.length },
+    { Concepto: '  - Sin reporte (pendientes)', Valor: cantSinReporte },
+    { Concepto: '  - Es envío', Valor: cantEsEnvio },
+    { Concepto: '  - No requiere reporte', Valor: cantNoRequiere },
+    { Concepto: '', Valor: '' },
     { Concepto: 'Fecha de exportación', Valor: new Date().toLocaleString('es-MX') },
     { Concepto: 'Filtro aplicado', Valor: `Últimos ${diasFiltro.value} días` }
   ];
@@ -800,23 +851,27 @@ const exportarSinReporte = () => {
 }
 
 .info-card-mini.warning {
-  border-color: #ff9800;
+  border-color: #f44336;
 }
 
 .info-card-mini.warning .pi {
+  color: #f44336;
+}
+
+.info-card-mini.envio {
+  border-color: #2196f3;
+}
+
+.info-card-mini.envio .pi {
+  color: #2196f3;
+}
+
+.info-card-mini.no-requiere {
+  border-color: #ff9800;
+}
+
+.info-card-mini.no-requiere .pi {
   color: #ff9800;
-}
-
-.filtro-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-.filtro-row label {
-  font-weight: 500;
-  color: var(--color-text);
 }
 
 .recientes-table {
@@ -831,6 +886,32 @@ const exportarSinReporte = () => {
   align-items: center;
   flex-wrap: wrap;
   gap: 1rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header-left .pi-calendar {
+  font-size: 1.1rem;
+  color: var(--primary-color, #3b82f6);
+}
+
+.header-label {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.dias-input {
+  width: 120px;
+}
+
+.dias-input :deep(.p-inputnumber-input) {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  text-align: center;
 }
 
 .table-footer {
@@ -945,9 +1026,19 @@ const exportarSinReporte = () => {
     padding: 1rem;
   }
 
-  .filtro-row {
+  .table-header {
     flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
+  }
+
+  .header-left {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .dias-input {
+    flex: 1;
+    max-width: 140px;
   }
 
   .resultado-info {
