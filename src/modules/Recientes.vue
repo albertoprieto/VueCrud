@@ -2,8 +2,27 @@
   <div class="recientes-container">
     <h2 class="recientes-title">Dispositivos Recientes</h2>
     
-    <!-- Zona de carga de archivo -->
+    <!-- Zona de carga de archivo con selector de formato integrado -->
     <div class="upload-section">
+      <!-- Tabs de plataforma -->
+      <div class="plataforma-tabs">
+        <button 
+          :class="['plataforma-tab', { 'tab-activo': formatoSeleccionado === 'iop' }]"
+          @click="formatoSeleccionado = 'iop'"
+        >
+          <span class="pi pi-server"></span>
+          <span>IOP</span>
+        </button>
+        <button 
+          :class="['plataforma-tab', { 'tab-activo': formatoSeleccionado === 'tracksolid' }]"
+          @click="formatoSeleccionado = 'tracksolid'"
+        >
+          <span class="pi pi-map-marker"></span>
+          <span>Tracksolid</span>
+        </button>
+      </div>
+      
+      <!-- Zona de drop -->
       <div class="upload-box" @click="triggerFileInput" @dragover.prevent @drop.prevent="handleDrop">
         <input
           ref="fileInput"
@@ -14,60 +33,139 @@
         />
         <span class="pi pi-cloud-upload upload-icon"></span>
         <p class="upload-text">
-          Arrastra un archivo Excel para agregar nuevos dispositivos o haz clic para seleccionar uno
+          Arrastra tu archivo Excel de <strong>{{ formatoSeleccionado === 'iop' ? 'IOP' : 'Tracksolid' }}</strong>
         </p>
+        <p class="upload-hint">o haz clic para seleccionar</p>
       </div>
       
+      <!-- Archivo seleccionado -->
       <div v-if="fileName" class="file-info">
-        <span class="pi pi-file"></span>
-        <span>{{ fileName }}</span>
-        <Button icon="pi pi-times" class="p-button-text p-button-danger" @click="clearFile" />
-        <Button 
-          label="Cargar Registros" 
-          icon="pi pi-upload" 
-          class="p-button-success"
-          :disabled="!selectedFile" 
-          :loading="processing"
-          @click="procesarYGuardar" 
-        />
+        <div class="file-details">
+          <span class="pi pi-file-excel file-icon"></span>
+          <div class="file-name-wrapper">
+            <span class="file-name">{{ fileName }}</span>
+            <Tag :value="formatoSeleccionado === 'iop' ? 'IOP' : 'Tracksolid'" 
+                 :severity="formatoSeleccionado === 'iop' ? 'info' : 'success'" 
+                 class="file-tag" />
+          </div>
+        </div>
+        <div class="file-actions">
+          <Button icon="pi pi-times" class="p-button-text p-button-danger p-button-sm" @click="clearFile" title="Quitar archivo" />
+          <Button 
+            label="Cargar" 
+            icon="pi pi-upload"
+            class="p-button-success p-button-sm"
+            :disabled="!selectedFile" 
+            :loading="processing"
+            @click="procesarYGuardar" 
+          />
+        </div>
       </div>
     </div>
 
-    <!-- Información de procesamiento -->
-    <div v-if="dataEnriquecida.length" class="resultado-info">
-      <div class="info-card-mini">
-        <span class="pi pi-list"></span>
-        <div>
+    <!-- Información de procesamiento con gráfica -->
+    <div v-if="dataEnriquecida.length" class="stats-section">
+      <!-- Gráfica circular minimalista -->
+      <div class="stats-chart">
+        <svg viewBox="0 0 36 36" class="circular-chart">
+          <!-- Fondo gris -->
+          <circle class="circle-bg" cx="18" cy="18" r="15.9155" />
+          <!-- Con reporte (verde) -->
+          <circle 
+            class="circle-progress success" 
+            cx="18" cy="18" r="15.9155"
+            :stroke-dasharray="`${porcentajes.conReporte} 100`"
+            stroke-dashoffset="0"
+          />
+          <!-- Sin reporte (rojo) - continúa después del verde -->
+          <circle 
+            class="circle-progress danger" 
+            cx="18" cy="18" r="15.9155"
+            :stroke-dasharray="`${porcentajes.sinReporte} 100`"
+            :stroke-dashoffset="`${-porcentajes.conReporte}`"
+          />
+          <!-- Es envío (azul) -->
+          <circle 
+            class="circle-progress info" 
+            cx="18" cy="18" r="15.9155"
+            :stroke-dasharray="`${porcentajes.esEnvio} 100`"
+            :stroke-dashoffset="`${-(porcentajes.conReporte + porcentajes.sinReporte)}`"
+          />
+          <!-- No requiere (naranja) -->
+          <circle 
+            class="circle-progress warning" 
+            cx="18" cy="18" r="15.9155"
+            :stroke-dasharray="`${porcentajes.noRequiere} 100`"
+            :stroke-dashoffset="`${-(porcentajes.conReporte + porcentajes.sinReporte + porcentajes.esEnvio)}`"
+          />
+        </svg>
+        <div class="chart-center">
           <strong>{{ dataEnriquecida.length }}</strong>
-          <small>Total activaciones</small>
+          <small>Total</small>
         </div>
       </div>
-      <div class="info-card-mini success">
-        <span class="pi pi-check-circle"></span>
-        <div>
-          <strong>{{ totales.conReporte }}</strong>
-          <small>Con reporte</small>
+      
+      <!-- Cards con porcentajes -->
+      <div class="resultado-info">
+        <div class="info-card-mini success">
+          <div class="card-icon">
+            <span class="pi pi-check-circle"></span>
+          </div>
+          <div class="card-content">
+            <div class="card-numbers">
+              <strong>{{ totales.conReporte }}</strong>
+              <span class="percentage">{{ porcentajes.conReporte.toFixed(1) }}%</span>
+            </div>
+            <small>Con reporte</small>
+            <div class="mini-bar">
+              <div class="mini-bar-fill success" :style="{ width: porcentajes.conReporte + '%' }"></div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="info-card-mini warning">
-        <span class="pi pi-exclamation-triangle"></span>
-        <div>
-          <strong>{{ totales.sinReporte }}</strong>
-          <small>Sin reporte</small>
+        <div class="info-card-mini warning">
+          <div class="card-icon">
+            <span class="pi pi-exclamation-triangle"></span>
+          </div>
+          <div class="card-content">
+            <div class="card-numbers">
+              <strong>{{ totales.sinReporte }}</strong>
+              <span class="percentage">{{ porcentajes.sinReporte.toFixed(1) }}%</span>
+            </div>
+            <small>Sin reporte</small>
+            <div class="mini-bar">
+              <div class="mini-bar-fill danger" :style="{ width: porcentajes.sinReporte + '%' }"></div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="info-card-mini envio">
-        <span class="pi pi-truck"></span>
-        <div>
-          <strong>{{ totales.esEnvio }}</strong>
-          <small>Es envío</small>
+        <div class="info-card-mini envio">
+          <div class="card-icon">
+            <span class="pi pi-truck"></span>
+          </div>
+          <div class="card-content">
+            <div class="card-numbers">
+              <strong>{{ totales.esEnvio }}</strong>
+              <span class="percentage">{{ porcentajes.esEnvio.toFixed(1) }}%</span>
+            </div>
+            <small>Es envío</small>
+            <div class="mini-bar">
+              <div class="mini-bar-fill info" :style="{ width: porcentajes.esEnvio + '%' }"></div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="info-card-mini no-requiere">
-        <span class="pi pi-minus-circle"></span>
-        <div>
-          <strong>{{ totales.noRequiere }}</strong>
-          <small>No requiere</small>
+        <div class="info-card-mini no-requiere">
+          <div class="card-icon">
+            <span class="pi pi-minus-circle"></span>
+          </div>
+          <div class="card-content">
+            <div class="card-numbers">
+              <strong>{{ totales.noRequiere }}</strong>
+              <span class="percentage">{{ porcentajes.noRequiere.toFixed(1) }}%</span>
+            </div>
+            <small>No requiere</small>
+            <div class="mini-bar">
+              <div class="mini-bar-fill warning" :style="{ width: porcentajes.noRequiere + '%' }"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -77,17 +175,19 @@
       {{ error }}
     </Message>
 
-    <!-- Tabla de datos -->
+    <!-- Tabla de datos con paginación -->
     <DataTable
       v-if="dataEnriquecida.length"
       :value="dataEnriquecida"
-      :paginator="false"
+      :paginator="true"
+      :rows="50"
+      :rowsPerPageOptions="[25, 50, 100, 200]"
+      paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+      currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords}"
       responsiveLayout="scroll"
       class="recientes-table"
       :loading="processing"
       stripedRows
-      scrollable
-      scrollHeight="500px"
       :rowClass="rowClass"
     >
       <template #header>
@@ -213,14 +313,14 @@
     <!-- Estado vacío -->
     <div v-else-if="!processing && !dataEnriquecida.length" class="empty-state">
       <span class="pi pi-inbox empty-icon"></span>
-      <p>No hay activaciones en los últimos {{ diasFiltro }} días</p>
-      <p class="empty-hint">Carga un archivo Excel para agregar activaciones</p>
+      <p>No hay dispositivos activos en los últimos {{ diasFiltro }} días</p>
+      <p class="empty-hint">Carga un archivo Excel para agregar dispositivos</p>
     </div>
     
     <!-- Cargando inicial -->
     <div v-if="processing && !dataEnriquecida.length" class="loading-state">
       <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
-      <p>Cargando activaciones...</p>
+      <p>Cargando dispositivos activos...</p>
     </div>
   </div>
 </template>
@@ -282,16 +382,26 @@ const error = ref(null);
 const dataEnriquecida = ref([]);
 const totales = ref({ totalRegistros: 0, conReporte: 0, sinReporte: 0, esEnvio: 0, noRequiere: 0 });
 const imeiColumn = ref('Número de dispositivo');
+const formatoSeleccionado = ref('iop'); // 'iop' o 'tracksolid'
 
-// Columnas que se mostrarán en la tabla (solo estas, en este orden)
+// Columnas que se mostrarán en la tabla (homogéneas para ambos formatos)
 const COLUMNAS_VISIBLES = [
+  'Plataforma',
   'Cuenta',
   'Número de dispositivo',
   'Nombre del dispositivo',
   'Modelo de dispositivo',
-  'Número de tarjeta SIM',
   'Hora de activación'
 ];
+
+// Mapeo de columnas Tracksolid -> IOP
+const MAPEO_TRACKSOLID = {
+  'Account': 'Cuenta',
+  'IMEI': 'Número de dispositivo',
+  'Device Name': 'Nombre del dispositivo',
+  'Model': 'Modelo de dispositivo',
+  'Activated Date': 'Hora de activación'
+};
 
 // Columnas visibles (solo las definidas que existan en los datos)
 const columnasVisibles = computed(() => {
@@ -299,6 +409,17 @@ const columnasVisibles = computed(() => {
   const allCols = Object.keys(dataEnriquecida.value[0]);
   // Filtrar solo las columnas definidas que existan en los datos
   return COLUMNAS_VISIBLES.filter(col => allCols.includes(col));
+});
+
+// Porcentajes para las gráficas
+const porcentajes = computed(() => {
+  const total = dataEnriquecida.value.length || 1; // Evitar división por cero
+  return {
+    conReporte: (totales.value.conReporte / total) * 100,
+    sinReporte: (totales.value.sinReporte / total) * 100,
+    esEnvio: (totales.value.esEnvio / total) * 100,
+    noRequiere: (totales.value.noRequiere / total) * 100
+  };
 });
 
 // Métodos
@@ -333,6 +454,9 @@ const setFile = (file) => {
   selectedFile.value = file;
   fileName.value = file.name;
   error.value = null;
+  
+  // Procesar automáticamente al seleccionar
+  procesarYGuardar();
 };
 
 const clearFile = () => {
@@ -355,6 +479,7 @@ const cargarDatos = async () => {
     // Mapear datos de BD al formato de la tabla
     const datosMapeados = response.activaciones.map(a => ({
       _id: a.id,
+      'Plataforma': a.plataforma || 'IOP',
       'Cuenta': a.cuenta,
       'Número de dispositivo': a.numero_dispositivo,
       'Nombre del dispositivo': a.nombre_dispositivo,
@@ -388,6 +513,100 @@ const recargarDatos = () => {
   }, 500);
 };
 
+// Detectar formato del archivo basándose en las columnas
+const detectarFormatoArchivo = async (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+        
+        if (jsonData.length < 1) {
+          resolve({ formato: null, error: 'Archivo vacío' });
+          return;
+        }
+        
+        // Obtener headers de las primeras 3 filas (por si hay filas vacías o títulos)
+        const primeraFila = jsonData[0]?.map(h => String(h || '').toLowerCase().trim()) || [];
+        const segundaFila = jsonData[1]?.map(h => String(h || '').toLowerCase().trim()) || [];
+        const terceraFila = jsonData[2]?.map(h => String(h || '').toLowerCase().trim()) || [];
+        
+        // Combinar todas las filas para búsqueda flexible
+        const todasLasFilas = [...primeraFila, ...segundaFila, ...terceraFila].join(' ');
+        
+        console.log('Detección - Primera fila:', primeraFila.slice(0, 8));
+        console.log('Detección - Segunda fila:', segundaFila.slice(0, 8));
+        
+        // === DETECTAR TRACKSOLID ===
+        // Los headers de Tracksolid pueden ser: Account, IMEI, Device Name, Model, Activated Date, etc.
+        // Buscar en primera fila (donde normalmente están)
+        const tieneImei = primeraFila.some(h => h === 'imei' || h.includes('imei'));
+        const tieneAccount = primeraFila.some(h => h === 'account' || h.includes('account'));
+        const tieneDeviceName = primeraFila.some(h => h === 'device name' || h.includes('device name'));
+        const tieneActivatedDate = primeraFila.some(h => h.includes('activated') || h.includes('activation'));
+        const tieneModel = primeraFila.some(h => h === 'model' || h === 'modelo');
+        
+        // Tracksolid tiene IMEI como columna principal (no "Número de dispositivo")
+        const esTracksolid = tieneImei || (tieneAccount && tieneDeviceName) || (tieneAccount && tieneActivatedDate);
+        
+        // === DETECTAR IOP ===
+        // Los headers de IOP están típicamente en la fila 2 (índice 1)
+        // Columnas: Cuenta, Número de dispositivo, Nombre del dispositivo, Hora de activación del servicio
+        const tieneCuenta = segundaFila.some(h => h === 'cuenta');
+        const tieneNumeroDispositivo = segundaFila.some(h => 
+          h.includes('número de dispositivo') || h.includes('numero de dispositivo') || h === 'dispositivo'
+        );
+        const tieneHoraActivacion = segundaFila.some(h => 
+          h.includes('hora de activación') || h.includes('hora de activacion') || h.includes('activación del servicio')
+        );
+        
+        // IOP tiene "Cuenta" y "Número de dispositivo" (no IMEI)
+        const esIOP = (tieneCuenta && tieneNumeroDispositivo) || (tieneCuenta && tieneHoraActivacion);
+        
+        console.log('Detección resultado:', { 
+          esTracksolid, esIOP,
+          tracksolid: { tieneImei, tieneAccount, tieneDeviceName, tieneActivatedDate, tieneModel },
+          iop: { tieneCuenta, tieneNumeroDispositivo, tieneHoraActivacion }
+        });
+        
+        // Determinar formato final
+        if (esTracksolid && !esIOP) {
+          resolve({ formato: 'tracksolid' });
+        } else if (esIOP && !esTracksolid) {
+          resolve({ formato: 'iop' });
+        } else if (esTracksolid && esIOP) {
+          // Si ambos detectados, priorizar por la columna más distintiva
+          // IMEI es exclusivo de Tracksolid, "Cuenta" en segunda fila es de IOP
+          resolve({ formato: tieneImei ? 'tracksolid' : 'iop' });
+        } else {
+          // Intento de detección por contenido de texto general
+          if (todasLasFilas.includes('imei')) {
+            resolve({ formato: 'tracksolid' });
+          } else if (todasLasFilas.includes('cuenta') && todasLasFilas.includes('dispositivo')) {
+            resolve({ formato: 'iop' });
+          } else {
+            resolve({ formato: null, error: 'No se pudo determinar el formato del archivo. Verifica que sea un archivo válido de IOP o Tracksolid.' });
+          }
+        }
+        
+      } catch (err) {
+        console.error('Error detectando formato:', err);
+        resolve({ formato: null, error: 'Error al leer el archivo' });
+      }
+    };
+    
+    reader.onerror = () => {
+      resolve({ formato: null, error: 'Error al leer el archivo' });
+    };
+    
+    reader.readAsArrayBuffer(file);
+  });
+};
+
 // Procesar archivo y guardar automáticamente
 const procesarYGuardar = async () => {
   if (!selectedFile.value) return;
@@ -396,34 +615,105 @@ const procesarYGuardar = async () => {
   error.value = null;
 
   try {
-    // 1. Procesar el archivo Excel
-    const res = await processCSVFile(selectedFile.value, diasFiltro.value);
-
-    if (!res.success) {
-      error.value = res.error;
+    // Detectar el formato real del archivo
+    const deteccion = await detectarFormatoArchivo(selectedFile.value);
+    
+    if (deteccion.error) {
+      error.value = deteccion.error;
       toast.add({
         severity: 'error',
         summary: 'Error en archivo',
-        detail: res.error,
+        detail: deteccion.error,
         life: 5000
       });
+      processing.value = false;
       return;
     }
+    
+    // Validar que el formato del archivo coincida con el seleccionado
+    if (deteccion.formato !== formatoSeleccionado.value) {
+      const formatoDetectado = deteccion.formato === 'iop' ? 'IOP' : 'Tracksolid';
+      const formatoEsperado = formatoSeleccionado.value === 'iop' ? 'IOP' : 'Tracksolid';
+      
+      error.value = `El archivo es de ${formatoDetectado}, pero seleccionaste ${formatoEsperado}`;
+      toast.add({
+        severity: 'error',
+        summary: 'Formato incorrecto',
+        detail: `El archivo parece ser de ${formatoDetectado}. Cambia la selección o usa el archivo correcto.`,
+        life: 6000
+      });
+      processing.value = false;
+      return;
+    }
+    
+    // Determinar la plataforma basada en el formato seleccionado
+    const plataforma = formatoSeleccionado.value === 'iop' ? 'IOP' : 'Tracksolid';
+    
+    if (formatoSeleccionado.value === 'iop') {
+      // === FORMATO IOP: Procesar y guardar en BD ===
+      const res = await processCSVFile(selectedFile.value, diasFiltro.value);
 
-    // 2. Guardar automáticamente en la BD
-    const usuario = loginStore.user?.username || 'sistema';
-    const resultadoGuardado = await guardarActivacionesBulk(res.data, usuario);
-    
-    toast.add({
-      severity: 'success',
-      summary: 'Activaciones cargadas',
-      detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas`,
-      life: 4000
-    });
-    
-    // 3. Limpiar archivo y recargar datos de la BD
-    clearFile();
-    await cargarDatos();
+      if (!res.success) {
+        error.value = res.error;
+        toast.add({
+          severity: 'error',
+          summary: 'Error en archivo',
+          detail: res.error,
+          life: 5000
+        });
+        return;
+      }
+
+      // Guardar automáticamente en la BD
+      const usuario = loginStore.user?.username || 'sistema';
+      const resultadoGuardado = await guardarActivacionesBulk(res.data, usuario, plataforma);
+      
+      toast.add({
+        severity: 'success',
+        summary: 'Activaciones IOP cargadas',
+        detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas`,
+        life: 4000
+      });
+      
+      // Limpiar archivo y recargar datos de la BD
+      clearFile();
+      await cargarDatos();
+      
+    } else if (formatoSeleccionado.value === 'tracksolid') {
+      // === FORMATO TRACKSOLID ===
+      const res = await procesarArchivoTracksolid(selectedFile.value);
+
+      if (!res.success) {
+        error.value = res.error;
+        toast.add({
+          severity: 'error',
+          summary: 'Error en archivo Tracksolid',
+          detail: res.error,
+          life: 5000
+        });
+        return;
+      }
+
+      // Guardar en BD igual que IOP
+      const usuario = loginStore.user?.username || 'sistema';
+      console.log('Guardando Tracksolid con plataforma:', plataforma, '- Registros:', res.data.length);
+      const resultadoGuardado = await guardarActivacionesBulk(res.data, usuario, plataforma);
+      
+      const statsMsg = res.stats 
+        ? `(${res.stats.filtrados} filtrados de ${res.stats.totalLeidos})` 
+        : '';
+      
+      toast.add({
+        severity: 'success',
+        summary: 'Tracksolid cargado',
+        detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas ${statsMsg}`,
+        life: 5000
+      });
+      
+      // Limpiar archivo y recargar datos de la BD
+      clearFile();
+      await cargarDatos();
+    }
     
   } catch (err) {
     console.error('Error procesando archivo:', err);
@@ -437,6 +727,125 @@ const procesarYGuardar = async () => {
   } finally {
     processing.value = false;
   }
+};
+
+// Procesar archivo Tracksolid (modo prueba - solo lectura)
+const procesarArchivoTracksolid = async (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        
+        // Leer datos con header en fila 1
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+        
+        if (jsonData.length < 2) {
+          resolve({ success: false, error: 'El archivo está vacío o no tiene datos' });
+          return;
+        }
+        
+        // Primera fila como headers
+        const headers = jsonData[0].map(h => String(h || '').trim());
+        
+        // Encontrar índice de columna de fecha para filtrar
+        const dateColIndex = headers.findIndex(h => 
+          h.toLowerCase().includes('activated') || 
+          h.toLowerCase().includes('date') || 
+          h.toLowerCase().includes('fecha')
+        );
+        
+        // Calcular fecha límite según diasFiltro
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - diasFiltro.value);
+        fechaLimite.setHours(0, 0, 0, 0);
+        
+        // Convertir filas a objetos (filtrando por fecha)
+        const registros = [];
+        let totalLeidos = 0;
+        let filtrados = 0;
+        
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          if (!row || row.length === 0) continue;
+          
+          totalLeidos++;
+          
+          // Filtrar por fecha si encontramos columna de fecha
+          if (dateColIndex >= 0) {
+            const valorFecha = row[dateColIndex];
+            
+            // Filtrar registros sin fecha válida (Inactive, vacío, etc.)
+            if (!valorFecha || String(valorFecha).toLowerCase().includes('inactive') || String(valorFecha).trim() === '') {
+              filtrados++;
+              continue; // Saltar registros inválidos
+            }
+            
+            const fechaRegistro = parseTracksolidDate(valorFecha);
+            
+            // Si no se pudo parsear la fecha, filtrar
+            if (!fechaRegistro) {
+              filtrados++;
+              continue;
+            }
+            
+            // Filtrar por rango de días
+            if (fechaRegistro < fechaLimite) {
+              filtrados++;
+              continue; // Saltar registros fuera del rango
+            }
+          }
+          
+          // Crear registro mapeando columnas de Tracksolid a IOP
+          const registro = {};
+          headers.forEach((header, idx) => {
+            const nombreColumna = MAPEO_TRACKSOLID[header] || header;
+            registro[nombreColumna] = row[idx] !== undefined ? row[idx] : '';
+          });
+          
+          // Agregar campos internos para compatibilidad con la tabla
+          registro._tieneReporte = false;
+          registro._status = 'pendiente';
+          registro._formatoOrigen = 'tracksolid';
+          
+          registros.push(registro);
+        }
+        
+        console.log(`Tracksolid: ${totalLeidos} leídos, ${filtrados} filtrados por fecha, ${registros.length} mostrados`);
+        
+        resolve({ success: true, data: registros, stats: { totalLeidos, filtrados } });
+        
+      } catch (err) {
+        console.error('Error parseando Tracksolid:', err);
+        resolve({ success: false, error: 'Error al leer el archivo: ' + err.message });
+      }
+    };
+    
+    reader.onerror = () => {
+      resolve({ success: false, error: 'Error al leer el archivo' });
+    };
+    
+    reader.readAsArrayBuffer(file);
+  });
+};
+
+// Parsear fecha de Tracksolid (formato: 2025-11-11 o similar)
+const parseTracksolidDate = (value) => {
+  if (!value) return null;
+  
+  // Si es número de Excel (serial date)
+  if (typeof value === 'number') {
+    const excelEpoch = new Date(1899, 11, 30);
+    return new Date(excelEpoch.getTime() + value * 86400000);
+  }
+  
+  // Si es string, intentar parsear
+  const str = String(value).trim();
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? null : parsed;
 };
 
 // Actualizar totales
@@ -733,18 +1142,103 @@ const exportarSinReporte = () => {
   margin-bottom: 2rem;
 }
 
+/* Selector de formato */
+.formato-selector {
+  background: var(--color-card);
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1rem;
+  border: 2px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.formato-label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.formato-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.formato-btn {
+  transition: all 0.2s;
+}
+
+.formato-btn:not(.formato-activo) {
+  opacity: 0.6;
+  background: transparent !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.formato-activo {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--primary-color, #3b82f6);
+}
+
 .upload-section {
   background: var(--color-card);
   border-radius: 12px;
-  padding: 1.5rem;
+  padding: 0;
   margin-bottom: 1.5rem;
   border: 2px solid var(--color-border);
+  overflow: hidden;
+}
+
+/* Tabs de plataforma */
+.plataforma-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.plataforma-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border: none;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.plataforma-tab:first-child {
+  border-right: 1px solid var(--color-border);
+}
+
+.plataforma-tab:hover {
+  opacity: 0.8;
+  background: var(--color-card);
+}
+
+.plataforma-tab.tab-activo {
+  opacity: 1;
+  background: var(--color-card);
+  color: var(--primary-color, #3b82f6);
+  border-bottom: 3px solid var(--primary-color, #3b82f6);
+  margin-bottom: -2px;
+}
+
+.plataforma-tab .pi {
+  font-size: 1.1rem;
 }
 
 .upload-box {
+  margin: 1rem;
+  padding: 2rem;
   border: 2px dashed var(--color-border);
   border-radius: 8px;
-  padding: 2rem;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
@@ -752,37 +1246,80 @@ const exportarSinReporte = () => {
 }
 
 .upload-box:hover {
-  border-color: var(--color-title);
-  background: var(--color-card);
+  border-color: var(--primary-color, #3b82f6);
+  background: rgba(59, 130, 246, 0.05);
 }
 
 .upload-icon {
-  font-size: 3rem;
-  color: var(--color-title);
+  font-size: 2.5rem;
+  color: var(--primary-color, #3b82f6);
   display: block;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+  opacity: 0.8;
 }
 
 .upload-text {
-  font-size: 1.1rem;
+  font-size: 1rem;
   color: var(--color-text);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .upload-hint {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--color-text);
-  opacity: 0.7;
+  opacity: 0.5;
 }
 
 .file-info {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 1rem 1rem 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  border-radius: 8px;
+}
+
+.file-details {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-icon {
+  font-size: 1.5rem;
+  color: #4caf50;
+}
+
+.file-name-wrapper {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: var(--color-bg);
-  border-radius: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tag {
+  flex-shrink: 0;
+}
+
+.file-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .file-info .pi-file {
@@ -802,51 +1339,178 @@ const exportarSinReporte = () => {
   color: var(--color-text);
 }
 
+/* Stats Section con gráfica */
+.stats-section {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  align-items: flex-start;
+}
+
+.stats-chart {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+
+.circular-chart {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.circle-bg {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 2.5;
+}
+
+.circle-progress {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s ease;
+}
+
+.circle-progress.success { stroke: #4caf50; }
+.circle-progress.danger { stroke: #f44336; }
+.circle-progress.info { stroke: #2196f3; }
+.circle-progress.warning { stroke: #ff9800; }
+
+.chart-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.chart-center strong {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-title);
+  line-height: 1;
+}
+
+.chart-center small {
+  font-size: 0.7rem;
+  color: var(--color-text);
+  opacity: 0.7;
+}
+
 .resultado-info {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
-  margin-bottom: 1.5rem;
+  flex: 1;
 }
 
 .info-card-mini {
   background: var(--color-card);
   border-radius: 10px;
-  padding: 1rem 1.5rem;
+  padding: 0.875rem 1rem;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
   border: 2px solid var(--color-border);
   flex: 1;
-  min-width: 140px;
+  min-width: 150px;
+  max-width: 200px;
+}
+
+.card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.info-card-mini.success .card-icon {
+  background: rgba(76, 175, 80, 0.15);
+}
+
+.info-card-mini.warning .card-icon {
+  background: rgba(244, 67, 54, 0.15);
+}
+
+.info-card-mini.envio .card-icon {
+  background: rgba(33, 150, 243, 0.15);
+}
+
+.info-card-mini.no-requiere .card-icon {
+  background: rgba(255, 152, 0, 0.15);
 }
 
 .info-card-mini .pi {
-  font-size: 1.5rem;
+  font-size: 1.1rem;
   color: var(--color-title);
 }
 
-.info-card-mini div {
+.card-content {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
-.info-card-mini strong {
-  font-size: 1.4rem;
+.card-numbers {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.card-numbers strong {
+  font-size: 1.3rem;
   color: var(--color-title);
+  line-height: 1;
+}
+
+.card-numbers .percentage {
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.7;
 }
 
 .info-card-mini small {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--color-text);
-  opacity: 0.8;
+  opacity: 0.7;
+  margin-top: 0.125rem;
 }
+
+.mini-bar {
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 2px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.mini-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.mini-bar-fill.success { background: #4caf50; }
+.mini-bar-fill.danger { background: #f44336; }
+.mini-bar-fill.info { background: #2196f3; }
+.mini-bar-fill.warning { background: #ff9800; }
 
 .info-card-mini.success {
   border-color: #4caf50;
 }
 
 .info-card-mini.success .pi {
+  color: #4caf50;
+}
+
+.info-card-mini.success .percentage {
   color: #4caf50;
 }
 
@@ -858,6 +1522,10 @@ const exportarSinReporte = () => {
   color: #f44336;
 }
 
+.info-card-mini.warning .percentage {
+  color: #f44336;
+}
+
 .info-card-mini.envio {
   border-color: #2196f3;
 }
@@ -866,11 +1534,19 @@ const exportarSinReporte = () => {
   color: #2196f3;
 }
 
+.info-card-mini.envio .percentage {
+  color: #2196f3;
+}
+
 .info-card-mini.no-requiere {
   border-color: #ff9800;
 }
 
 .info-card-mini.no-requiere .pi {
+  color: #ff9800;
+}
+
+.info-card-mini.no-requiere .percentage {
   color: #ff9800;
 }
 
@@ -1026,6 +1702,16 @@ const exportarSinReporte = () => {
     padding: 1rem;
   }
 
+  .stats-section {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .stats-chart {
+    width: 100px;
+    height: 100px;
+  }
+
   .table-header {
     flex-direction: column;
     align-items: flex-start;
@@ -1043,10 +1729,12 @@ const exportarSinReporte = () => {
 
   .resultado-info {
     flex-direction: column;
+    width: 100%;
   }
 
   .info-card-mini {
     min-width: 100%;
+    max-width: 100%;
   }
   
   .file-info {

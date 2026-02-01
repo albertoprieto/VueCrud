@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS activaciones_recientes (
     modelo_dispositivo VARCHAR(100) DEFAULT '',
     numero_tarjeta_sim VARCHAR(100) DEFAULT '',
     hora_activacion DATETIME DEFAULT NULL,
+    plataforma VARCHAR(50),  -- 'IOP' o 'Tracksolid'
     
     -- Campos de control
     status ENUM('pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere') DEFAULT 'pendiente',
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS activaciones_recientes (
     INDEX idx_status (status),
     INDEX idx_hora_activacion (hora_activacion),
     INDEX idx_numero_dispositivo (numero_dispositivo),
+    INDEX idx_plataforma (plataforma),
     
     -- Foreign key opcional al reporte de servicio
     CONSTRAINT fk_activacion_reporte 
@@ -59,6 +61,14 @@ BEGIN
     END IF;
 END//
 DELIMITER ;
+
+-- =====================================================
+-- ALTER TABLE: Agregar columna plataforma (ejecutar si la tabla ya existe)
+-- Los registros existentes quedarán como 'IOP' por defecto
+-- =====================================================
+-- ALTER TABLE activaciones_recientes 
+--     ADD COLUMN plataforma VARCHAR(50) AFTER hora_activacion,
+--     ADD INDEX idx_plataforma (plataforma);
 
 -- =====================================================
 -- Vista para consulta rápida con información del reporte
