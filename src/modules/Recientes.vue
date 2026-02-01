@@ -14,7 +14,7 @@
         />
         <span class="pi pi-cloud-upload upload-icon"></span>
         <p class="upload-text">
-          Arrastra un archivo Excel, o haz clic para seleccionar
+          Arrastra un archivo Excel para agregar nuevas activaciones
         </p>
         <p class="upload-hint">Archivos .xlsx, .xls</p>
       </div>
@@ -23,35 +23,29 @@
         <span class="pi pi-file"></span>
         <span>{{ fileName }}</span>
         <Button icon="pi pi-times" class="p-button-text p-button-danger" @click="clearFile" />
-      </div>
-
-      <div class="config-row">
-        <label for="dias">Filtrar últimos:</label>
-        <InputNumber id="dias" v-model="diasFiltro" :min="1" :max="365" suffix=" días" />
         <Button 
-          label="Procesar" 
-          icon="pi pi-cog" 
+          label="Cargar activaciones" 
+          icon="pi pi-upload" 
+          class="p-button-success"
           :disabled="!selectedFile" 
           :loading="processing"
-          @click="procesarArchivo" 
+          @click="procesarYGuardar" 
         />
+      </div>
+
+      <div class="filtro-row">
+        <label for="dias">Mostrar últimos:</label>
+        <InputNumber id="dias" v-model="diasFiltro" :min="1" :max="365" suffix=" días" @input="recargarDatos" />
       </div>
     </div>
 
     <!-- Información de procesamiento -->
-    <div v-if="resultado" class="resultado-info">
+    <div v-if="dataEnriquecida.length" class="resultado-info">
       <div class="info-card-mini">
-        <span class="pi pi-database"></span>
+        <span class="pi pi-list"></span>
         <div>
-          <strong>{{ resultado.totalRegistros }}</strong>
-          <small>Total en archivo</small>
-        </div>
-      </div>
-      <div class="info-card-mini">
-        <span class="pi pi-filter"></span>
-        <div>
-          <strong>{{ resultado.registrosFiltrados }}</strong>
-          <small>Últimos {{ diasFiltro }} días</small>
+          <strong>{{ dataEnriquecida.length }}</strong>
+          <small>Total activaciones</small>
         </div>
       </div>
       <div class="info-card-mini success">
@@ -118,9 +112,10 @@
       </Column>
 
       <!-- Columna de estado de reporte -->
-      <Column header="Reporte" :style="{ minWidth: '180px' }">
+      <Column header="Reporte" :style="{ minWidth: '220px' }">
         <template #body="slotProps">
           <div class="reporte-status">
+            <!-- Tiene reporte -->
             <Tag 
               v-if="slotProps.data._tieneReporte" 
               severity="success" 
@@ -128,16 +123,62 @@
             >
               Tiene Reporte
             </Tag>
+            
+            <!-- Cualquier otro estado -->
             <div v-else class="sin-reporte-actions">
-              <Tag severity="warning" icon="pi pi-exclamation-triangle">
+              <!-- Tag del estado actual -->
+              <Tag 
+                v-if="slotProps.data._status === 'es_envio'"
+                severity="warning" 
+                icon="pi pi-truck"
+              >
+                Es envío
+              </Tag>
+              <Tag 
+                v-else-if="slotProps.data._status === 'no_requiere'"
+                severity="warning" 
+                icon="pi pi-minus-circle"
+              >
+                No requiere
+              </Tag>
+              <Tag 
+                v-else
+                severity="danger" 
+                icon="pi pi-exclamation-triangle"
+              >
                 Sin Reporte
               </Tag>
-              <Button
-                icon="pi pi-plus"
-                label="Crear"
-                class="p-button-sm p-button-success mt-1"
-                @click="irACrearReporte(slotProps.data)"
-              />
+              
+              <!-- Botones siempre visibles -->
+              <div class="status-buttons">
+                <Button
+                  icon="pi pi-plus"
+                  title="Crear Reporte"
+                  class="p-button-sm p-button-success p-button-outlined"
+                  @click="irACrearReporte(slotProps.data)"
+                />
+                <Button
+                  v-if="slotProps.data._status !== 'es_envio'"
+                  icon="pi pi-truck"
+                  class="p-button-sm p-button-warning p-button-outlined"
+                  title="Marcar como envío"
+                  @click="marcarStatus(slotProps.data, 'es_envio')"
+                />
+                <Button
+                  v-if="slotProps.data._status !== 'no_requiere'"
+                  icon="pi pi-minus-circle"
+                  class="p-button-sm p-button-warning p-button-outlined"
+                  title="No requiere reporte"
+                  @click="marcarStatus(slotProps.data, 'no_requiere')"
+                />
+                <Button
+                  v-if="slotProps.data._status === 'es_envio' || slotProps.data._status === 'no_requiere'"
+                  icon="pi pi-exclamation-triangle"
+                  class="p-button-sm p-button-danger p-button-outlined"
+                  title="Marcar como sin reporte"
+                  @click="marcarStatus(slotProps.data, 'sin_reporte')"
+                />
+              </div>
             </div>
           </div>
         </template>
@@ -151,9 +192,16 @@
     </DataTable>
 
     <!-- Estado vacío -->
-    <div v-else-if="resultado && !processing" class="empty-state">
+    <div v-else-if="!processing && !dataEnriquecida.length" class="empty-state">
       <span class="pi pi-inbox empty-icon"></span>
-      <p>No se encontraron registros en los últimos {{ diasFiltro }} días</p>
+      <p>No hay activaciones en los últimos {{ diasFiltro }} días</p>
+      <p class="empty-hint">Carga un archivo Excel para agregar activaciones</p>
+    </div>
+    
+    <!-- Cargando inicial -->
+    <div v-if="processing && !dataEnriquecida.length" class="loading-state">
+      <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
+      <p>Cargando activaciones...</p>
     </div>
   </div>
 </template>
@@ -173,10 +221,13 @@ import * as XLSX from 'xlsx';
 
 import {
   processCSVFile,
-  enrichWithReportesInfo,
-  calculateTotals,
   parseDate
 } from '@/services/recientesService';
+
+import {
+  guardarActivacionesBulk,
+  getActivacionesRecientes
+} from '@/services/activacionesService';
 
 const router = useRouter();
 const toast = useToast();
@@ -185,8 +236,8 @@ const loginStore = useLoginStore();
 // Verificar si es admin
 const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
 
-// Redirigir si no es admin
-onMounted(() => {
+// Redirigir si no es admin, o cargar datos
+onMounted(async () => {
   if (!esAdmin.value) {
     toast.add({
       severity: 'error',
@@ -195,7 +246,11 @@ onMounted(() => {
       life: 4000
     });
     router.push('/');
+    return;
   }
+  
+  // Cargar datos automáticamente al entrar
+  await cargarDatos();
 });
 
 // Estado
@@ -205,11 +260,9 @@ const fileName = ref('');
 const diasFiltro = ref(30);
 const processing = ref(false);
 const error = ref(null);
-const resultado = ref(null);
 const dataEnriquecida = ref([]);
-const totales = ref({ totalRegistros: 0, conReporte: 0, sinReporte: 0, sinIMEI: 0 });
-const imeiColumn = ref(null);
-const activationColumn = ref(null);
+const totales = ref({ totalRegistros: 0, conReporte: 0, sinReporte: 0 });
+const imeiColumn = ref('Número de dispositivo');
 
 // Columnas que se mostrarán en la tabla (solo estas, en este orden)
 const COLUMNAS_VISIBLES = [
@@ -266,51 +319,115 @@ const setFile = (file) => {
 const clearFile = () => {
   selectedFile.value = null;
   fileName.value = '';
-  resultado.value = null;
-  dataEnriquecida.value = [];
   if (fileInput.value) fileInput.value.value = '';
 };
 
-const procesarArchivo = async () => {
+// Cargar datos desde la BD
+const cargarDatos = async () => {
+  processing.value = true;
+  error.value = null;
+  
+  try {
+    const response = await getActivacionesRecientes({
+      dias: diasFiltro.value,
+      limit: 2000
+    });
+    
+    // Mapear datos de BD al formato de la tabla
+    const datosMapeados = response.activaciones.map(a => ({
+      _id: a.id,
+      'Cuenta': a.cuenta,
+      'Número de dispositivo': a.numero_dispositivo,
+      'Nombre del dispositivo': a.nombre_dispositivo,
+      'Modelo de dispositivo': a.modelo_dispositivo,
+      'Número de tarjeta SIM': a.numero_tarjeta_sim,
+      'Hora de activación': a.hora_activacion,
+      _tieneReporte: a.status === 'con_reporte',
+      _status: a.status,
+      _reporteId: a.reporte_servicio_id,
+      _folioReporte: a.folio_reporte
+    }));
+    
+    dataEnriquecida.value = datosMapeados;
+    actualizarTotales();
+    
+  } catch (err) {
+    console.error('Error cargando datos:', err);
+    // Si falla, solo mostrar tabla vacía (no es error crítico)
+    dataEnriquecida.value = [];
+  } finally {
+    processing.value = false;
+  }
+};
+
+// Recargar cuando cambia el filtro de días
+let recargarTimeout = null;
+const recargarDatos = () => {
+  clearTimeout(recargarTimeout);
+  recargarTimeout = setTimeout(() => {
+    cargarDatos();
+  }, 500);
+};
+
+// Procesar archivo y guardar automáticamente
+const procesarYGuardar = async () => {
   if (!selectedFile.value) return;
 
   processing.value = true;
   error.value = null;
 
   try {
-    // Procesar el archivo (CSV o Excel)
+    // 1. Procesar el archivo Excel
     const res = await processCSVFile(selectedFile.value, diasFiltro.value);
 
     if (!res.success) {
       error.value = res.error;
-      resultado.value = null;
-      dataEnriquecida.value = [];
+      toast.add({
+        severity: 'error',
+        summary: 'Error en archivo',
+        detail: res.error,
+        life: 5000
+      });
       return;
     }
 
-    resultado.value = res;
-    imeiColumn.value = res.imeiColumn;
-    activationColumn.value = res.activationColumn;
-
-    // Enriquecer con información de reportes
-    const enriched = await enrichWithReportesInfo(res.data, res.imeiColumn);
-    dataEnriquecida.value = enriched;
-
-    // Calcular totales
-    totales.value = calculateTotals(enriched);
-
+    // 2. Guardar automáticamente en la BD
+    const usuario = loginStore.user?.username || 'sistema';
+    const resultadoGuardado = await guardarActivacionesBulk(res.data, usuario);
+    
     toast.add({
       severity: 'success',
-      summary: 'Archivo procesado',
-      detail: `${res.registrosFiltrados} registros encontrados`,
-      life: 3000
+      summary: 'Activaciones cargadas',
+      detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas`,
+      life: 4000
     });
+    
+    // 3. Limpiar archivo y recargar datos de la BD
+    clearFile();
+    await cargarDatos();
+    
   } catch (err) {
     console.error('Error procesando archivo:', err);
     error.value = err.message || 'Error al procesar el archivo';
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err.message || 'Error al procesar el archivo',
+      life: 5000
+    });
   } finally {
     processing.value = false;
   }
+};
+
+// Actualizar totales
+const actualizarTotales = () => {
+  const conReporte = dataEnriquecida.value.filter(d => d._tieneReporte).length;
+  totales.value = {
+    totalRegistros: dataEnriquecida.value.length,
+    conReporte,
+    sinReporte: dataEnriquecida.value.length - conReporte
+  };
 };
 
 const isDateColumn = (col) => {
@@ -333,19 +450,21 @@ const getColumnStyle = (col) => {
     return { minWidth: '150px' };
   }
   if (colLower.includes('cuenta')) {
-    return { minWidth: '120px' };
+    return { minWidth: '100px' };
   }
   if (colLower.includes('nombre')) {
-    return { minWidth: '180px' };
+    return { minWidth: '150px', maxWidth: '200px' };
   }
   return { minWidth: '100px' };
 };
 
 const getCellClass = (col) => {
+  const colLower = col.toLowerCase();
   return {
     'fecha-col': isDateColumn(col),
     'numeric-col': isNumericIdColumn(col),
-    'text-col': !isDateColumn(col) && !isNumericIdColumn(col)
+    'nombre-col': colLower.includes('nombre'),
+    'text-col': !isDateColumn(col) && !isNumericIdColumn(col) && !colLower.includes('nombre')
   };
 };
 
@@ -389,16 +508,58 @@ const formatCell = (value, col) => {
 
 const rowClass = (data) => {
   if (data._tieneReporte) return 'row-con-reporte';
+  if (data._status === 'es_envio') return 'row-es-envio';
+  if (data._status === 'no_requiere') return 'row-no-requiere';
   return 'row-sin-reporte';
 };
 
 const irACrearReporte = (rowData) => {
   // Navegar a crear reporte con el IMEI precargado si existe
-  const imei = imeiColumn.value ? rowData[imeiColumn.value] : null;
+  const imei = rowData['Número de dispositivo'] || '';
   router.push({
     name: 'nuevo-reporte-servicio',
     query: imei ? { imei } : {}
   });
+};
+
+// Marcar activación con un status especial (es_envio, no_requiere)
+const marcarStatus = async (rowData, nuevoStatus) => {
+  try {
+    const { actualizarStatusActivacion } = await import('@/services/activacionesService');
+    
+    // Buscar el ID de la activación (necesitamos agregarlo al mapeo)
+    const activacionId = rowData._id;
+    
+    if (!activacionId) {
+      // Si no tiene ID, necesitamos buscarlo por cuenta + numero_dispositivo
+      const cuenta = rowData['Cuenta'];
+      const numeroDispositivo = rowData['Número de dispositivo'];
+      
+      // Actualizar via endpoint especial
+      const { actualizarStatusPorDispositivo } = await import('@/services/activacionesService');
+      await actualizarStatusPorDispositivo(cuenta, numeroDispositivo, nuevoStatus);
+    } else {
+      await actualizarStatusActivacion(activacionId, nuevoStatus);
+    }
+    
+    // Actualizar localmente
+    rowData._status = nuevoStatus;
+    
+    toast.add({
+      severity: 'success',
+      summary: 'Estado actualizado',
+      detail: nuevoStatus === 'es_envio' ? 'Marcado como envío' : 'Marcado como no requiere reporte',
+      life: 3000
+    });
+  } catch (err) {
+    console.error('Error actualizando status:', err);
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'No se pudo actualizar el estado',
+      life: 4000
+    });
+  }
 };
 
 const exportarSinReporte = () => {
@@ -646,6 +807,18 @@ const exportarSinReporte = () => {
   color: #ff9800;
 }
 
+.filtro-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.filtro-row label {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
 .recientes-table {
   background: var(--color-card);
   border-radius: 10px;
@@ -678,6 +851,17 @@ const exportarSinReporte = () => {
   letter-spacing: 0.5px;
 }
 
+.nombre-col {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
 .text-col {
   word-break: break-word;
 }
@@ -692,15 +876,39 @@ const exportarSinReporte = () => {
 .sin-reporte-actions {
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
+}
+
+.status-buttons {
+  display: flex;
   gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.estado-especial {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 :deep(.row-con-reporte) {
-  background-color: rgba(76, 175, 80, 0.08) !important;
+  background-color: rgba(76, 175, 80, 0.25) !important; /* Verde - tiene reporte */
+  border-left: 4px solid #4caf50 !important;
 }
 
 :deep(.row-sin-reporte) {
-  background-color: rgba(255, 152, 0, 0.08) !important;
+  background-color: rgba(244, 67, 54, 0.25) !important; /* Rojo - sin reporte */
+  border-left: 4px solid #f44336 !important;
+}
+
+:deep(.row-es-envio) {
+  background-color: rgba(33, 150, 243, 0.28) !important; /* Azul - es envío */
+  border-left: 4px solid #2196f3 !important;
+}
+
+:deep(.row-no-requiere) {
+  background-color: rgba(255, 152, 0, 0.28) !important; /* Naranja - no requiere reporte */
+  border-left: 4px solid #ff9800 !important;
 }
 
 .empty-state {
@@ -716,12 +924,28 @@ const exportarSinReporte = () => {
   margin-bottom: 1rem;
 }
 
+.empty-hint {
+  font-size: 0.9rem;
+  opacity: 0.7;
+  margin-top: 0.5rem;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 3rem;
+  color: var(--color-text);
+}
+
+.loading-state p {
+  margin-top: 1rem;
+}
+
 @media (max-width: 768px) {
   .recientes-container {
     padding: 1rem;
   }
 
-  .config-row {
+  .filtro-row {
     flex-direction: column;
     align-items: stretch;
   }
@@ -732,6 +956,11 @@ const exportarSinReporte = () => {
 
   .info-card-mini {
     min-width: 100%;
+  }
+  
+  .file-info {
+    flex-direction: column;
+    gap: 0.5rem;
   }
 }
 </style>
