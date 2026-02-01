@@ -3010,6 +3010,7 @@ class ActivacionReciente(BaseModel):
     modelo_dispositivo: str = ""
     numero_tarjeta_sim: str = ""
     hora_activacion: Optional[str] = None
+    plataforma: str = ""
 
 class BulkActivacionesRequest(BaseModel):
     activaciones: List[ActivacionReciente]
@@ -3040,6 +3041,7 @@ def get_activaciones_recientes(
             ar.modelo_dispositivo,
             ar.numero_tarjeta_sim,
             ar.hora_activacion,
+            ar.plataforma,
             ar.status,
             ar.reporte_servicio_id,
             ar.fecha_carga,
@@ -3125,13 +3127,14 @@ def bulk_upsert_activaciones(data: BulkActivacionesRequest):
                 INSERT INTO activaciones_recientes (
                     cuenta, numero_dispositivo, nombre_dispositivo, 
                     modelo_dispositivo, numero_tarjeta_sim, hora_activacion,
-                    cargado_por, status
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'pendiente')
+                    plataforma, cargado_por, status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pendiente')
                 ON DUPLICATE KEY UPDATE
                     nombre_dispositivo = VALUES(nombre_dispositivo),
                     modelo_dispositivo = VALUES(modelo_dispositivo),
                     numero_tarjeta_sim = VALUES(numero_tarjeta_sim),
                     hora_activacion = VALUES(hora_activacion),
+                    plataforma = VALUES(plataforma),
                     fecha_actualizacion = CURRENT_TIMESTAMP
             """, (
                 activacion.cuenta,
@@ -3140,6 +3143,7 @@ def bulk_upsert_activaciones(data: BulkActivacionesRequest):
                 activacion.modelo_dispositivo,
                 activacion.numero_tarjeta_sim,
                 hora_activacion,
+                activacion.plataforma,
                 data.cargado_por
             ))
             

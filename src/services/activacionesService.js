@@ -4,7 +4,7 @@
 // =====================================================
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL;
 
 /**
  * Obtiene las activaciones recientes desde la base de datos
@@ -36,10 +36,13 @@ export async function getActivacionesRecientes(filtros = {}) {
  * Guarda múltiples activaciones en la base de datos (UPSERT)
  * @param {Array} activaciones - Array de activaciones a guardar
  * @param {string} cargadoPor - Usuario que carga los datos
+ * @param {string} plataforma - Plataforma de origen: 'IOP' o 'Tracksolid'
  * @returns {Promise<{insertados: number, actualizados: number, errores: Array}>}
  */
-export async function guardarActivacionesBulk(activaciones, cargadoPor = "sistema") {
+export async function guardarActivacionesBulk(activaciones, cargadoPor = "sistema", plataforma = "IOP") {
   try {
+    console.log('guardarActivacionesBulk - Plataforma recibida:', plataforma, '- Total registros:', activaciones.length);
+    
     // Mapear los datos del Excel al formato esperado por la API
     const activacionesMapeadas = activaciones.map(a => ({
       cuenta: String(a["Cuenta"] || a.cuenta || ""),
@@ -47,8 +50,12 @@ export async function guardarActivacionesBulk(activaciones, cargadoPor = "sistem
       nombre_dispositivo: String(a["Nombre del dispositivo"] || a.nombre_dispositivo || ""),
       modelo_dispositivo: String(a["Modelo de dispositivo"] || a.modelo_dispositivo || ""),
       numero_tarjeta_sim: String(a["Número de tarjeta SIM"] || a.numero_tarjeta_sim || ""),
-      hora_activacion: a["Hora de activación del servicio"] || a["Hora de activación"] || a.hora_activacion || null
+      hora_activacion: a["Hora de activación del servicio"] || a["Hora de activación"] || a.hora_activacion || null,
+      plataforma: plataforma
     }));
+    
+    // Debug: ver primer registro mapeado
+    console.log('Primer registro a enviar:', JSON.stringify(activacionesMapeadas[0]));
     
     const response = await axios.post(`${API_URL}/activaciones-recientes/bulk`, {
       activaciones: activacionesMapeadas,
