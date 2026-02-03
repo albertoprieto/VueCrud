@@ -283,10 +283,16 @@ const tiposServicio = [
   'Búsqueda',
   'Cambio de Equipo',
   'Cambio de Chip',
-  'Vuelta en falso'
+  'Vuelta en falso',
+  'Migracion 1 Año',
+  'Migracion 10 año',
+  'Renovacion 1año',
+  'Renovacion 10 años',
+  'Renovacion Sim Telcel',
+  'Renovacion Sim Español'
 ];
 // Tipos de servicio que NO modifican inventario
-const tiposSinStock = ['Revisión', 'Desinstalación', 'Búsqueda', 'Vuelta en falso'];
+const tiposSinStock = ['Revisión', 'Desinstalación', 'Búsqueda', 'Vuelta en falso','Migracion 1 Año','Migracion 10 año','Renovacion 1año','Renovacion 10 años','Renovacion Sim Telcel','Renovacion Sim Español'];
 const metodo_pago = ref('');
 const metodoPagoOptions = [
   { label: 'Pago en efectivo con el técnico', value: 'efectivo_tecnico' },
