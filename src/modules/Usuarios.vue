@@ -8,7 +8,7 @@
       <template #loading>
         <DataTableLoader text="Cargando usuarios..." />
       </template>
-      <Column field="id" header="ID" />
+      <Column field="consecutivo" header="N" />
       <Column field="username" header="Usuario" />
       <Column field="perfil" header="Perfil" />
       <Column header="Acciones">
@@ -17,6 +17,12 @@
           <Button icon="pi pi-trash" class="p-button-text p-button-danger" @click="eliminarTecnico(slotProps.data.id)" />
         </template>
       </Column>
+      <Column v-if="esElpepe" field="ultima_sesion" header="Fecha">
+        <template #body="slotProps">
+          {{ formatearFecha(slotProps.data.ultima_sesion) }}
+        </template>
+      </Column>
+
     </DataTable>
     <Dialog v-model:visible="showModal" :header="editando ? 'Editar Técnico' : 'Nuevo Técnico'" :modal="true">
       <div class="form-group">
@@ -40,7 +46,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import DataTable from 'primevue/datatable';
 import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
@@ -50,8 +56,11 @@ import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
 import { useToast } from 'primevue/usetoast';
 import { getUsuarios, addUsuario, updateUsuario, deleteUsuario } from '@/services/usuariosService';
+import { useLoginStore } from '@/stores/loginStore';
 
 const toast = useToast();
+const loginStore = useLoginStore();
+const esElpepe = computed(() => loginStore.user?.username === 'elpepe');
 
 const tecnicos = ref([]);
 const loading = ref(true);
@@ -59,10 +68,23 @@ const showModal = ref(false);
 const editando = ref(false);
 const form = ref({ id: null, username: '', password: '', perfil: '' });
 
+const formatearFecha = (fecha) => {
+  if (!fecha) return '-';
+  // Agregar 'Z' para indicar que la fecha viene en UTC
+  const fechaUTC = fecha.endsWith('Z') ? fecha : fecha + 'Z';
+  const d = new Date(fechaUTC);
+  return d.toLocaleString('es-MX', { 
+    dateStyle: 'short', 
+    timeStyle: 'short' 
+  });
+};
+
 const cargarTecnicos = async () => {
   loading.value = true;
   tecnicos.value = await getUsuarios();
   loading.value = false;
+  console.log(loginStore.user);
+  
 };
 
 onMounted(cargarTecnicos);
@@ -112,7 +134,7 @@ async function eliminarTecnico(id) {
 
 <style scoped>
 .tecnicos-container {
-  max-width: 700px;
+  /* max-width: 700px; */
   margin: 2rem auto;
   background: var(--color-bg);
   border-radius: 12px;

@@ -22,7 +22,7 @@ import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import { defineEmits } from 'vue';
 import { useRouter } from 'vue-router';
-import { loginUsuario } from '@/services/userService';
+import { loginUsuario, registrarSesion } from '@/services/userService';
 import { useLoginStore } from '@/stores/loginStore';
 import Loader from '@/components/Loader.vue';
 
@@ -56,6 +56,10 @@ const handleSubmit = async () => {
       localStorage.setItem('access_token', result.access_token);
       loginStore.setUser(result.user);
       localStorage.setItem('currentUser', JSON.stringify(result.user));
+      
+      // Registrar sesión en la BD
+      await registrarSesion(result.user.id);
+      
       emit('session', true);
       router.push('/dashboard');
     } else {
