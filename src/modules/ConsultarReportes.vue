@@ -335,6 +335,7 @@ import { generarReporteServicioPDF } from '@/services/reporteServicioPdfService.
 import { useLoginStore } from '@/stores/loginStore';
 import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
 import { useRouter } from 'vue-router';
+import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
 import NuevoReporteDeServicio from './NuevoReporteDeServicio.vue';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
@@ -627,6 +628,16 @@ async function eliminarReporteConfirmado() {
       console.error('Error revertiendo IMEIs a Disponible:', e);
     }
     await cargarReportes();
+    // Marcar IMEIs como "sin reporte" en activaciones recientes
+    try {
+      const imeiPrincipal = detalleReporte?.imei;
+      if (imeiPrincipal && imeiPrincipal !== '-' && imeiPrincipal.toLowerCase() !== 'null') {
+        await marcarSinReportePorImei(imeiPrincipal);
+        console.log('IMEI marcado como sin reporte:', imeiPrincipal);
+      }
+    } catch (syncErr) {
+      console.log('Error marcando sin reporte:', syncErr.message);
+    }
     toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Reporte eliminado y IMEIs revertidos a Disponible.', life: 3000 });
     messageDialogText.value = 'Reporte eliminado correctamente.';
     showMessageDialog.value = true;

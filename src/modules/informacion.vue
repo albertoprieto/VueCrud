@@ -98,7 +98,8 @@ const groupedItems = computed(() => {
       items: [
         { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' },
-        ...(esAdmin.value ? [{ label: 'Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock', desc: 'Activaciones recientes desde CSV' }] : [])
+        ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock', desc: 'Instalaciones recientes desde CSV' }] : []),
+        // ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh', desc: 'Renovaciones recientes desde CSV' }] : [])
       ]
     }
   ];

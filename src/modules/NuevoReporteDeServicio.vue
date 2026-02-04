@@ -236,6 +236,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import axios from 'axios';
 import { getIMEIs } from '@/services/imeiService';
+import { verificarReportesActivaciones } from '@/services/activacionesService';
 
 const lugar_instalacion = ref('');
 const tipo_servicio = ref('');
@@ -459,6 +460,13 @@ const generarReporte = async () => {
     dialogMessage.value = res.data.message || 'Reporte creado exitosamente';
     showDialog.value = true;
     limpiarFormulario();
+    
+    // Sincronizar activaciones recientes para que el IMEI quede marcado como "con reporte"
+    try {
+      await verificarReportesActivaciones();
+    } catch (syncErr) {
+      console.log('Sincronización de activaciones:', syncErr.message);
+    }
   } catch (e) {
     dialogTitle.value = 'Error';
     dialogMessage.value = e?.response?.data ? JSON.stringify(e.response.data) : e.message;
