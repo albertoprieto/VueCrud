@@ -139,6 +139,7 @@ import { useLoginStore } from '@/stores/loginStore';
 import Loader from '@/components/Loader.vue';
 import { getCotizacionesPendientes } from '@/services/quotationService';
 import { getReportesNuevos } from '@/services/reportesService';
+import { registrarSesion } from '@/services/userService';
 
 const emit = defineEmits(['logout']);
 
@@ -163,6 +164,12 @@ const handleLogout = () => {
 const cotizacionesPendientes = ref(0);
 const reportesNuevos = ref(0);
 
+// Registrar sesión al cargar el dashboard
+onMounted(() => {
+  if (user.value?.id) {
+    registrarSesion(user.value.id);
+  }
+});
 
 // Opcional: recargar cuando cambie la ruta o cada cierto tiempo
 
@@ -250,7 +257,7 @@ const items = computed(() => {
         { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
         ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
-        // ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
+        ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
       ]
     },
     {

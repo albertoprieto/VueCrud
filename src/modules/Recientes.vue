@@ -1,6 +1,6 @@
 <template>
   <div class="recientes-container">
-    <h2 class="recientes-title">Dispositivos Recientes</h2>
+    <h2 class="recientes-title">Instalaciones Recientes</h2>
     
     <!-- Zona de carga de archivo con selector de formato integrado -->
     <div class="upload-section">

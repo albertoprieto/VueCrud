@@ -18,3 +18,7 @@ export const loginUsuario = async (username, password) => {
   });
   return response.data; // { access_token, token_type, user }
 };
+
+export const registrarSesion = async (userId) => {
+  await axios.post(`${API_URL}/usuarios/registrar-sesion`, { user_id: userId });
+};

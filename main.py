@@ -603,7 +603,15 @@ def get_usuarios():
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT id, username, perfil FROM usuarios")
+    cursor.execute("""
+        SELECT 
+            ROW_NUMBER() OVER (ORDER BY id) AS consecutivo,
+            id,
+            username, 
+            perfil,
+            ultima_sesion
+        FROM usuarios
+    """)
     usuarios = cursor.fetchall()
     cursor.close()
     db.close()
@@ -634,6 +642,24 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+@app.post("/usuarios/registrar-sesion")
+def registrar_sesion(data: dict = Body(...)):
+    user_id = data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id requerido")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s", (user_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"success": True}
+
 @app.post("/usuarios/login")
 def login_usuario(login: LoginRequest):
     from passlib.context import CryptContext
@@ -650,11 +676,20 @@ def login_usuario(login: LoginRequest):
         (login.username,)
     )
     user = cursor.fetchone()
-    cursor.close()
-    db.close()
+    
     if user and pwd_context.verify(login.password, user["password"]):
+        # Actualizar ultima_sesion
+        cursor.execute(
+            "UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s",
+            (user["id"],)
+        )
+        db.commit()
+        cursor.close()
+        db.close()
         return {"success": True, "user": {"id": user["id"], "username": user["username"], "perfil": user["perfil"]}}
     else:
+        cursor.close()
+        db.close()
         return {"success": False}
 
 # MODELO ARTICULO
@@ -2179,6 +2214,20 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    # Actualizar ultima_sesion
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s", (user["id"],))
+    db.commit()
+    cursor.close()
+    db.close()
+    
     access_token = create_access_token(data={"sub": user["username"], "user_id": user["id"]})
     # Obtener los datos del usuario para devolverlos junto con el token
     user_data = {
@@ -2228,10 +2277,16 @@ def get_usuario_actual(request: Request, token: str = Depends(oauth2_scheme)):
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (user_id,))
     user = cursor.fetchone()
+    if not user:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Actualizar ultima_sesion cada vez que se consulta el usuario
+    cursor.execute("UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s", (user_id,))
+    db.commit()
     cursor.close()
     db.close()
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return user
 
 # ---------------------
@@ -3258,6 +3313,48 @@ def verificar_reportes_activaciones():
         "conteos": conteos
     }
 
+@app.put("/activaciones-recientes/por-dispositivo/status")
+def update_activacion_status_por_dispositivo(data: dict = Body(...)):
+    """Actualiza el status de una activación por cuenta y número de dispositivo (IMEI)"""
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    
+    cuenta = data.get('cuenta', '').strip() if data.get('cuenta') else ''
+    numero_dispositivo = data.get('numero_dispositivo', '').strip() if data.get('numero_dispositivo') else ''
+    status = data.get('status')
+    
+    if not numero_dispositivo:
+        raise HTTPException(status_code=400, detail="Número de dispositivo requerido")
+    
+    if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere', 'desconocido', 'no_encontrado']:
+        raise HTTPException(status_code=400, detail="Status inválido")
+    
+    # Actualizar por IMEI (y opcionalmente cuenta)
+    if cuenta:
+        cursor.execute("""
+            UPDATE activaciones_recientes 
+            SET status = %s
+            WHERE cuenta = %s AND numero_dispositivo = %s
+        """, (status, cuenta, numero_dispositivo))
+    else:
+        cursor.execute("""
+            UPDATE activaciones_recientes 
+            SET status = %s
+            WHERE numero_dispositivo = %s
+        """, (status, numero_dispositivo))
+    
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    
+    return {"message": "Status actualizado", "actualizados": affected, "status": status}
+
 @app.put("/activaciones-recientes/{activacion_id}/status")
 def update_activacion_status(activacion_id: int, data: dict = Body(...)):
     db = mysql.connector.connect(
@@ -3271,7 +3368,7 @@ def update_activacion_status(activacion_id: int, data: dict = Body(...)):
     status = data.get('status')
     reporte_id = data.get('reporte_servicio_id')
     
-    if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere']:
+    if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere', 'desconocido', 'no_encontrado']:
         raise HTTPException(status_code=400, detail="Status inválido")
     
     cursor.execute("""
@@ -3289,6 +3386,45 @@ def update_activacion_status(activacion_id: int, data: dict = Body(...)):
         raise HTTPException(status_code=404, detail="Activación no encontrada")
     
     return {"message": "Status actualizado", "id": activacion_id, "status": status}
+
+@app.get("/activaciones-recientes/por-imei/{imei}")
+def buscar_activacion_por_imei(imei: str):
+    """Busca una activación por su IMEI (número de dispositivo)"""
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    
+    imei_limpio = imei.strip()
+    
+    if not imei_limpio:
+        raise HTTPException(status_code=400, detail="IMEI requerido")
+    
+    cursor.execute("""
+        SELECT ar.*, rs.folio as folio_reporte
+        FROM activaciones_recientes ar
+        LEFT JOIN reportes_servicio rs ON ar.reporte_servicio_id = rs.id
+        WHERE ar.numero_dispositivo = %s
+        ORDER BY ar.hora_activacion DESC
+        LIMIT 1
+    """, (imei_limpio,))
+    
+    activacion = cursor.fetchone()
+    cursor.close()
+    db.close()
+    
+    if not activacion:
+        raise HTTPException(status_code=404, detail="Activación no encontrada")
+    
+    # Convertir fechas a string
+    for key in ['hora_activacion', 'fecha_carga', 'fecha_actualizacion']:
+        if activacion.get(key) and hasattr(activacion[key], 'isoformat'):
+            activacion[key] = activacion[key].isoformat()
+    
+    return activacion
 
 @app.put("/activaciones-recientes/por-imei/sin-reporte")
 def marcar_sin_reporte_por_imei(data: dict = Body(...)):
@@ -3393,3 +3529,416 @@ def get_activaciones_stats():
     }
 
 
+# =====================================================
+# ENDPOINTS: RENOVACIONES RECIENTES
+# =====================================================
+
+@app.get("/renovaciones-recientes")
+def get_renovaciones_recientes(
+    status: str = Query(None, description="Filtrar por status"),
+    dias: int = Query(30, description="Días de antigüedad"),
+    cuenta: str = Query(None, description="Filtrar por cuenta"),
+    limit: int = Query(1000, description="Límite de registros")
+):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    
+    query = """
+        SELECT rr.*, rs.folio as folio_reporte
+        FROM renovaciones_recientes rr
+        LEFT JOIN reportes_servicio rs ON rr.reporte_servicio_id = rs.id
+        WHERE (rr.hora_activacion >= DATE_SUB(NOW(), INTERVAL %s DAY) 
+               OR rr.hora_activacion IS NULL 
+               OR rr.fecha_carga >= DATE_SUB(NOW(), INTERVAL %s DAY))
+    """
+    params = [dias, dias]
+    
+    if status:
+        query += " AND rr.status = %s"
+        params.append(status)
+    if cuenta:
+        query += " AND rr.cuenta LIKE %s"
+        params.append(f"%{cuenta}%")
+    
+    query += " ORDER BY rr.hora_activacion DESC LIMIT %s"
+    params.append(limit)
+    
+    cursor.execute(query, params)
+    renovaciones = cursor.fetchall()
+    
+    # Convertir fechas a string
+    for r in renovaciones:
+        for key in ['hora_activacion', 'fecha_carga', 'fecha_actualizacion', 'tiempo_vencimiento_plataforma', 'hora_vencimiento_usuario']:
+            if r.get(key) and hasattr(r[key], 'isoformat'):
+                r[key] = r[key].isoformat()
+    
+    cursor.close()
+    db.close()
+    
+    return {"total": len(renovaciones), "renovaciones": renovaciones}
+
+@app.post("/renovaciones-recientes/bulk")
+def guardar_renovaciones_bulk(data: dict = Body(...)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    
+    renovaciones = data.get('renovaciones', [])
+    cargado_por = data.get('cargado_por', 'sistema')
+    
+    insertados = 0
+    actualizados = 0
+    errores = []
+    
+    for r in renovaciones:
+        try:
+            cuenta = str(r.get('cuenta', 'SIN_CUENTA')).strip()
+            numero_dispositivo = str(r.get('numero_dispositivo', '')).strip()
+            
+            if not numero_dispositivo:
+                continue
+            
+            # Si no tiene cuenta, usar valor por defecto
+            if not cuenta:
+                cuenta = 'SIN_CUENTA'
+            
+            # Parsear fecha de activación
+            hora_activacion = None
+            hora_raw = r.get('hora_activacion')
+            if hora_raw and hora_raw != '-':
+                try:
+                    if isinstance(hora_raw, str):
+                        hora_activacion = hora_raw if hora_raw not in ['', '-', 'null', 'None'] else None
+                    elif isinstance(hora_raw, (int, float)):
+                        from datetime import datetime, timedelta
+                        excel_epoch = datetime(1899, 12, 30)
+                        hora_activacion = (excel_epoch + timedelta(days=hora_raw)).strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    hora_activacion = None
+            
+            # Parsear fecha de renovación (nuevo campo)
+            fecha_renovacion = None
+            fecha_ren_raw = r.get('fecha_renovacion')
+            if fecha_ren_raw and fecha_ren_raw != '-':
+                try:
+                    if isinstance(fecha_ren_raw, str):
+                        fecha_renovacion = fecha_ren_raw if fecha_ren_raw not in ['', '-', 'null', 'None'] else None
+                    elif isinstance(fecha_ren_raw, (int, float)):
+                        from datetime import datetime, timedelta
+                        excel_epoch = datetime(1899, 12, 30)
+                        fecha_renovacion = (excel_epoch + timedelta(days=fecha_ren_raw)).strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    fecha_renovacion = None
+            
+            # Parsear fechas de vencimiento
+            tiempo_venc_plat = None
+            tiempo_venc_raw = r.get('tiempo_vencimiento_plataforma')
+            if tiempo_venc_raw:
+                try:
+                    if isinstance(tiempo_venc_raw, str):
+                        tiempo_venc_plat = tiempo_venc_raw[:10]  # Solo fecha YYYY-MM-DD
+                    elif isinstance(tiempo_venc_raw, (int, float)):
+                        from datetime import datetime, timedelta
+                        excel_epoch = datetime(1899, 12, 30)
+                        tiempo_venc_plat = (excel_epoch + timedelta(days=tiempo_venc_raw)).strftime('%Y-%m-%d')
+                except:
+                    tiempo_venc_plat = None
+            
+            hora_venc_usuario = None
+            hora_venc_raw = r.get('hora_vencimiento_usuario')
+            if hora_venc_raw:
+                try:
+                    if isinstance(hora_venc_raw, str):
+                        hora_venc_usuario = hora_venc_raw[:10]
+                    elif isinstance(hora_venc_raw, (int, float)):
+                        from datetime import datetime, timedelta
+                        excel_epoch = datetime(1899, 12, 30)
+                        hora_venc_usuario = (excel_epoch + timedelta(days=hora_venc_raw)).strftime('%Y-%m-%d')
+                except:
+                    hora_venc_usuario = None
+            
+            # Obtener status del registro
+            status = str(r.get('status', 'pendiente')).strip()
+            if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere', 'desconocido', 'no_encontrado']:
+                status = 'pendiente'
+            
+            # UPSERT: Insertar o actualizar si existe
+            cursor.execute("""
+                INSERT INTO renovaciones_recientes 
+                (cuenta, numero_dispositivo, nombre_dispositivo, modelo_dispositivo, 
+                 numero_tarjeta_sim, hora_activacion, plataforma, periodo_de_renovacion,
+                 tiempo_vencimiento_plataforma, hora_vencimiento_usuario, cargado_por, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    nombre_dispositivo = VALUES(nombre_dispositivo),
+                    modelo_dispositivo = VALUES(modelo_dispositivo),
+                    numero_tarjeta_sim = VALUES(numero_tarjeta_sim),
+                    hora_activacion = COALESCE(VALUES(hora_activacion), hora_activacion),
+                    plataforma = VALUES(plataforma),
+                    periodo_de_renovacion = VALUES(periodo_de_renovacion),
+                    tiempo_vencimiento_plataforma = VALUES(tiempo_vencimiento_plataforma),
+                    hora_vencimiento_usuario = VALUES(hora_vencimiento_usuario),
+                    status = VALUES(status),
+                    fecha_actualizacion = NOW()
+            """, (
+                cuenta,
+                numero_dispositivo,
+                str(r.get('nombre_dispositivo', ''))[:255],
+                str(r.get('modelo_dispositivo', ''))[:100],
+                str(r.get('numero_tarjeta_sim', ''))[:100],
+                hora_activacion,
+                str(r.get('plataforma', 'IOP'))[:50],
+                str(r.get('periodo_de_renovacion', ''))[:50],
+                tiempo_venc_plat,
+                hora_venc_usuario,
+                cargado_por,
+                status
+            ))
+            
+            if cursor.rowcount == 1:
+                insertados += 1
+            else:
+                actualizados += 1
+                
+        except Exception as e:
+            errores.append({"registro": r, "error": str(e)})
+    
+    db.commit()
+    cursor.close()
+    db.close()
+    
+    return {
+        "insertados": insertados,
+        "actualizados": actualizados,
+        "errores": errores[:10]  # Limitar errores mostrados
+    }
+
+@app.get("/renovaciones-recientes/verificar-reportes")
+def verificar_reportes_renovaciones():
+    """Verifica y actualiza el status de reportes para renovaciones"""
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    
+    # Buscar renovaciones que tienen reporte por IMEI
+    cursor.execute("""
+        UPDATE renovaciones_recientes rr
+        INNER JOIN reportes_servicio rs ON rr.numero_dispositivo = rs.imei
+        SET rr.status = 'con_reporte', rr.reporte_servicio_id = rs.id
+        WHERE rr.status != 'con_reporte'
+    """)
+    actualizados_imei = cursor.rowcount
+    
+    # Marcar como sin_reporte los que no tienen reporte
+    cursor.execute("""
+        UPDATE renovaciones_recientes 
+        SET status = 'sin_reporte'
+        WHERE status = 'pendiente' 
+        AND reporte_servicio_id IS NULL
+        AND status NOT IN ('es_envio', 'no_requiere')
+    """)
+    sin_reporte = cursor.rowcount
+    
+    # Obtener conteos actualizados
+    cursor.execute("""
+        SELECT status, COUNT(*) as cantidad 
+        FROM renovaciones_recientes 
+        GROUP BY status
+    """)
+    conteos = {row['status']: row['cantidad'] for row in cursor.fetchall()}
+    
+    db.commit()
+    cursor.close()
+    db.close()
+    
+    return {
+        "actualizados_por_imei": actualizados_imei,
+        "marcados_sin_reporte": sin_reporte,
+        "conteos": conteos
+    }
+
+@app.put("/renovaciones-recientes/{renovacion_id}/status")
+def update_renovacion_status(renovacion_id: int, data: dict = Body(...)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    
+    status = data.get('status')
+    reporte_id = data.get('reporte_servicio_id')
+    
+    if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere', 'desconocido', 'no_encontrado']:
+        raise HTTPException(status_code=400, detail="Status inválido")
+    
+    cursor.execute("""
+        UPDATE renovaciones_recientes 
+        SET status = %s, reporte_servicio_id = %s
+        WHERE id = %s
+    """, (status, reporte_id, renovacion_id))
+    
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Renovación no encontrada")
+    
+    return {"message": "Status actualizado", "id": renovacion_id, "status": status}
+
+@app.put("/renovaciones-recientes/por-imei/sin-reporte")
+def marcar_renovacion_sin_reporte_por_imei(data: dict = Body(...)):
+    """Marca una renovación como sin_reporte usando solo el IMEI"""
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    
+    imei = data.get('imei', '').strip()
+    
+    if not imei:
+        raise HTTPException(status_code=400, detail="IMEI requerido")
+    
+    cursor.execute("""
+        UPDATE renovaciones_recientes 
+        SET status = 'sin_reporte', reporte_servicio_id = NULL
+        WHERE numero_dispositivo = %s
+    """, (imei,))
+    
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    
+    return {"message": "Renovación marcada como sin reporte", "imei": imei, "actualizados": affected}
+
+@app.put("/renovaciones-recientes/por-dispositivo/status")
+def update_renovacion_status_por_dispositivo(data: dict = Body(...)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    
+    cuenta = data.get('cuenta', '').strip()
+    numero_dispositivo = data.get('numero_dispositivo', '').strip()
+    status = data.get('status')
+    
+    if not numero_dispositivo:
+        raise HTTPException(status_code=400, detail="Número de dispositivo requerido")
+    
+    if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere', 'desconocido', 'no_encontrado']:
+        raise HTTPException(status_code=400, detail="Status inválido")
+    
+    if cuenta:
+        cursor.execute("""
+            UPDATE renovaciones_recientes 
+            SET status = %s
+            WHERE cuenta = %s AND numero_dispositivo = %s
+        """, (status, cuenta, numero_dispositivo))
+    else:
+        cursor.execute("""
+            UPDATE renovaciones_recientes 
+            SET status = %s
+            WHERE numero_dispositivo = %s
+        """, (status, numero_dispositivo))
+    
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    
+    return {"message": "Status actualizado", "actualizados": affected}
+
+@app.delete("/renovaciones-recientes")
+def delete_renovaciones_antiguas(dias_antiguedad: int = Query(90, description="Eliminar registros más antiguos que X días")):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    
+    cursor.execute("""
+        DELETE FROM renovaciones_recientes 
+        WHERE fecha_carga < DATE_SUB(NOW(), INTERVAL %s DAY)
+    """, (dias_antiguedad,))
+    
+    eliminados = cursor.rowcount
+    db.commit()
+    cursor.close()
+    db.close()
+    
+    return {"message": "Limpieza completada", "eliminados": eliminados}
+
+@app.get("/renovaciones-recientes/stats")
+def get_renovaciones_stats():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    
+    # Conteo por status
+    cursor.execute("""
+        SELECT status, COUNT(*) as cantidad 
+        FROM renovaciones_recientes 
+        GROUP BY status
+    """)
+    por_status = {row['status']: row['cantidad'] for row in cursor.fetchall()}
+    
+    # Conteo por periodo de renovación
+    cursor.execute("""
+        SELECT periodo_de_renovacion, COUNT(*) as cantidad 
+        FROM renovaciones_recientes 
+        GROUP BY periodo_de_renovacion 
+        ORDER BY cantidad DESC
+    """)
+    por_periodo = cursor.fetchall()
+    
+    # Renovaciones últimos 7 días
+    cursor.execute("""
+        SELECT DATE(hora_activacion) as fecha, COUNT(*) as cantidad 
+        FROM renovaciones_recientes 
+        WHERE hora_activacion >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        GROUP BY DATE(hora_activacion) 
+        ORDER BY fecha DESC
+    """)
+    ultimos_7_dias = cursor.fetchall()
+    for row in ultimos_7_dias:
+        if row.get('fecha'):
+            row['fecha'] = row['fecha'].isoformat() if hasattr(row['fecha'], 'isoformat') else str(row['fecha'])
+    
+    cursor.close()
+    db.close()
+    
+    return {
+        "por_status": por_status,
+        "por_periodo": por_periodo,
+        "ultimos_7_dias": ultimos_7_dias,
+        "total": sum(por_status.values()) if por_status else 0
+    }

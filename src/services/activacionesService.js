@@ -183,6 +183,24 @@ export async function marcarSinReportePorImei(imei) {
   }
 }
 
+/**
+ * Busca una activación por IMEI (número de dispositivo)
+ * @param {string} imei - IMEI del dispositivo
+ * @returns {Promise<Object|null>} - Activación encontrada o null
+ */
+export async function buscarActivacionPorImei(imei) {
+  try {
+    const response = await axios.get(`${API_URL}/activaciones-recientes/por-imei/${String(imei).trim()}`);
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return null; // No encontrada
+    }
+    console.error("Error al buscar activación por IMEI:", error);
+    throw error;
+  }
+}
+
 export default {
   getActivacionesRecientes,
   guardarActivacionesBulk,
@@ -190,6 +208,7 @@ export default {
   actualizarStatusActivacion,
   actualizarStatusPorDispositivo,
   marcarSinReportePorImei,
+  buscarActivacionPorImei,
   getEstadisticasActivaciones,
   limpiarActivacionesAntiguas,
   exportarActivacionesSinReporte
