@@ -3290,6 +3290,35 @@ def update_activacion_status(activacion_id: int, data: dict = Body(...)):
     
     return {"message": "Status actualizado", "id": activacion_id, "status": status}
 
+@app.put("/activaciones-recientes/por-imei/sin-reporte")
+def marcar_sin_reporte_por_imei(data: dict = Body(...)):
+    """Marca una activación como sin_reporte usando solo el IMEI"""
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    
+    imei = data.get('imei', '').strip()
+    
+    if not imei:
+        raise HTTPException(status_code=400, detail="IMEI requerido")
+    
+    cursor.execute("""
+        UPDATE activaciones_recientes 
+        SET status = 'sin_reporte', reporte_servicio_id = NULL
+        WHERE numero_dispositivo = %s
+    """, (imei,))
+    
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    
+    return {"message": "Activación marcada como sin reporte", "imei": imei, "actualizados": affected}
+
 @app.delete("/activaciones-recientes")
 def delete_activaciones_antiguas(dias_antiguedad: int = Query(90, description="Eliminar registros más antiguos que X días")):
     db = mysql.connector.connect(

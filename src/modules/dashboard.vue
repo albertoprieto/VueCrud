@@ -249,7 +249,8 @@ const items = computed(() => {
       items: [
         { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
-        ...(esAdmin.value ? [{ label: 'Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : [])
+        ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
+        // ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
       ]
     },
     {

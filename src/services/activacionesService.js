@@ -146,11 +146,50 @@ export function exportarActivacionesSinReporte(activaciones) {
   return activaciones.filter(a => a.status === 'sin_reporte' || !a.tieneReporte);
 }
 
+/**
+ * Actualiza el status de una activación por número de dispositivo (IMEI)
+ * @param {string} numeroDispositivo - IMEI del dispositivo
+ * @param {string} status - Nuevo status ('sin_reporte', 'con_reporte', 'es_envio', 'no_requiere')
+ * @returns {Promise<Object>}
+ */
+export async function actualizarStatusPorDispositivo(cuenta, numeroDispositivo, status) {
+  try {
+    const response = await axios.put(`${API_URL}/activaciones-recientes/por-dispositivo/status`, {
+      cuenta,
+      numero_dispositivo: numeroDispositivo,
+      status
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error al actualizar status por dispositivo:", error);
+    throw error;
+  }
+}
+
+/**
+ * Marca una activación como sin reporte usando solo el IMEI
+ * @param {string} imei - IMEI del dispositivo
+ * @returns {Promise<Object>}
+ */
+export async function marcarSinReportePorImei(imei) {
+  try {
+    const response = await axios.put(`${API_URL}/activaciones-recientes/por-imei/sin-reporte`, {
+      imei: String(imei).trim()
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error al marcar sin reporte por IMEI:", error);
+    throw error;
+  }
+}
+
 export default {
   getActivacionesRecientes,
   guardarActivacionesBulk,
   verificarReportesActivaciones,
   actualizarStatusActivacion,
+  actualizarStatusPorDispositivo,
+  marcarSinReportePorImei,
   getEstadisticasActivaciones,
   limpiarActivacionesAntiguas,
   exportarActivacionesSinReporte

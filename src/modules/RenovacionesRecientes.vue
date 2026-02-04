@@ -1,6 +1,6 @@
 <template>
   <div class="recientes-container">
-    <h2 class="recientes-title">Dispositivos Recientes</h2>
+    <h2 class="recientes-title">Renovaciones Recientes</h2>
     
     <!-- Zona de carga de archivo con selector de formato integrado -->
     <div class="upload-section">
@@ -322,14 +322,14 @@
     <!-- Estado vacío -->
     <div v-else-if="!processing && !dataEnriquecida.length" class="empty-state">
       <span class="pi pi-inbox empty-icon"></span>
-      <p>No hay dispositivos activos en los últimos {{ diasFiltro }} días</p>
-      <p class="empty-hint">Carga un archivo Excel para agregar dispositivos</p>
+      <p>No hay renovaciones en los últimos {{ diasFiltro }} días</p>
+      <p class="empty-hint">Carga un archivo Excel para agregar renovaciones</p>
     </div>
     
     <!-- Cargando inicial -->
     <div v-if="processing && !dataEnriquecida.length" class="loading-state">
       <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
-      <p>Cargando dispositivos activos...</p>
+      <p>Cargando renovaciones...</p>
     </div>
   </div>
 </template>
@@ -681,7 +681,7 @@ const procesarYGuardar = async () => {
       
       toast.add({
         severity: 'success',
-        summary: 'Activaciones IOP cargadas',
+        summary: 'Renovaciones IOP cargadas',
         detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas`,
         life: 4000
       });
@@ -1155,7 +1155,7 @@ const exportarSinReporte = () => {
   XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
   
   // Exportar
-  const fileName = `sin_reporte_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const fileName = `renovaciones_sin_reporte_${new Date().toISOString().slice(0, 10)}.xlsx`;
   XLSX.writeFile(wb, fileName);
 
   toast.add({
