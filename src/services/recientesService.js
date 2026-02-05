@@ -38,7 +38,7 @@ export const parseExcel = (file) => {
 
         // header=1 en Python significa: la fila índice 1 es el header
         // (saltamos la fila 0 que tiene un header extraño)
-        const headerIndex = 1;
+        const headerIndex = 0;
         
         const headers = allRows[headerIndex].map(h => String(h || '').trim()).filter(h => h);
         console.log('Headers encontrados (fila 1):', headers);
