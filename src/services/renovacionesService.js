@@ -45,7 +45,7 @@ export async function guardarRenovacionesBulk(renovaciones, cargadoPor = "sistem
     
     // Mapear los datos del Excel al formato esperado por la API
     const renovacionesMapeadas = renovaciones.map(r => ({
-      cuenta: String(r["Cuenta de operación"] || r["Cuenta"] || r.cuenta || "SIN_CUENTA"),
+      cuenta: String(r["Cuenta propia"] || r.cuenta || "SIN_CUENTA"),
       numero_dispositivo: String(r["Número de dispositivo"] || r.numero_dispositivo || ""),
       nombre_dispositivo: String(r["Nombre del dispositivo"] || r.nombre_dispositivo || ""),
       modelo_dispositivo: String(r["Modelo de dispositivo"] || r.modelo_dispositivo || ""),

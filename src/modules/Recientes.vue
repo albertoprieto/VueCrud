@@ -52,13 +52,18 @@
         <div class="file-actions">
           <Button icon="pi pi-times" class="p-button-text p-button-danger p-button-sm" @click="clearFile" title="Quitar archivo" />
           <Button 
-            label="Cargar" 
+            :label="cargaInicial ? 'Carga inicial (sin filtro)' : 'Cargar'" 
             icon="pi pi-upload"
             class="p-button-success p-button-sm"
             :disabled="!selectedFile" 
             :loading="processing"
             @click="procesarYGuardar" 
           />
+        </div>
+        <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          <input type="checkbox" id="cargaInicial" v-model="cargaInicial" style="margin-right: 0.5rem;" />
+          <label for="cargaInicial" style="font-size: 0.95em; cursor: pointer;">Carga inicial (sin filtro de fecha)</label>
+          <Tag v-if="cargaInicial" value="¡Cuidado!" severity="warning" style="margin-left: 0.5rem;" />
         </div>
       </div>
     </div>
@@ -335,6 +340,7 @@
 </template>
 
 <script setup>
+const cargaInicial = ref(true);
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
@@ -628,7 +634,6 @@ const procesarYGuardar = async () => {
   try {
     // Detectar el formato real del archivo
     const deteccion = await detectarFormatoArchivo(selectedFile.value);
-    
     if (deteccion.error) {
       error.value = deteccion.error;
       toast.add({
@@ -640,12 +645,10 @@ const procesarYGuardar = async () => {
       processing.value = false;
       return;
     }
-    
     // Validar que el formato del archivo coincida con el seleccionado
     if (deteccion.formato !== formatoSeleccionado.value) {
       const formatoDetectado = deteccion.formato === 'iop' ? 'IOP' : 'Tracksolid';
       const formatoEsperado = formatoSeleccionado.value === 'iop' ? 'IOP' : 'Tracksolid';
-      
       error.value = `El archivo es de ${formatoDetectado}, pero seleccionaste ${formatoEsperado}`;
       toast.add({
         severity: 'error',
@@ -656,14 +659,13 @@ const procesarYGuardar = async () => {
       processing.value = false;
       return;
     }
-    
     // Determinar la plataforma basada en el formato seleccionado
     const plataforma = formatoSeleccionado.value === 'iop' ? 'IOP' : 'Tracksolid';
-    
+    // === Lógica de carga inicial ===
+    const dias = cargaInicial.value ? -1 : diasFiltro.value;
     if (formatoSeleccionado.value === 'iop') {
-      // === FORMATO IOP: Procesar y guardar en BD ===
-      const res = await processCSVFile(selectedFile.value, diasFiltro.value);
-
+      // FORMATO IOP
+      const res = await processCSVFile(selectedFile.value, dias);
       if (!res.success) {
         error.value = res.error;
         toast.add({
@@ -674,26 +676,20 @@ const procesarYGuardar = async () => {
         });
         return;
       }
-
-      // Guardar automáticamente en la BD
       const usuario = loginStore.user?.username || 'sistema';
       const resultadoGuardado = await guardarActivacionesBulk(res.data, usuario, plataforma);
-      
       toast.add({
         severity: 'success',
-        summary: 'Activaciones IOP cargadas',
-        detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas`,
+        summary: cargaInicial.value ? 'Carga inicial IOP' : 'Activaciones IOP cargadas',
+        detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas${cargaInicial.value ? ' (sin filtro de fecha)' : ''}`,
         life: 4000
       });
-      
-      // Limpiar archivo y recargar datos de la BD
+      cargaInicial.value = false;
       clearFile();
       await cargarDatos();
-      
     } else if (formatoSeleccionado.value === 'tracksolid') {
-      // === FORMATO TRACKSOLID ===
-      const res = await procesarArchivoTracksolid(selectedFile.value);
-
+      // FORMATO TRACKSOLID
+      const res = await procesarArchivoTracksolid(selectedFile.value, dias);
       if (!res.success) {
         error.value = res.error;
         toast.add({
@@ -704,28 +700,21 @@ const procesarYGuardar = async () => {
         });
         return;
       }
-
-      // Guardar en BD igual que IOP
       const usuario = loginStore.user?.username || 'sistema';
-      console.log('Guardando Tracksolid con plataforma:', plataforma, '- Registros:', res.data.length);
       const resultadoGuardado = await guardarActivacionesBulk(res.data, usuario, plataforma);
-      
       const statsMsg = res.stats 
         ? `(${res.stats.filtrados} filtrados de ${res.stats.totalLeidos})` 
         : '';
-      
       toast.add({
         severity: 'success',
-        summary: 'Tracksolid cargado',
-        detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas ${statsMsg}`,
+        summary: cargaInicial.value ? 'Carga inicial Tracksolid' : 'Tracksolid cargado',
+        detail: `${resultadoGuardado.insertados} nuevas, ${resultadoGuardado.actualizados} actualizadas ${statsMsg}${cargaInicial.value ? ' (sin filtro de fecha)' : ''}`,
         life: 5000
       });
-      
-      // Limpiar archivo y recargar datos de la BD
+      cargaInicial.value = false;
       clearFile();
       await cargarDatos();
     }
-    
   } catch (err) {
     console.error('Error procesando archivo:', err);
     error.value = err.message || 'Error al procesar el archivo';
@@ -741,104 +730,75 @@ const procesarYGuardar = async () => {
 };
 
 // Procesar archivo Tracksolid (modo prueba - solo lectura)
-const procesarArchivoTracksolid = async (file) => {
+const procesarArchivoTracksolid = async (file, dias = diasFiltro.value) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        
-        // Leer datos con header en fila 1
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-        
         if (jsonData.length < 2) {
           resolve({ success: false, error: 'El archivo está vacío o no tiene datos' });
           return;
         }
-        
-        // Primera fila como headers
         const headers = jsonData[0].map(h => String(h || '').trim());
-        
-        // Encontrar índice de columna de fecha para filtrar
         const dateColIndex = headers.findIndex(h => 
           h.toLowerCase().includes('activated') || 
           h.toLowerCase().includes('date') || 
           h.toLowerCase().includes('fecha')
         );
-        
-        // Calcular fecha límite según diasFiltro
-        const fechaLimite = new Date();
-        fechaLimite.setDate(fechaLimite.getDate() - diasFiltro.value);
-        fechaLimite.setHours(0, 0, 0, 0);
-        
-        // Convertir filas a objetos (filtrando por fecha)
+        let fechaLimite = null;
+        if (dias !== -1) {
+          fechaLimite = new Date();
+          fechaLimite.setDate(fechaLimite.getDate() - dias);
+          fechaLimite.setHours(0, 0, 0, 0);
+        }
         const registros = [];
         let totalLeidos = 0;
         let filtrados = 0;
-        
         for (let i = 1; i < jsonData.length; i++) {
           const row = jsonData[i];
           if (!row || row.length === 0) continue;
-          
           totalLeidos++;
-          
-          // Filtrar por fecha si encontramos columna de fecha
-          if (dateColIndex >= 0) {
+          // Filtrar por fecha si encontramos columna de fecha y si no es carga inicial
+          if (dateColIndex >= 0 && dias !== -1) {
             const valorFecha = row[dateColIndex];
-            
-            // Filtrar registros sin fecha válida (Inactive, vacío, etc.)
             if (!valorFecha || String(valorFecha).toLowerCase().includes('inactive') || String(valorFecha).trim() === '') {
               filtrados++;
-              continue; // Saltar registros inválidos
+              continue;
             }
-            
             const fechaRegistro = parseTracksolidDate(valorFecha);
-            
-            // Si no se pudo parsear la fecha, filtrar
             if (!fechaRegistro) {
               filtrados++;
               continue;
             }
-            
-            // Filtrar por rango de días
-            if (fechaRegistro < fechaLimite) {
+            if (fechaLimite && fechaRegistro < fechaLimite) {
               filtrados++;
-              continue; // Saltar registros fuera del rango
+              continue;
             }
           }
-          
-          // Crear registro mapeando columnas de Tracksolid a IOP
           const registro = {};
           headers.forEach((header, idx) => {
             const nombreColumna = MAPEO_TRACKSOLID[header] || header;
             registro[nombreColumna] = row[idx] !== undefined ? row[idx] : '';
           });
-          
-          // Agregar campos internos para compatibilidad con la tabla
           registro._tieneReporte = false;
           registro._status = 'pendiente';
           registro._formatoOrigen = 'tracksolid';
-          
           registros.push(registro);
         }
-        
         console.log(`Tracksolid: ${totalLeidos} leídos, ${filtrados} filtrados por fecha, ${registros.length} mostrados`);
-        
         resolve({ success: true, data: registros, stats: { totalLeidos, filtrados } });
-        
       } catch (err) {
         console.error('Error parseando Tracksolid:', err);
         resolve({ success: false, error: 'Error al leer el archivo: ' + err.message });
       }
     };
-    
     reader.onerror = () => {
       resolve({ success: false, error: 'Error al leer el archivo' });
     };
-    
     reader.readAsArrayBuffer(file);
   });
 };
@@ -1789,3 +1749,4 @@ const exportarSinReporte = () => {
   }
 }
 </style>
+;

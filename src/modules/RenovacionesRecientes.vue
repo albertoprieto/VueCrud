@@ -623,7 +623,7 @@ const detectarFormatoArchivo = async (file) => {
         // === DETECTAR IOP ===
         // Los headers de IOP están típicamente en la fila 2 (índice 1)
         // Columnas: Cuenta, Número de dispositivo, Nombre del dispositivo, Hora de activación del servicio
-        const tieneCuenta = segundaFila.some(h => h === 'cuenta' || h.includes('cuenta de operación'));
+        const tieneCuenta = segundaFila.some(h => h === 'cuenta' || h.includes('cuenta propia'));
         const tieneNumeroDispositivo = segundaFila.some(h => 
           h.includes('número de dispositivo') || h.includes('numero de dispositivo') || h === 'dispositivo'
         );
@@ -818,7 +818,7 @@ const procesarYGuardar = async () => {
 };
 
 // Procesar archivo IOP de Renovaciones (headers en fila 2)
-// Columnas IOP Renovaciones: Tiempo de operación, Cuenta de operación, Cuenta propia, 
+// Columnas IOP Renovaciones: Tiempo de operación, cuenta propia, Cuenta propia, 
 // Número de dispositivo, Nombre del dispositivo, Modelo de dispositivo, 
 // Período de renovación, Tiempo de vencimiento de la plataforma, Hora de vencimiento del usuario
 const procesarArchivoIOPRenovaciones = async (file) => {
@@ -846,7 +846,7 @@ const procesarArchivoIOPRenovaciones = async (file) => {
         // Mapeo de columnas IOP Renovaciones a nombres internos
         const MAPEO_IOP_RENOVACIONES = {
           'Tiempo de operación': 'hora_activacion',
-          'Cuenta de operación': 'cuenta',
+          'cuenta propia': 'cuenta',
           'Cuenta propia': 'cuenta_propia',
           'Número de dispositivo': 'numero_dispositivo',
           'Nombre del dispositivo': 'nombre_dispositivo',
@@ -916,7 +916,7 @@ const procesarArchivoIOPRenovaciones = async (file) => {
             }
           });
           
-          // Usar "Cuenta de operación" como cuenta principal
+          // Usar "cuenta propia" como cuenta principal
           if (!registro.cuenta && registro.cuenta_propia) {
             registro.cuenta = registro.cuenta_propia;
           }
