@@ -3114,7 +3114,12 @@ def get_activaciones_recientes(
         params.append(status)
     
     if dias:
-        query += " AND ar.hora_activacion >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+        # Incluir registros con hora_activacion en rango O con hora_activacion NULL pero fecha_carga en rango
+        query += """ AND (
+            ar.hora_activacion >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            OR (ar.hora_activacion IS NULL AND ar.fecha_carga >= DATE_SUB(NOW(), INTERVAL %s DAY))
+        )"""
+        params.append(dias)
         params.append(dias)
     
     if cuenta:
@@ -3640,12 +3645,22 @@ def guardar_renovaciones_bulk(data: dict = Body(...)):
                     fecha_renovacion = None
             
             # Parsear fechas de vencimiento
+            # Valores especiales que indican "de por vida" y no son fechas válidas
+            VALORES_VIDA = ['vida', 'para toda la vida', 'lifetime', 'ilimitado', 'unlimited', 'permanente', '-']
+            
             tiempo_venc_plat = None
             tiempo_venc_raw = r.get('tiempo_vencimiento_plataforma')
             if tiempo_venc_raw:
                 try:
                     if isinstance(tiempo_venc_raw, str):
-                        tiempo_venc_plat = tiempo_venc_raw[:10]  # Solo fecha YYYY-MM-DD
+                        # Verificar si es un valor especial de "vida"
+                        if tiempo_venc_raw.strip().lower() in VALORES_VIDA:
+                            tiempo_venc_plat = None  # Guardar como NULL
+                        elif len(tiempo_venc_raw) >= 10 and tiempo_venc_raw[4] == '-':
+                            # Parece una fecha válida (YYYY-MM-DD...)
+                            tiempo_venc_plat = tiempo_venc_raw[:10]
+                        else:
+                            tiempo_venc_plat = None  # No es fecha válida
                     elif isinstance(tiempo_venc_raw, (int, float)):
                         from datetime import datetime, timedelta
                         excel_epoch = datetime(1899, 12, 30)
@@ -3658,7 +3673,13 @@ def guardar_renovaciones_bulk(data: dict = Body(...)):
             if hora_venc_raw:
                 try:
                     if isinstance(hora_venc_raw, str):
-                        hora_venc_usuario = hora_venc_raw[:10]
+                        # Verificar si es un valor especial de "vida"
+                        if hora_venc_raw.strip().lower() in VALORES_VIDA:
+                            hora_venc_usuario = None  # Guardar como NULL
+                        elif len(hora_venc_raw) >= 10 and hora_venc_raw[4] == '-':
+                            hora_venc_usuario = hora_venc_raw[:10]
+                        else:
+                            hora_venc_usuario = None
                     elif isinstance(hora_venc_raw, (int, float)):
                         from datetime import datetime, timedelta
                         excel_epoch = datetime(1899, 12, 30)
