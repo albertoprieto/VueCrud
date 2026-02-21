@@ -412,13 +412,55 @@ const COLUMNAS_VISIBLES = [
 ];
 
 // Mapeo de columnas Tracksolid -> IOP
+
+// Mapeo de columnas Tracksolid -> IOP (acepta inglés y español)
 const MAPEO_TRACKSOLID = {
   'Account': 'Cuenta',
+  'Cuenta': 'Cuenta',
   'IMEI': 'Número de dispositivo',
+  'Número de dispositivo': 'Número de dispositivo',
   'Device Name': 'Nombre del dispositivo',
+  'Nombre del dispositivo': 'Nombre del dispositivo',
+  'Nombre del equipo': 'Nombre del dispositivo', // Soportar variante en español
   'Model': 'Modelo de dispositivo',
-  'Activated Date': 'Hora de activación'
+  'Modelo de dispositivo': 'Modelo de dispositivo',
+  'Modelo': 'Modelo de dispositivo', // Soportar variante en español
+  'Activated Date': 'Hora de activación',
+  'Fecha de activación': 'Hora de activación',
+  'Hora de activación': 'Hora de activación',
 };
+
+// Para normalizar headers Tracksolid (inglés o español)
+const HEADERS_TRACKSOLID_EN = [
+  'Account', 'IMEI', 'Device Name', 'Model', 'Activated Date'
+];
+// Acepta ambas variantes en español
+const HEADERS_TRACKSOLID_ES_VARIANTS = [
+  ['Cuenta', 'IMEI', 'Nombre del dispositivo', 'Modelo de dispositivo', 'Fecha de activación'],
+  ['Cuenta', 'IMEI', 'Nombre del equipo', 'Modelo', 'Fecha de activación']
+];
+
+function normalizaHeadersTracksolid(headers) {
+  // Si los headers están en inglés, los dejamos igual
+  if (headers.length === HEADERS_TRACKSOLID_EN.length && headers.every((h, i) => h.trim().toLowerCase() === HEADERS_TRACKSOLID_EN[i].toLowerCase())) {
+    return HEADERS_TRACKSOLID_EN;
+  }
+  // Si los headers coinciden con alguna variante en español, los mapeamos a inglés
+  for (const variant of HEADERS_TRACKSOLID_ES_VARIANTS) {
+    if (headers.length === variant.length && headers.every((h, i) => h.trim().toLowerCase() === variant[i].toLowerCase())) {
+      return HEADERS_TRACKSOLID_EN;
+    }
+  }
+  // Si hay mezcla, intentamos mapear cada header
+  return headers.map((h) => {
+    // Buscar en todas las variantes en español
+    for (const variant of HEADERS_TRACKSOLID_ES_VARIANTS) {
+      const idx = variant.findIndex(v => v.toLowerCase() === h.trim().toLowerCase());
+      if (idx !== -1) return HEADERS_TRACKSOLID_EN[idx];
+    }
+    return h;
+  });
+}
 
 // Columnas visibles (solo las definidas que existan en los datos)
 const columnasVisibles = computed(() => {
@@ -743,7 +785,8 @@ const procesarArchivoTracksolid = async (file, dias = diasFiltro.value) => {
           resolve({ success: false, error: 'El archivo está vacío o no tiene datos' });
           return;
         }
-        const headers = jsonData[0].map(h => String(h || '').trim());
+        let headers = jsonData[0].map(h => String(h || '').trim());
+        headers = normalizaHeadersTracksolid(headers);
         const dateColIndex = headers.findIndex(h => 
           h.toLowerCase().includes('activated') || 
           h.toLowerCase().includes('date') || 
