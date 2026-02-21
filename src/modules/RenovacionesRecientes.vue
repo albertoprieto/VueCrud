@@ -269,6 +269,9 @@
         </template>
       </Column>
 
+      <!-- Columna explícita para Tipo de servicio (Tracksolid) -->
+
+
       <!-- Columna de estado de reporte -->
       <Column header="Reporte" :style="{ minWidth: '220px' }">
         <template #body="slotProps">
@@ -447,7 +450,8 @@ const COLUMNAS_VISIBLES = [
   'Nombre del dispositivo',
   'Modelo de dispositivo',
   'Hora de activación',
-  'Fecha de renovación'
+  'Fecha de renovación',
+  'Tipo de servicio' // Tracksolid
 ];
 
 // Mapeo de columnas Tracksolid -> IOP
@@ -463,7 +467,7 @@ const MAPEO_TRACKSOLID = {
 const columnasVisibles = computed(() => {
   if (!dataEnriquecida.value.length) return [];
   const allCols = Object.keys(dataEnriquecida.value[0]);
-  // Filtrar solo las columnas definidas que existan en los datos
+  // Mostrar 'Tipo de servicio' solo si existe en los datos
   return COLUMNAS_VISIBLES.filter(col => allCols.includes(col));
 });
 
@@ -547,6 +551,7 @@ const cargarDatos = async () => {
       'Período de renovación': r.periodo_de_renovacion,
       'Tiempo de vencimiento plataforma': r.tiempo_vencimiento_plataforma,
       'Hora de vencimiento usuario': r.hora_vencimiento_usuario,
+      'Tipo de servicio': r.tipo_de_servicio || '',
       _tieneReporte: r.status === 'con_reporte',
       _status: r.status,
       _reporteId: r.reporte_servicio_id,
@@ -574,55 +579,59 @@ const recargarDatos = () => {
   }, 500);
 };
 
-// Detectar formato del archivo basándose en las columnas
+// Detectar formato del archivo basándose en las columnas o estructura (soporta archivos sin headers)
 const detectarFormatoArchivo = async (file) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-        
         if (jsonData.length < 1) {
           resolve({ formato: null, error: 'Archivo vacío' });
           return;
         }
-        
-        // Obtener headers de las primeras 3 filas (por si hay filas vacías o títulos)
+
+        // === DETECCIÓN PARA ARCHIVOS SIN HEADERS (Tracksolid renovaciones) ===
+        // Si todas las filas tienen al menos 6 columnas y la columna 4 (IMEI) parece un IMEI, es Tracksolid renovaciones
+        let filasValidas = 0;
+        let filasConImei = 0;
+        for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
+          const row = jsonData[i];
+          if (row && row.length >= 6) {
+            filasValidas++;
+            const imei = row[4] ? String(row[4]).trim() : '';
+            if (imei && imei.length >= 10 && /^\d{10,17}$/.test(imei)) {
+              filasConImei++;
+            }
+          }
+        }
+        if (filasValidas >= 2 && filasConImei >= 1) {
+          resolve({ formato: 'tracksolid' });
+          return;
+        }
+
+        // === Detección normal por headers (para compatibilidad) ===
         const primeraFila = jsonData[0]?.map(h => String(h || '').toLowerCase().trim()) || [];
         const segundaFila = jsonData[1]?.map(h => String(h || '').toLowerCase().trim()) || [];
         const terceraFila = jsonData[2]?.map(h => String(h || '').toLowerCase().trim()) || [];
-        
-        // Combinar todas las filas para búsqueda flexible
         const todasLasFilas = [...primeraFila, ...segundaFila, ...terceraFila].join(' ');
-        
-        console.log('Detección - Primera fila:', primeraFila.slice(0, 8));
-        console.log('Detección - Segunda fila:', segundaFila.slice(0, 8));
-        
-        // === DETECTAR TRACKSOLID RENOVACIONES ===
-        // Formato: N°, Tiempo, Procesado por, Precio total, Saldo de monedas Mi, Notas
-        // El IMEI está en la columna "Notas"
+
+        // Tracksolid renovaciones (con headers)
         const tieneTiempo = primeraFila.some(h => h === 'tiempo') || segundaFila.some(h => h === 'tiempo');
         const tieneNotas = primeraFila.some(h => h === 'notas') || segundaFila.some(h => h === 'notas');
-        const tienePrecioTotal = primeraFila.some(h => h.includes('precio')) || segundaFila.some(h => h.includes('precio'));
-        
         const esTracksolidRenovaciones = tieneTiempo && tieneNotas;
-        
-        // === DETECTAR TRACKSOLID ACTIVACIONES (formato antiguo) ===
-        // Los headers de Tracksolid pueden ser: Account, IMEI, Device Name, Model, Activated Date, etc.
+
+        // Tracksolid activaciones (headers)
         const tieneImei = primeraFila.some(h => h === 'imei' || h.includes('imei'));
         const tieneAccount = primeraFila.some(h => h === 'account' || h.includes('account'));
         const tieneDeviceName = primeraFila.some(h => h === 'device name' || h.includes('device name'));
         const tieneActivatedDate = primeraFila.some(h => h.includes('activated') || h.includes('activation'));
-        
         const esTracksolidActivaciones = tieneImei || (tieneAccount && tieneDeviceName) || (tieneAccount && tieneActivatedDate);
-        
-        // === DETECTAR IOP ===
-        // Los headers de IOP están típicamente en la fila 2 (índice 1)
-        // Columnas: Cuenta, Número de dispositivo, Nombre del dispositivo, Hora de activación del servicio
+
+        // IOP (headers)
         const tieneCuenta = segundaFila.some(h => h === 'cuenta' || h.includes('cuenta propia'));
         const tieneNumeroDispositivo = segundaFila.some(h => 
           h.includes('número de dispositivo') || h.includes('numero de dispositivo') || h === 'dispositivo'
@@ -631,27 +640,15 @@ const detectarFormatoArchivo = async (file) => {
           h.includes('hora de activación') || h.includes('hora de activacion') || 
           h.includes('activación del servicio') || h.includes('tiempo de operación')
         );
-        
-        // IOP tiene "Cuenta" y "Número de dispositivo" (no IMEI)
         const esIOP = (tieneCuenta && tieneNumeroDispositivo) || (tieneCuenta && tieneHoraActivacion);
-        
-        console.log('Detección resultado:', { 
-          esTracksolidRenovaciones, esTracksolidActivaciones, esIOP,
-          tracksolidRen: { tieneTiempo, tieneNotas, tienePrecioTotal },
-          tracksolidAct: { tieneImei, tieneAccount, tieneDeviceName, tieneActivatedDate },
-          iop: { tieneCuenta, tieneNumeroDispositivo, tieneHoraActivacion }
-        });
-        
-        // Determinar formato final
-        // Prioridad: Tracksolid Renovaciones > IOP > Tracksolid Activaciones
+
         if (esTracksolidRenovaciones) {
-          resolve({ formato: 'tracksolid' }); // El nuevo formato de renovaciones
+          resolve({ formato: 'tracksolid' });
         } else if (esIOP) {
           resolve({ formato: 'iop' });
         } else if (esTracksolidActivaciones) {
           resolve({ formato: 'tracksolid' });
         } else {
-          // Intento de detección por contenido de texto general
           if (todasLasFilas.includes('notas') && todasLasFilas.includes('tiempo')) {
             resolve({ formato: 'tracksolid' });
           } else if (todasLasFilas.includes('imei')) {
@@ -662,17 +659,14 @@ const detectarFormatoArchivo = async (file) => {
             resolve({ formato: null, error: 'No se pudo determinar el formato del archivo. Verifica que sea un archivo válido de IOP o Tracksolid.' });
           }
         }
-        
       } catch (err) {
         console.error('Error detectando formato:', err);
         resolve({ formato: null, error: 'Error al leer el archivo' });
       }
     };
-    
     reader.onerror = () => {
       resolve({ formato: null, error: 'Error al leer el archivo' });
     };
-    
     reader.readAsArrayBuffer(file);
   });
 };
@@ -751,10 +745,8 @@ const procesarYGuardar = async () => {
       
     } else if (formatoSeleccionado.value === 'tracksolid') {
       // === FORMATO TRACKSOLID RENOVACIONES ===
-      // Columnas: N°, Tiempo, Procesado por, Precio total, Saldo de monedas Mi, Notas
-      // El IMEI está en "Notas", la fecha de renovación en "Tiempo"
-      const res = await procesarArchivoTracksolidRenovaciones(selectedFile.value);
-
+      // Columnas: N°, Fecha y hora, Cuenta madre, Cuenta, IMEI, Tipo de servicio, ...
+      const res = await procesarArchivoTracksolidRenovacionesNuevo(selectedFile.value);
       if (!res.success) {
         error.value = res.error;
         toast.add({
@@ -765,40 +757,20 @@ const procesarYGuardar = async () => {
         });
         return;
       }
-
-      // Guardar TODOS los registros en la BD de renovaciones (encontrados y no encontrados)
+      // Guardar en la BD
       const usuario = loginStore.user?.username || 'sistema';
-      const registrosParaGuardar = res.data.map(r => ({
-        'Cuenta': r['Cuenta'] || 'SIN_CUENTA',
-        'Número de dispositivo': r['Número de dispositivo'],
-        'Nombre del dispositivo': r['Nombre del dispositivo'] || '',
-        'Modelo de dispositivo': r['Modelo de dispositivo'] || '',
-        'Hora de activación': r['Hora de activación'] || null,
-        'Fecha de renovación': r['Fecha de renovación'] || null,
-        '_status': r._status || 'desconocido'
-      }));
-      
-      if (registrosParaGuardar.length > 0) {
-        const resultadoGuardado = await guardarRenovacionesBulk(registrosParaGuardar, usuario, 'Tracksolid');
-        console.log('Guardado en BD:', resultadoGuardado);
+      if (res.data.length > 0) {
+        await guardarRenovacionesBulk(res.data, usuario, 'Tracksolid');
       }
-
       // Mostrar los datos en la tabla
       dataEnriquecida.value = res.data;
       actualizarTotales();
-      
-      const statsMsg = res.stats 
-        ? `(${res.stats.encontrados} encontrados de ${res.stats.totalLeidos})` 
-        : '';
-      
       toast.add({
         severity: 'success',
         summary: 'Renovaciones Tracksolid procesadas',
-        detail: `${res.data.length} registros cargados ${statsMsg}`,
+        detail: `${res.data.length} registros cargados`,
         life: 5000
       });
-      
-      // Limpiar archivo y recargar datos de la BD
       clearFile();
       await cargarDatos();
     }
@@ -958,166 +930,88 @@ const procesarArchivoIOPRenovaciones = async (file) => {
   });
 };
 
-// Procesar archivo Tracksolid de Renovaciones
-// Columnas: N°, Tiempo, Procesado por, Precio total, Saldo de monedas Mi, Notas
-// El IMEI está en "Notas", la fecha de renovación en "Tiempo"
-// Con el IMEI se busca en activaciones_recientes para traer los datos del dispositivo
-const procesarArchivoTracksolidRenovaciones = async (file) => {
-  return new Promise(async (resolve) => {
+
+// Convierte un número serial de Excel a string datetime compatible con MySQL (YYYY-MM-DD HH:mm:ss)
+function excelSerialToDateTimeString(serial) {
+  if (typeof serial !== 'number') return '';
+  const utc_days = Math.floor(serial - 25569);
+  const utc_value = utc_days * 86400;
+  const date_info = new Date(utc_value * 1000);
+  // Ajuste de horas, minutos y segundos
+  const fractionalDay = serial - Math.floor(serial);
+  let totalSeconds = Math.round(86400 * fractionalDay);
+  const hours = Math.floor(totalSeconds / 3600);
+  totalSeconds -= hours * 3600;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds - minutes * 60;
+  date_info.setHours(hours, minutes, seconds, 0);
+  // Formato YYYY-MM-DD HH:mm:ss
+  const pad = n => n.toString().padStart(2, '0');
+  return `${date_info.getFullYear()}-${pad(date_info.getMonth() + 1)}-${pad(date_info.getDate())} ${pad(date_info.getHours())}:${pad(date_info.getMinutes())}:${pad(date_info.getSeconds())}`;
+}
+
+// Procesamiento Tracksolid renovaciones SIN headers: solo columnas relevantes por índice
+const procesarArchivoTracksolidRenovacionesNuevo = async (file) => {
+  return new Promise((resolve) => {
     const reader = new FileReader();
-    
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        
-        // Leer datos con header en fila 1
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-        
         if (jsonData.length < 2) {
           resolve({ success: false, error: 'El archivo está vacío o no tiene datos' });
           return;
         }
-        
-        // Primera fila como headers (puede tener título)
-        // Buscar la fila con los headers reales
-        let headerRowIndex = 0;
-        for (let i = 0; i < Math.min(5, jsonData.length); i++) {
-          const row = jsonData[i];
-          if (row && row.some(cell => String(cell || '').toLowerCase().includes('tiempo') || String(cell || '').toLowerCase().includes('notas'))) {
-            headerRowIndex = i;
-            break;
-          }
-        }
-        
-        const headers = jsonData[headerRowIndex].map(h => String(h || '').trim());
-        console.log('Headers Tracksolid Renovaciones detectados:', headers);
-        
-        // Encontrar índices de columnas importantes
-        const tiempoColIndex = headers.findIndex(h => h.toLowerCase() === 'tiempo');
-        const notasColIndex = headers.findIndex(h => h.toLowerCase() === 'notas');
-        
-        if (notasColIndex === -1) {
-          resolve({ success: false, error: 'No se encontró la columna "Notas" con el IMEI' });
-          return;
-        }
-        
-        // Importar función para buscar activación
-        const { buscarActivacionPorImei } = await import('@/services/activacionesService');
-        
-        // Procesar cada fila
+        // Procesar filas ignorando headers, solo por índice:
+        // 0: Numero (irrelevante), 1: Fecha y hora, 2: Cuenta madre (irrelevante), 3: Cuenta, 4: IMEI, 5: Tipo de servicio, 6: Valor coins, 7: Coins después
         const registros = [];
-        let totalLeidos = 0;
-        let encontrados = 0;
-        let noEncontrados = 0;
-        
-        for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
+        for (let i = 0; i < jsonData.length; i++) {
           const row = jsonData[i];
-          if (!row || row.length === 0) continue;
-          
-          // Obtener IMEI de la columna "Notas"
-          const imei = String(row[notasColIndex] || '').trim();
-          if (!imei || imei.length < 10) continue; // Saltar si no hay IMEI válido
-          
-          totalLeidos++;
-          
-          // Obtener fecha de renovación de la columna "Tiempo"
-          let fechaRenovacion = null;
-          if (tiempoColIndex >= 0) {
-            const valorTiempo = row[tiempoColIndex];
-            fechaRenovacion = parseTracksolidDate(valorTiempo);
+          if (!row || row.length < 6) continue;
+          // Ignorar filas donde IMEI (col 5, índice 4) no sea válido
+          const imei = row[4] ? String(row[4]).trim() : '';
+          if (!imei || imei.length < 10) continue;
+          // La cuenta está en la columna 4 (índice 3), forzar a string y si está vacía, intentar buscar en otras columnas (opcional)
+          let cuenta = row[3];
+          // Si por alguna razón está vacía, intentar buscar en columna 2 (índice 1) o 3 (índice 2) como fallback (opcional, según estructura)
+          console.log(`Procesando fila ${i + 1}: Cuenta="${cuenta}", IMEI="${imei}"`);
+          let fecha = row[1];
+          // Si la fecha es un número (serial Excel), convertirla a string datetime
+          if (typeof fecha === 'number') {
+            fecha = excelSerialToDateTimeString(fecha);
+          } else if (typeof fecha === 'string' && /^\d+(\.\d+)?$/.test(fecha)) {
+            // Si es string numérica, convertir a número y luego a datetime
+            fecha = excelSerialToDateTimeString(Number(fecha));
           }
-          
-          // Buscar en activaciones_recientes por el IMEI
-          let activacion = null;
-          try {
-            activacion = await buscarActivacionPorImei(imei);
-          } catch (err) {
-            console.warn(`Error buscando IMEI ${imei}:`, err);
-          }
-          
-          if (activacion) {
-            encontrados++;
-            
-            // Comparar fechas para determinar si necesita reporte
-            // Si la fecha de renovación (Tiempo) es ANTERIOR a hora_activacion de activaciones_recientes
-            // significa que se hizo una renovación y necesita un reporte nuevo
-            let status = 'desconocido';
-            let tieneReporte = false;
-            
-            const fechaActivacion = activacion.hora_activacion ? new Date(activacion.hora_activacion) : null;
-            
-            if (activacion.status === 'con_reporte') {
-              // Ya tiene reporte asociado
-              status = 'con_reporte';
-              tieneReporte = true;
-            } else if (fechaRenovacion && fechaActivacion) {
-              // Comparar fechas
-              if (fechaRenovacion < fechaActivacion) {
-                // La renovación es anterior a la activación => no necesita nuevo reporte
-                status = 'desconocido';
-              } else {
-                // La renovación es posterior o igual => necesita reporte
-                status = 'sin_reporte';
-              }
-            } else {
-              // No se pueden comparar fechas
-              status = 'desconocido';
-            }
-            
-            registros.push({
-              _id: activacion.id,
-              'Plataforma': 'Tracksolid',
-              'Cuenta': activacion.cuenta,
-              'Número de dispositivo': activacion.numero_dispositivo,
-              'Nombre del dispositivo': activacion.nombre_dispositivo,
-              'Modelo de dispositivo': activacion.modelo_dispositivo,
-              'Hora de activación': activacion.hora_activacion,
-              'Fecha de renovación': fechaRenovacion ? fechaRenovacion.toISOString().slice(0, 19).replace('T', ' ') : '',
-              _tieneReporte: tieneReporte,
-              _status: status,
-              _reporteId: activacion.reporte_servicio_id,
-              _folioReporte: activacion.folio_reporte,
-              _formatoOrigen: 'tracksolid_renovaciones'
-            });
-          } else {
-            noEncontrados++;
-            // Dispositivo no encontrado en activaciones_recientes - guardarlo con status especial
-            registros.push({
-              'Plataforma': 'Tracksolid',
-              'Cuenta': 'SIN_CUENTA',
-              'Número de dispositivo': imei,
-              'Nombre del dispositivo': 'No encontrado',
-              'Modelo de dispositivo': '-',
-              'Hora de activación': null,
-              'Fecha de renovación': fechaRenovacion ? fechaRenovacion.toISOString().slice(0, 19).replace('T', ' ') : '',
-              _tieneReporte: false,
-              _status: 'no_encontrado',
-              _formatoOrigen: 'tracksolid_renovaciones',
-              _noEncontrado: true
-            });
-          }
+          const tipo = row[5] ? String(row[5]).trim() : '';
+          // Tomar cuenta de columna 4 (índice 3) y tipo de servicio de columna 6 (índice 5)
+          const cuentaExcel = row[3] !== undefined ? String(row[3]).trim() : '';
+          const tipoServicioExcel = row[5] !== undefined ? String(row[5]).trim() : '';
+          registros.push({
+            'Plataforma': 'Tracksolid',
+            'Cuenta': cuentaExcel,
+            'Número de dispositivo': imei,
+            'Nombre del dispositivo': '',
+            'Modelo de dispositivo': '',
+            'Hora de activación': fecha,
+            'Fecha de renovación': '',
+            'Tipo de servicio': tipoServicioExcel,
+            cuenta: cuentaExcel, // para el backend
+            tipo_de_servicio: tipoServicioExcel, // para el backend
+            _tieneReporte: false,
+            _status: 'sin_reporte'
+          });
         }
-        
-        console.log(`Tracksolid Renovaciones: ${totalLeidos} leídos, ${encontrados} encontrados, ${noEncontrados} no encontrados`);
-        
-        resolve({ 
-          success: true, 
-          data: registros, 
-          stats: { totalLeidos, encontrados, noEncontrados } 
-        });
-        
+        resolve({ success: true, data: registros });
       } catch (err) {
-        console.error('Error parseando Tracksolid Renovaciones:', err);
         resolve({ success: false, error: 'Error al leer el archivo: ' + err.message });
       }
     };
-    
     reader.onerror = () => {
       resolve({ success: false, error: 'Error al leer el archivo' });
     };
-    
     reader.readAsArrayBuffer(file);
   });
 };
