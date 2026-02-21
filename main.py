@@ -1878,6 +1878,8 @@ def add_reporte_servicio(reporte: ReporteServicio):
                 try:
                     cur3.execute("SELECT articulo_id, articulo_nombre FROM imeis WHERE imei=%s", (imei_val,))
                     row = cur3.fetchone() or {}
+                    # CAMBIO: Consumir resultados pendientes
+                    cur3.fetchall()
                     articulo_id = row.get('articulo_id')
                     articulo_nombre = row.get('articulo_nombre') or ''
                     try:
@@ -1916,6 +1918,8 @@ def add_reporte_servicio(reporte: ReporteServicio):
                     cur_info = db.cursor(dictionary=True)
                     cur_info.execute("SELECT articulo_id, articulo_nombre FROM imeis WHERE imei=%s", (reporte.imei_devolver,))
                     row_info = cur_info.fetchone() or {}
+                    # CAMBIO: Consumir resultados pendientes
+                    cur_info.fetchall()
                     cur_info.close()
                     registrar_movimiento(
                         reporte.usuario or 'sistema',
@@ -1940,7 +1944,6 @@ def add_reporte_servicio(reporte: ReporteServicio):
         "imei_devuelto": imei_devuelto,
         "tipo_servicio": reporte.tipo_servicio
     }
-
 @app.get("/reportes-servicio")
 def get_reporte_servicio(asignacion_id: int = Query(...)):
     db = mysql.connector.connect(
@@ -3692,38 +3695,75 @@ def guardar_renovaciones_bulk(data: dict = Body(...)):
             if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere', 'desconocido', 'no_encontrado']:
                 status = 'pendiente'
             
-            # UPSERT: Insertar o actualizar si existe
-            cursor.execute("""
-                INSERT INTO renovaciones_recientes 
-                (cuenta, numero_dispositivo, nombre_dispositivo, modelo_dispositivo, 
-                 numero_tarjeta_sim, hora_activacion, plataforma, periodo_de_renovacion,
-                 tiempo_vencimiento_plataforma, hora_vencimiento_usuario, cargado_por, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    nombre_dispositivo = VALUES(nombre_dispositivo),
-                    modelo_dispositivo = VALUES(modelo_dispositivo),
-                    numero_tarjeta_sim = VALUES(numero_tarjeta_sim),
-                    hora_activacion = COALESCE(VALUES(hora_activacion), hora_activacion),
-                    plataforma = VALUES(plataforma),
-                    periodo_de_renovacion = VALUES(periodo_de_renovacion),
-                    tiempo_vencimiento_plataforma = VALUES(tiempo_vencimiento_plataforma),
-                    hora_vencimiento_usuario = VALUES(hora_vencimiento_usuario),
-                    status = VALUES(status),
-                    fecha_actualizacion = NOW()
-            """, (
-                cuenta,
-                numero_dispositivo,
-                str(r.get('nombre_dispositivo', ''))[:255],
-                str(r.get('modelo_dispositivo', ''))[:100],
-                str(r.get('numero_tarjeta_sim', ''))[:100],
-                hora_activacion,
-                str(r.get('plataforma', 'IOP'))[:50],
-                str(r.get('periodo_de_renovacion', ''))[:50],
-                tiempo_venc_plat,
-                hora_venc_usuario,
-                cargado_por,
-                status
-            ))
+            # Si es Tracksolid, guardar tipo_de_servicio
+            plataforma_reg = str(r.get('plataforma', 'IOP'))[:50]
+            tipo_de_servicio = str(r.get('tipo_de_servicio', ''))[:100] if plataforma_reg.lower() == 'tracksolid' else None
+            if plataforma_reg.lower() == 'tracksolid':
+                cursor.execute("""
+                    INSERT INTO renovaciones_recientes 
+                    (cuenta, numero_dispositivo, nombre_dispositivo, modelo_dispositivo, 
+                     numero_tarjeta_sim, hora_activacion, plataforma, periodo_de_renovacion,
+                     tiempo_vencimiento_plataforma, hora_vencimiento_usuario, cargado_por, status, tipo_de_servicio)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        nombre_dispositivo = VALUES(nombre_dispositivo),
+                        modelo_dispositivo = VALUES(modelo_dispositivo),
+                        numero_tarjeta_sim = VALUES(numero_tarjeta_sim),
+                        hora_activacion = COALESCE(VALUES(hora_activacion), hora_activacion),
+                        plataforma = VALUES(plataforma),
+                        periodo_de_renovacion = VALUES(periodo_de_renovacion),
+                        tiempo_vencimiento_plataforma = VALUES(tiempo_vencimiento_plataforma),
+                        hora_vencimiento_usuario = VALUES(hora_vencimiento_usuario),
+                        status = VALUES(status),
+                        tipo_de_servicio = VALUES(tipo_de_servicio),
+                        fecha_actualizacion = NOW()
+                """, (
+                    cuenta,
+                    numero_dispositivo,
+                    str(r.get('nombre_dispositivo', ''))[:255],
+                    str(r.get('modelo_dispositivo', ''))[:100],
+                    str(r.get('numero_tarjeta_sim', ''))[:100],
+                    hora_activacion,
+                    plataforma_reg,
+                    str(r.get('periodo_de_renovacion', ''))[:50],
+                    tiempo_venc_plat,
+                    hora_venc_usuario,
+                    cargado_por,
+                    status,
+                    tipo_de_servicio
+                ))
+            else:
+                cursor.execute("""
+                    INSERT INTO renovaciones_recientes 
+                    (cuenta, numero_dispositivo, nombre_dispositivo, modelo_dispositivo, 
+                     numero_tarjeta_sim, hora_activacion, plataforma, periodo_de_renovacion,
+                     tiempo_vencimiento_plataforma, hora_vencimiento_usuario, cargado_por, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        nombre_dispositivo = VALUES(nombre_dispositivo),
+                        modelo_dispositivo = VALUES(modelo_dispositivo),
+                        numero_tarjeta_sim = VALUES(numero_tarjeta_sim),
+                        hora_activacion = COALESCE(VALUES(hora_activacion), hora_activacion),
+                        plataforma = VALUES(plataforma),
+                        periodo_de_renovacion = VALUES(periodo_de_renovacion),
+                        tiempo_vencimiento_plataforma = VALUES(tiempo_vencimiento_plataforma),
+                        hora_vencimiento_usuario = VALUES(hora_vencimiento_usuario),
+                        status = VALUES(status),
+                        fecha_actualizacion = NOW()
+                """, (
+                    cuenta,
+                    numero_dispositivo,
+                    str(r.get('nombre_dispositivo', ''))[:255],
+                    str(r.get('modelo_dispositivo', ''))[:100],
+                    str(r.get('numero_tarjeta_sim', ''))[:100],
+                    hora_activacion,
+                    plataforma_reg,
+                    str(r.get('periodo_de_renovacion', ''))[:50],
+                    tiempo_venc_plat,
+                    hora_venc_usuario,
+                    cargado_por,
+                    status
+                ))
             
             if cursor.rowcount == 1:
                 insertados += 1
