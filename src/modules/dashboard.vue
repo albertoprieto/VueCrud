@@ -180,7 +180,7 @@ const items = computed(() => {
         label: 'Técnicos',
         icon: 'pi pi-fw pi-user-cog',
         items: [
-          { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
+          // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
           { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
         ]
       },
@@ -228,8 +228,8 @@ const items = computed(() => {
         { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users' },
         { label: 'Cotizador',icon: 'pi pi-fw pi-file-edit',route: '/cotizador'},
         { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', badge: cotizacionesPendientes.value || undefined },
-        { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
-        { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
+        // { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-plus', badge: cotizacionesPendientes.value || undefined },
+        // { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
       ]
     },
     {
@@ -240,11 +240,11 @@ const items = computed(() => {
         { label: 'Nuevo Ticket', route: '/tickets/new', icon: 'pi pi-fw pi-plus-circle' }
       ]
     },
-    {
-      label: 'Dinero',
-      icon: 'pi pi-fw pi-wallet',
-      route: '/dinero'
-    },
+    // {
+    //   label: 'Dinero',
+    //   icon: 'pi pi-fw pi-wallet',
+    //   route: '/dinero'
+    // },
     {
       label: 'Usuarios',
       icon: 'pi pi-fw pi-users',
@@ -254,7 +254,7 @@ const items = computed(() => {
       label: 'Técnicos',
       icon: 'pi pi-fw pi-user-cog',
       items: [
-        { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
+        // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
         ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
         ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])

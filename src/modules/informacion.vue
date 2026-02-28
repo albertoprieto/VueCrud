@@ -45,7 +45,7 @@ const groupedItems = computed(() => {
       {
         title: 'Técnicos',
         items: [
-          { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
+          // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
           { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' }
         ]
       },
@@ -75,9 +75,9 @@ const groupedItems = computed(() => {
         { label: 'Clientes', route: '/clientes', icon: 'pi pi-fw pi-users', desc: 'Gestión de clientes' },
         { label: 'Cotizador', route: '/cotizador', icon: 'pi pi-fw pi-file-edit', desc: 'Generar cotizaciones' },
         { label: 'Consultar Cotizaciones', route: '/consultar-cotizaciones', icon: 'pi pi-fw pi-list', desc: 'Histórico de cotizaciones' },
-        { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar' },
-        { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' },
-        { label: 'Dinero', route: '/dinero', icon: 'pi pi-fw pi-wallet', desc: 'Ver movimientos y saldo de dinero' }
+        // { label: 'Crear Orden de Servicio', route: '/ventas', icon: 'pi pi-fw pi-file', desc: 'Registrar' },
+        // { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-calendar', desc: 'Histórico' },
+        // { label: 'Dinero', route: '/dinero', icon: 'pi pi-fw pi-wallet', desc: 'Ver movimientos y saldo de dinero' }
       ]
     },
     {
@@ -96,7 +96,7 @@ const groupedItems = computed(() => {
     {
       title: 'Técnicos',
       items: [
-        { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
+        // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' },
         ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock', desc: 'Instalaciones recientes desde CSV' }] : []),
         ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh', desc: 'Renovaciones recientes desde CSV' }] : [])
