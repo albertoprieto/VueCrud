@@ -34,6 +34,7 @@ import TicketDetail from '@/modules/TicketDetail.vue';
 import NuevoReporteDeServicio from '@/modules/NuevoReporteDeServicio.vue';
 import Recientes from '@/modules/Recientes.vue';
 import RenovacionesRecientes from '@/modules/RenovacionesRecientes.vue';
+import NuevoReporteRenovacion from '@/modules/NuevoReporteRenovacion.vue';
 
 const routes = [
   { path: '/nuevo-reporte-servicio', name: 'nuevo-reporte-servicio', component: NuevoReporteDeServicio },
@@ -72,6 +73,7 @@ const routes = [
   ,{ path: '/tickets/:id', name: 'ticket-detail', component: TicketDetail }
   ,{ path: '/recientes', name: 'recientes', component: Recientes }
   ,{ path: '/renovaciones-recientes', name: 'renovaciones-recientes', component: RenovacionesRecientes }
+  ,{ path: '/nuevo-reporte-renovacion', name: 'nuevo-reporte-renovacion', component: NuevoReporteRenovacion }
 ];
 
 const router = createRouter({
