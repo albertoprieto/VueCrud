@@ -17,10 +17,10 @@
       />
     </div>
 
-    <div class="mb-2 filtros-adicionales" style="display: flex; gap: 1rem;">
+    <div class="mb-2 filtros-adicionales" style="display: flex; gap: 1rem; align-items: center;">
       <InputText v-model="filtroImei" placeholder="Filtrar por IMEI o últimos 5 dígitos" class="p-inputtext-sm" />
-      <InputText v-model="filtroArticulo" placeholder="Filtrar por artículo" class="p-inputtext-sm" />
-      <InputText v-model="filtroSku" placeholder="Filtrar por SKU" class="p-inputtext-sm" />
+      <Dropdown v-model="filtroSkuDropdown" :options="skuOptions" optionLabel="label" optionValue="value" placeholder="Filtrar por Artículo" class="p-inputtext-sm" showClear />
+      <span v-if="filtroSkuDropdown" style="font-weight:bold; color:#1976d2;">Total: {{ totalSkuFiltrado }}</span>
       <Button label="Limpiar" icon="pi pi-times" class="p-button-secondary" @click="limpiarFiltros" />
     </div>
 
@@ -59,6 +59,7 @@ import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Chip from 'primevue/chip';
 import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
 
 const route = useRoute();
 const ubicacion = ref(null);
@@ -69,6 +70,7 @@ const filtroStatus = ref(null);
 const filtroImei = ref('');
 const filtroArticulo = ref('');
 const filtroSku = ref('');
+const filtroSkuDropdown = ref(null);
 
 const statusOptions = [
   { label: 'Todos', value: null },
@@ -76,6 +78,11 @@ const statusOptions = [
   { label: 'Vendidos', value: 'Vendido' },
   { label: 'Devueltos', value: 'Devuelto' }
 ];
+
+const skuOptions = computed(() => {
+  const skus = imeis.value.map(i => i.sku).filter(s => !!s);
+  return Array.from(new Set(skus)).map(sku => ({ label: sku, value: sku }));
+});
 
 const cargarDatos = async () => {
   loading.value = true;
@@ -89,6 +96,7 @@ const limpiarFiltros = () => {
   filtroImei.value = '';
   filtroArticulo.value = '';
   filtroSku.value = '';
+  filtroSkuDropdown.value = null;
 };
 
 const imeisFiltrados = computed(() => {
@@ -102,12 +110,16 @@ const imeisFiltrados = computed(() => {
     // Artículo
     const articuloOk = !filtroArticulo.value ||
       i.articulo_nombre?.toLowerCase().includes(filtroArticulo.value.toLowerCase());
-    // SKU
+    // SKU Dropdown
+    const skuDropdownOk = !filtroSkuDropdown.value || i.sku === filtroSkuDropdown.value;
+    // SKU texto
     const skuOk = !filtroSku.value ||
       i.sku?.toLowerCase().includes(filtroSku.value.toLowerCase());
-    return statusOk && imeiOk && articuloOk && skuOk;
+    return statusOk && imeiOk && articuloOk && skuDropdownOk && skuOk;
   });
 });
+
+const totalSkuFiltrado = computed(() => imeisFiltrados.value.length);
 
 const marcarDevuelto = async (imei) => {
   await devolverIMEI(imei);
