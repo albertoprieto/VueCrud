@@ -21,6 +21,13 @@
     <div v-if="showNuevoReporteDialog">
       <NuevoReporteDeServicio @close="showNuevoReporteDialog = false" />
     </div>
+    <!-- Barra de acciones para seleccionados -->
+    <div v-if="seleccionados.length" class="seleccion-bar">
+      <span>{{ seleccionados.length }} orden(es) seleccionada(s)</span>
+      <Button label="Crear Nota" icon="pi pi-file" class="p-button-success" @click="abrirCrearNota" />
+      <Button label="Crear Factura" icon="pi pi-receipt" class="p-button-info" @click="abrirCrearFactura" />
+    </div>
+
     <h2 class="consultar-reportes-title">Reportes de Servicio</h2>
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
       <InputText v-model="filtroCliente" placeholder="Filtrar por cliente" class="filtro-input" clearable />
@@ -53,11 +60,31 @@
       :rowsPerPageOptions="[5, 10, 20, 50]"
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
       currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} reportes"
+      dataKey="id"
     >
       <template #loading>
         <DataTableLoader text="Cargando reportes..." />
       </template>
+      <Column headerStyle="width: 3rem">
+        <template #header>&nbsp;</template>
+        <template #body="slotProps">
+          <Checkbox
+            v-if="!asignacionPagoMap[slotProps.data.id]"
+            :modelValue="seleccionados.some(s => s.id === slotProps.data.id)"
+            :binary="true"
+            @update:modelValue="toggleSeleccion(slotProps.data, $event)"
+          />
+        </template>
+      </Column>
       <Column field="tipo_servicio" header="Tipo" />
+      <Column header="Nota / Factura">
+        <template #body="slotProps">
+          <span v-if="asignacionPagoMap[slotProps.data.id]" style="font-weight:bold; color:#1976d2;">
+            {{ asignacionPagoMap[slotProps.data.id] }}
+          </span>
+          <span v-else style="color:#999;">—</span>
+        </template>
+      </Column>
       <Column field="nombre_cliente" header="Cliente" />
       <Column header="Orden">
         <template #body="slotProps">
@@ -304,6 +331,36 @@
       </form>
     </Dialog>
 
+    <!-- Dialogo Crear Nota / Factura -->
+    <Dialog v-model:visible="showCrearPagoDialog" :header="crearPagoTipo === 'nota' ? 'Crear Nota' : 'Crear Factura'" :modal="true" :closable="false">
+      <div style="padding:1rem;">
+        <p><strong>Órdenes seleccionadas:</strong></p>
+        <ul style="margin-bottom:1rem;">
+          <li v-for="r in seleccionados" :key="r.id">{{ r.folio }} — {{ r.nombre_cliente }} — ${{ Number(r.total || 0).toFixed(2) }}</li>
+        </ul>
+        <div class="form-group">
+          <label>Cliente</label>
+          <InputText v-model="crearPagoCliente" class="w-full" />
+        </div>
+        <div class="form-group">
+          <label>Total</label>
+          <InputNumber v-model="crearPagoTotal" class="w-full" mode="currency" currency="MXN" locale="es-MX" />
+        </div>
+        <div v-if="crearPagoTipo === 'nota'" class="form-group">
+          <label>Estatus</label>
+          <Dropdown v-model="crearPagoStatus" :options="opcionesStatusNota" optionLabel="label" optionValue="value" placeholder="Seleccionar" class="w-full" />
+        </div>
+        <div v-else class="form-group">
+          <label>Estatus</label>
+          <Dropdown v-model="crearPagoStatus" :options="opcionesStatusFactura" optionLabel="label" optionValue="value" placeholder="Seleccionar" class="w-full" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <Button :label="crearPagoTipo === 'nota' ? 'Crear Nota' : 'Crear Factura'" icon="pi pi-check" @click="confirmarCrearPago" :loading="creandoPago" />
+        <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" @click="showCrearPagoDialog = false" />
+      </div>
+    </Dialog>
+
     <!-- Dialogo Comprobante (obligatorio para marcar como pagado) -->
     <Dialog v-model:visible="showComprobanteDialog" header="Cargar comprobante" :modal="true" :closable="false">
       <form @submit.prevent="confirmarPagadoConComprobante">
@@ -330,6 +387,7 @@ import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
+import Checkbox from 'primevue/checkbox';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import NotaVentaPDF from '@/components/NotaVentaPDF.vue';
@@ -345,6 +403,7 @@ import { useLoginStore } from '@/stores/loginStore';
 import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
 import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
+import { crearNota, crearFactura, getNotas, getFacturas } from '@/services/pagosService';
 import NuevoReporteDeServicio from './NuevoReporteDeServicio.vue';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
@@ -378,6 +437,113 @@ const reporteAEliminar = ref(null);
 const showComprobanteDialog = ref(false);
 const archivoComprobante = ref(null);
 const showNuevoReporteDialog = ref(false);
+
+// ── Selección múltiple y creación de nota/factura ──
+const seleccionados = ref([]);
+const showCrearPagoDialog = ref(false);
+const crearPagoTipo = ref('nota'); // 'nota' | 'factura'
+const crearPagoCliente = ref('');
+const crearPagoTotal = ref(0);
+const crearPagoStatus = ref('');
+const creandoPago = ref(false);
+
+// ── Notas y Facturas cargadas (para saber qué reportes ya están asignados) ──
+const notasCargadas = ref([]);
+const facturasCargadas = ref([]);
+
+const asignacionPagoMap = computed(() => {
+  const map = {};
+  for (const n of notasCargadas.value) {
+    const ids = Array.isArray(n.reporte_ids) ? n.reporte_ids : [];
+    for (const rid of ids) {
+      map[rid] = `Nota #${n.id}`;
+    }
+  }
+  for (const f of facturasCargadas.value) {
+    const ids = Array.isArray(f.reporte_ids) ? f.reporte_ids : [];
+    for (const rid of ids) {
+      map[rid] = `Factura #${f.id}`;
+    }
+  }
+  return map;
+});
+
+function esSeleccionable(event) {
+  return !asignacionPagoMap.value[event.data.id];
+}
+
+function toggleSeleccion(row, checked) {
+  if (checked) {
+    seleccionados.value = [...seleccionados.value, row];
+  } else {
+    seleccionados.value = seleccionados.value.filter(s => s.id !== row.id);
+  }
+}
+
+async function cargarNotasYFacturas() {
+  try {
+    const [n, f] = await Promise.all([getNotas(), getFacturas()]);
+    notasCargadas.value = n;
+    facturasCargadas.value = f;
+  } catch {
+    notasCargadas.value = [];
+    facturasCargadas.value = [];
+  }
+}
+
+const opcionesStatusNota = [
+  { label: 'Pendiente de pago', value: 'pendiente de pago' },
+  { label: 'Pagado', value: 'pagado' },
+  { label: 'Cancelado', value: 'cancelado' }
+];
+const opcionesStatusFactura = [
+  { label: 'Timbrado', value: 'Timbrado' },
+  { label: 'Pendiente timbre', value: 'Pendiente timbre' },
+  { label: 'Cancelado', value: 'Cancelado' }
+];
+
+function abrirCrearNota() {
+  crearPagoTipo.value = 'nota';
+  crearPagoCliente.value = seleccionados.value[0]?.nombre_cliente || '';
+  crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + Number(r.total || 0), 0);
+  crearPagoStatus.value = 'pendiente de pago';
+  showCrearPagoDialog.value = true;
+}
+
+function abrirCrearFactura() {
+  crearPagoTipo.value = 'factura';
+  crearPagoCliente.value = seleccionados.value[0]?.nombre_cliente || '';
+  crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + Number(r.total || 0), 0);
+  crearPagoStatus.value = 'Pendiente timbre';
+  showCrearPagoDialog.value = true;
+}
+
+async function confirmarCrearPago() {
+  creandoPago.value = true;
+  const ordenes = seleccionados.value.map(r => r.folio);
+  const payload = {
+    ordenes,
+    cliente: crearPagoCliente.value,
+    total: crearPagoTotal.value,
+    status: crearPagoStatus.value,
+    reporte_ids: seleccionados.value.map(r => r.id)
+  };
+  try {
+    if (crearPagoTipo.value === 'nota') {
+      await crearNota(payload);
+      toast.add({ severity: 'success', summary: 'Nota creada', detail: 'La nota se creó correctamente.', life: 3000 });
+    } else {
+      await crearFactura(payload);
+      toast.add({ severity: 'success', summary: 'Factura creada', detail: 'La factura se creó correctamente.', life: 3000 });
+    }
+    showCrearPagoDialog.value = false;
+    seleccionados.value = [];
+    await cargarNotasYFacturas();
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo crear el registro.', life: 4000 });
+  }
+  creandoPago.value = false;
+}
 
 const ventaSeleccionada = ref(null);
 const clienteSeleccionado = ref(null);
@@ -756,7 +922,10 @@ function obtenerSO(reporte) {
 
 // Carga inicial de datos - todo en una sola función para evitar duplicaciones
 onMounted(async () => {
-  await cargarReportes(true); // forceReload=true para cargar todo la primera vez
+  await Promise.all([
+    cargarReportes(true), // forceReload=true para cargar todo la primera vez
+    cargarNotasYFacturas()
+  ]);
 });
 
 function marcarComoPagado(reporte) {
@@ -1080,5 +1249,18 @@ function irReporteRenovacionGlobal() {
   /* border: 1px solid #444851; */
   border-radius: 8px;
   padding: 0.5rem 1rem;
+}
+.seleccion-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+.seleccion-bar span {
+  font-weight: bold;
+  color: var(--color-title);
 }
 </style>
