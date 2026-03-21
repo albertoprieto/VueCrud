@@ -246,6 +246,11 @@ const items = computed(() => {
     //   route: '/dinero'
     // },
     {
+      label: 'Pagos',
+      icon: 'pi pi-fw pi-wallet',
+      route: '/pagos'
+    },
+    {
       label: 'Usuarios',
       icon: 'pi pi-fw pi-users',
       route: '/usuarios'

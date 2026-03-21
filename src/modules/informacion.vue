@@ -88,6 +88,12 @@ const groupedItems = computed(() => {
       ]
     },
     {
+      title: 'Pagos',
+      items: [
+        { label: 'Pagos', route: '/pagos', icon: 'pi pi-fw pi-wallet', desc: 'Notas y Facturas — histórico y estatus' }
+      ]
+    },
+    {
       title: 'Usuarios',
       items: [
         { label: 'Usuarios', route: '/usuarios', icon: 'pi pi-fw pi-users', desc: 'Gestión de usuarios' }

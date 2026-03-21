@@ -4003,3 +4003,360 @@ def get_renovaciones_stats():
         "ultimos_7_dias": ultimos_7_dias,
         "total": sum(por_status.values()) if por_status else 0
     }
+
+# ═══════════════════════════════════════════════════════════════════════
+# ══════════════ NOTAS DE PAGO ═════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+
+class NotaPagoCreate(BaseModel):
+    ordenes: List[str]
+    cliente: str
+    total: float
+    status: str = "pendiente de pago"
+    reporte_ids: List[int] = []
+
+@app.get("/notas-pago")
+def get_notas_pago():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM notas_pago ORDER BY id DESC")
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    # Parsear ordenes JSON
+    for r in rows:
+        if isinstance(r.get('ordenes'), str):
+            try:
+                r['ordenes'] = json.loads(r['ordenes'])
+            except Exception:
+                r['ordenes'] = []
+        if isinstance(r.get('reporte_ids'), str):
+            try:
+                r['reporte_ids'] = json.loads(r['reporte_ids'])
+            except Exception:
+                r['reporte_ids'] = []
+        if r.get('fecha') and hasattr(r['fecha'], 'isoformat'):
+            r['fecha'] = r['fecha'].isoformat()
+    return rows
+
+@app.get("/notas-pago/{nota_id}")
+def get_nota_pago(nota_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM notas_pago WHERE id=%s", (nota_id,))
+    row = cursor.fetchone()
+    # Buscar detalle de órdenes (reportes asociados)
+    detalle_ordenes = []
+    if row:
+        if isinstance(row.get('ordenes'), str):
+            try:
+                row['ordenes'] = json.loads(row['ordenes'])
+            except Exception:
+                row['ordenes'] = []
+        reporte_ids = []
+        if isinstance(row.get('reporte_ids'), str):
+            try:
+                reporte_ids = json.loads(row['reporte_ids'])
+            except Exception:
+                reporte_ids = []
+        row['reporte_ids'] = reporte_ids
+        if reporte_ids:
+            placeholders = ','.join(['%s'] * len(reporte_ids))
+            cursor.execute(f"SELECT id, folio, tipo_servicio, nombre_cliente, total FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
+            detalle_ordenes = cursor.fetchall()
+            for d in detalle_ordenes:
+                if d.get('total') is not None:
+                    d['total'] = float(d['total'])
+        row['detalle_ordenes'] = detalle_ordenes
+        if row.get('fecha') and hasattr(row['fecha'], 'isoformat'):
+            row['fecha'] = row['fecha'].isoformat()
+    cursor.close()
+    db.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    return row
+
+@app.post("/notas-pago")
+def crear_nota_pago(data: NotaPagoCreate):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        """INSERT INTO notas_pago (ordenes, cliente, total, status, reporte_ids, fecha)
+           VALUES (%s, %s, %s, %s, %s, NOW())""",
+        (
+            json.dumps(data.ordenes),
+            data.cliente,
+            data.total,
+            data.status,
+            json.dumps(data.reporte_ids)
+        )
+    )
+    db.commit()
+    new_id = cursor.lastrowid
+    cursor.close()
+    db.close()
+    return {"message": "Nota creada exitosamente", "id": new_id}
+
+@app.put("/notas-pago/{nota_id}/status")
+def actualizar_status_nota(nota_id: int, data: dict = Body(...)):
+    new_status = data.get('status', '').strip()
+    if new_status not in ('pendiente de pago', 'pagado', 'cancelado'):
+        raise HTTPException(status_code=400, detail="Status inválido. Valores: pendiente de pago, pagado, cancelado")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE notas_pago SET status=%s WHERE id=%s", (new_status, nota_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    return {"message": "Status actualizado", "id": nota_id, "status": new_status}
+
+@app.delete("/notas-pago/{nota_id}")
+def eliminar_nota_pago(nota_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM notas_pago WHERE id=%s", (nota_id,))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    return {"message": "Nota eliminada"}
+
+@app.post("/notas-pago/{nota_id}/comprobante")
+def subir_comprobante_nota(nota_id: int, archivo: UploadFile = File(...)):
+    import shutil
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM notas_pago WHERE id=%s", (nota_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    base_dir = os.path.join("uploads", "pagos", "notas", str(nota_id))
+    os.makedirs(base_dir, exist_ok=True)
+    filename = archivo.filename or "comprobante"
+    filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
+    dest_path = os.path.join(base_dir, filename)
+    with open(dest_path, "wb") as out:
+        shutil.copyfileobj(archivo.file, out)
+    rel_path = dest_path.replace("\\", "/")
+    cursor2 = db.cursor()
+    cursor2.execute("UPDATE notas_pago SET comprobante_path=%s WHERE id=%s", (rel_path, nota_id))
+    db.commit()
+    cursor2.close()
+    cursor.close()
+    db.close()
+    return {"message": "Comprobante subido", "path": rel_path}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ══════════════ FACTURAS DE PAGO ═════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+
+class FacturaPagoCreate(BaseModel):
+    ordenes: List[str]
+    cliente: str
+    total: float
+    status: str = "Pendiente timbre"
+    reporte_ids: List[int] = []
+
+@app.get("/facturas-pago")
+def get_facturas_pago():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM facturas_pago ORDER BY id DESC")
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    for r in rows:
+        if isinstance(r.get('ordenes'), str):
+            try:
+                r['ordenes'] = json.loads(r['ordenes'])
+            except Exception:
+                r['ordenes'] = []
+        if isinstance(r.get('reporte_ids'), str):
+            try:
+                r['reporte_ids'] = json.loads(r['reporte_ids'])
+            except Exception:
+                r['reporte_ids'] = []
+        if r.get('fecha') and hasattr(r['fecha'], 'isoformat'):
+            r['fecha'] = r['fecha'].isoformat()
+    return rows
+
+@app.get("/facturas-pago/{factura_id}")
+def get_factura_pago(factura_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM facturas_pago WHERE id=%s", (factura_id,))
+    row = cursor.fetchone()
+    detalle_ordenes = []
+    if row:
+        if isinstance(row.get('ordenes'), str):
+            try:
+                row['ordenes'] = json.loads(row['ordenes'])
+            except Exception:
+                row['ordenes'] = []
+        reporte_ids = []
+        if isinstance(row.get('reporte_ids'), str):
+            try:
+                reporte_ids = json.loads(row['reporte_ids'])
+            except Exception:
+                reporte_ids = []
+        row['reporte_ids'] = reporte_ids
+        if reporte_ids:
+            placeholders = ','.join(['%s'] * len(reporte_ids))
+            cursor.execute(f"SELECT id, folio, tipo_servicio, nombre_cliente, total FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
+            detalle_ordenes = cursor.fetchall()
+            for d in detalle_ordenes:
+                if d.get('total') is not None:
+                    d['total'] = float(d['total'])
+        row['detalle_ordenes'] = detalle_ordenes
+        if row.get('fecha') and hasattr(row['fecha'], 'isoformat'):
+            row['fecha'] = row['fecha'].isoformat()
+    cursor.close()
+    db.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return row
+
+@app.post("/facturas-pago")
+def crear_factura_pago(data: FacturaPagoCreate):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        """INSERT INTO facturas_pago (ordenes, cliente, total, status, reporte_ids, fecha)
+           VALUES (%s, %s, %s, %s, %s, NOW())""",
+        (
+            json.dumps(data.ordenes),
+            data.cliente,
+            data.total,
+            data.status,
+            json.dumps(data.reporte_ids)
+        )
+    )
+    db.commit()
+    new_id = cursor.lastrowid
+    cursor.close()
+    db.close()
+    return {"message": "Factura creada exitosamente", "id": new_id}
+
+@app.put("/facturas-pago/{factura_id}/status")
+def actualizar_status_factura_pago(factura_id: int, data: dict = Body(...)):
+    new_status = data.get('status', '').strip()
+    if new_status not in ('Timbrado', 'Pendiente timbre', 'Cancelado'):
+        raise HTTPException(status_code=400, detail="Status inválido. Valores: Timbrado, Pendiente timbre, Cancelado")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE facturas_pago SET status=%s WHERE id=%s", (new_status, factura_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return {"message": "Status actualizado", "id": factura_id, "status": new_status}
+
+@app.delete("/facturas-pago/{factura_id}")
+def eliminar_factura_pago(factura_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM facturas_pago WHERE id=%s", (factura_id,))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return {"message": "Factura eliminada"}
+
+@app.post("/facturas-pago/{factura_id}/comprobante")
+def subir_comprobante_factura(factura_id: int, archivo: UploadFile = File(...)):
+    import shutil
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM facturas_pago WHERE id=%s", (factura_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    base_dir = os.path.join("uploads", "pagos", "facturas", str(factura_id))
+    os.makedirs(base_dir, exist_ok=True)
+    filename = archivo.filename or "comprobante"
+    filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
+    dest_path = os.path.join(base_dir, filename)
+    with open(dest_path, "wb") as out:
+        shutil.copyfileobj(archivo.file, out)
+    rel_path = dest_path.replace("\\", "/")
+    cursor2 = db.cursor()
+    cursor2.execute("UPDATE facturas_pago SET comprobante_path=%s WHERE id=%s", (rel_path, factura_id))
+    db.commit()
+    cursor2.close()
+    cursor.close()
+    db.close()
+    return {"message": "Comprobante subido", "path": rel_path}
