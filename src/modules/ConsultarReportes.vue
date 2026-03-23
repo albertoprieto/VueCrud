@@ -79,9 +79,13 @@
       <Column field="tipo_servicio" header="Tipo" />
       <Column header="Nota / Factura">
         <template #body="slotProps">
-          <span v-if="asignacionPagoMap[slotProps.data.id]" style="font-weight:bold; color:#1976d2;">
-            {{ asignacionPagoMap[slotProps.data.id] }}
-          </span>
+          <router-link
+            v-if="asignacionPagoMap[slotProps.data.id]"
+            :to="{ name: 'detalle-pago', params: { tipo: asignacionPagoMap[slotProps.data.id].tipo, id: asignacionPagoMap[slotProps.data.id].id } }"
+            style="font-weight:bold; color:#1976d2; text-decoration:none; cursor:pointer;"
+          >
+            {{ asignacionPagoMap[slotProps.data.id].label }}
+          </router-link>
           <span v-else style="color:#999;">—</span>
         </template>
       </Column>
@@ -456,13 +460,13 @@ const asignacionPagoMap = computed(() => {
   for (const n of notasCargadas.value) {
     const ids = Array.isArray(n.reporte_ids) ? n.reporte_ids : [];
     for (const rid of ids) {
-      map[rid] = `Nota #${n.id}`;
+      map[rid] = { label: `Nota #${n.id}`, tipo: 'nota', id: n.id };
     }
   }
   for (const f of facturasCargadas.value) {
     const ids = Array.isArray(f.reporte_ids) ? f.reporte_ids : [];
     for (const rid of ids) {
-      map[rid] = `Factura #${f.id}`;
+      map[rid] = { label: `Factura #${f.id}`, tipo: 'factura', id: f.id };
     }
   }
   return map;

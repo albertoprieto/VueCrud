@@ -4026,8 +4026,6 @@ def get_notas_pago():
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM notas_pago ORDER BY id DESC")
     rows = cursor.fetchall()
-    cursor.close()
-    db.close()
     # Parsear ordenes JSON
     for r in rows:
         if isinstance(r.get('ordenes'), str):
@@ -4042,6 +4040,31 @@ def get_notas_pago():
                 r['reporte_ids'] = []
         if r.get('fecha') and hasattr(r['fecha'], 'isoformat'):
             r['fecha'] = r['fecha'].isoformat()
+        # Obtener IMEIs asociados desde reportes_servicio
+        r['imeis'] = []
+        rids = r.get('reporte_ids') or []
+        if rids:
+            placeholders = ','.join(['%s'] * len(rids))
+            cursor.execute(f"SELECT imei, imeis_articulos FROM reportes_servicio WHERE id IN ({placeholders})", tuple(rids))
+            reps = cursor.fetchall()
+            imeis_set = []
+            for rep in reps:
+                if rep.get('imei'):
+                    imeis_set.append(rep['imei'])
+                ia = rep.get('imeis_articulos')
+                if isinstance(ia, str):
+                    try:
+                        ia = json.loads(ia)
+                    except Exception:
+                        ia = []
+                if isinstance(ia, list):
+                    for item in ia:
+                        for im in (item.get('imeis') or []):
+                            if im:
+                                imeis_set.append(im)
+            r['imeis'] = imeis_set
+    cursor.close()
+    db.close()
     return rows
 
 @app.get("/notas-pago/{nota_id}")
@@ -4072,7 +4095,7 @@ def get_nota_pago(nota_id: int):
         row['reporte_ids'] = reporte_ids
         if reporte_ids:
             placeholders = ','.join(['%s'] * len(reporte_ids))
-            cursor.execute(f"SELECT id, folio, tipo_servicio, nombre_cliente, total FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
+            cursor.execute(f"SELECT id, folio, tipo_servicio, nombre_cliente, total, plataforma, usuario, imei FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
             detalle_ordenes = cursor.fetchall()
             for d in detalle_ordenes:
                 if d.get('total') is not None:
@@ -4206,8 +4229,6 @@ def get_facturas_pago():
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM facturas_pago ORDER BY id DESC")
     rows = cursor.fetchall()
-    cursor.close()
-    db.close()
     for r in rows:
         if isinstance(r.get('ordenes'), str):
             try:
@@ -4221,6 +4242,31 @@ def get_facturas_pago():
                 r['reporte_ids'] = []
         if r.get('fecha') and hasattr(r['fecha'], 'isoformat'):
             r['fecha'] = r['fecha'].isoformat()
+        # Obtener IMEIs asociados desde reportes_servicio
+        r['imeis'] = []
+        rids = r.get('reporte_ids') or []
+        if rids:
+            placeholders = ','.join(['%s'] * len(rids))
+            cursor.execute(f"SELECT imei, imeis_articulos FROM reportes_servicio WHERE id IN ({placeholders})", tuple(rids))
+            reps = cursor.fetchall()
+            imeis_set = []
+            for rep in reps:
+                if rep.get('imei'):
+                    imeis_set.append(rep['imei'])
+                ia = rep.get('imeis_articulos')
+                if isinstance(ia, str):
+                    try:
+                        ia = json.loads(ia)
+                    except Exception:
+                        ia = []
+                if isinstance(ia, list):
+                    for item in ia:
+                        for im in (item.get('imeis') or []):
+                            if im:
+                                imeis_set.append(im)
+            r['imeis'] = imeis_set
+    cursor.close()
+    db.close()
     return rows
 
 @app.get("/facturas-pago/{factura_id}")
@@ -4250,7 +4296,7 @@ def get_factura_pago(factura_id: int):
         row['reporte_ids'] = reporte_ids
         if reporte_ids:
             placeholders = ','.join(['%s'] * len(reporte_ids))
-            cursor.execute(f"SELECT id, folio, tipo_servicio, nombre_cliente, total FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
+            cursor.execute(f"SELECT id, folio, tipo_servicio, nombre_cliente, total, plataforma, usuario, imei FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
             detalle_ordenes = cursor.fetchall()
             for d in detalle_ordenes:
                 if d.get('total') is not None:
