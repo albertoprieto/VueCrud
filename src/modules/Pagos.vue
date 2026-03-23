@@ -5,28 +5,44 @@
     <!-- Tabs: Notas / Facturas -->
     <div class="pagos-tabs">
       <Button
-        :class="['tab-btn', tab === 'notas' ? 'tab-active' : '']"
+        :class="['tab-btn', tab === 'notas' ? 'tab-active' : 'tab-inactive']"
         label="Notas"
         icon="pi pi-file"
         @click="tab = 'notas'"
       />
       <Button
-        :class="['tab-btn', tab === 'facturas' ? 'tab-active' : '']"
+        :class="['tab-btn', tab === 'facturas' ? 'tab-active' : 'tab-inactive']"
         label="Facturas"
         icon="pi pi-receipt"
         @click="tab = 'facturas'"
       />
     </div>
 
+    <!-- ════════ FILTROS ════════ -->
+    <div class="pagos-filtros">
+      <div class="filtro-item">
+        <label>Cliente</label>
+        <InputText v-model="filtroCliente" placeholder="Buscar por cliente..." class="w-full" />
+      </div>
+      <div class="filtro-item">
+        <label>Nº Orden</label>
+        <InputText v-model="filtroOrden" placeholder="Buscar por orden..." class="w-full" />
+      </div>
+      <div class="filtro-item">
+        <label>IMEI (últimos 6 dígitos)</label>
+        <InputText v-model="filtroImei" placeholder="Ej: 123456" maxlength="6" class="w-full" />
+      </div>
+    </div>
+
     <!-- ════════ NOTAS ════════ -->
     <div v-if="tab === 'notas'">
       <DataTable
-        :value="notas"
+        :value="notasFiltradas"
         responsiveLayout="scroll"
         :loading="loadingNotas"
         :paginator="true"
-        :rows="10"
-        :rowsPerPageOptions="[5, 10, 20, 50]"
+        :rows="15"
+        :rowsPerPageOptions="[15, 30, 50]"
       >
         <template #loading>
           <DataTableLoader text="Cargando notas..." />
@@ -38,6 +54,14 @@
           </template>
         </Column>
         <Column field="cliente" header="Cliente" />
+        <Column header="IMEIs">
+          <template #body="{ data }">
+            <div v-if="data.imeis && data.imeis.length" class="imeis-cell">
+              <div v-for="(imei, idx) in data.imeis" :key="idx">{{ imei }}</div>
+            </div>
+            <span v-else style="color:#999;">—</span>
+          </template>
+        </Column>
         <Column field="total" header="Total">
           <template #body="{ data }">
             {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
@@ -51,11 +75,14 @@
         <Column field="fecha" header="Fecha">
           <template #body="{ data }">{{ formatFecha(data.fecha) }}</template>
         </Column>
-        <Column header="Acciones" style="width: 220px">
+        <Column header="Acciones" style="width: 320px">
           <template #body="{ data }">
             <div style="display: flex; gap: 0.5rem;">
               <Button icon="pi pi-eye" class="p-button-sm p-button-info" label="Detalle"
                 @click="irDetalle('nota', data.id)" />
+              <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
+                :loading="descargandoId === `nota-${data.id}`"
+                @click="descargarPDF('nota', data)" />
               <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
                 @click="confirmarEliminar('nota', data)" />
             </div>
@@ -67,12 +94,12 @@
     <!-- ════════ FACTURAS ════════ -->
     <div v-if="tab === 'facturas'">
       <DataTable
-        :value="facturas"
+        :value="facturasFiltradas"
         responsiveLayout="scroll"
         :loading="loadingFacturas"
         :paginator="true"
-        :rows="10"
-        :rowsPerPageOptions="[5, 10, 20, 50]"
+        :rows="15"
+        :rowsPerPageOptions="[15, 30, 50]"
       >
         <template #loading>
           <DataTableLoader text="Cargando facturas..." />
@@ -84,6 +111,14 @@
           </template>
         </Column>
         <Column field="cliente" header="Cliente" />
+        <Column header="IMEIs">
+          <template #body="{ data }">
+            <div v-if="data.imeis && data.imeis.length" class="imeis-cell">
+              <div v-for="(imei, idx) in data.imeis" :key="idx">{{ imei }}</div>
+            </div>
+            <span v-else style="color:#999;">—</span>
+          </template>
+        </Column>
         <Column field="total" header="Total">
           <template #body="{ data }">
             {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
@@ -97,11 +132,14 @@
         <Column field="fecha" header="Fecha">
           <template #body="{ data }">{{ formatFecha(data.fecha) }}</template>
         </Column>
-        <Column header="Acciones" style="width: 220px">
+        <Column header="Acciones" style="width: 320px">
           <template #body="{ data }">
             <div style="display: flex; gap: 0.5rem;">
               <Button icon="pi pi-eye" class="p-button-sm p-button-info" label="Detalle"
                 @click="irDetalle('factura', data.id)" />
+              <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
+                :loading="descargandoId === `factura-${data.id}`"
+                @click="descargarPDF('factura', data)" />
               <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
                 @click="confirmarEliminar('factura', data)" />
             </div>
@@ -126,14 +164,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import InputText from 'primevue/inputtext';
 import DataTableLoader from '@/components/DataTableLoader.vue';
-import { getNotas, getFacturas, eliminarNota, eliminarFactura } from '@/services/pagosService';
+import { getNotas, getFacturas, getNotaById, getFacturaById, eliminarNota, eliminarFactura } from '@/services/pagosService';
+import { generarPagoPDF } from '@/services/PagoPdfService';
 import { useToast } from 'primevue/usetoast';
 
 const router = useRouter();
@@ -145,6 +185,32 @@ const facturas = ref([]);
 const loadingNotas = ref(false);
 const loadingFacturas = ref(false);
 
+// Filtros
+const filtroCliente = ref('');
+const filtroOrden = ref('');
+const filtroImei = ref('');
+
+function filtrarRegistros(rows) {
+  let result = rows;
+  const cl = filtroCliente.value.trim().toLowerCase();
+  const ord = filtroOrden.value.trim().toLowerCase();
+  const imei6 = filtroImei.value.trim();
+  if (cl) {
+    result = result.filter(r => (r.cliente || '').toLowerCase().includes(cl));
+  }
+  if (ord) {
+    result = result.filter(r => (r.ordenes || []).some(o => String(o).toLowerCase().includes(ord)));
+  }
+  if (imei6) {
+    result = result.filter(r => (r.imeis || []).some(im => String(im).endsWith(imei6)));
+  }
+  return result;
+}
+
+const notasFiltradas = computed(() => filtrarRegistros(notas.value));
+const facturasFiltradas = computed(() => filtrarRegistros(facturas.value));
+
+const descargandoId = ref(null);
 const showConfirmDelete = ref(false);
 const eliminarTipo = ref('nota');
 const eliminarItem = ref(null);
@@ -198,6 +264,20 @@ async function ejecutarEliminar() {
   eliminando.value = false;
 }
 
+async function descargarPDF(tipo, data) {
+  const key = `${tipo}-${data.id}`;
+  descargandoId.value = key;
+  try {
+    const detalle = tipo === 'nota'
+      ? await getNotaById(data.id)
+      : await getFacturaById(data.id);
+    generarPagoPDF(tipo, detalle);
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF.', life: 4000 });
+  }
+  descargandoId.value = null;
+}
+
 async function cargarNotas() {
   loadingNotas.value = true;
   try {
@@ -230,7 +310,6 @@ onMounted(() => {
 .pagos-container {
   margin: 2rem auto;
   padding: 2rem 1.5rem;
-  max-width: 1200px;
 }
 .pagos-title {
   text-align: center;
@@ -251,6 +330,11 @@ onMounted(() => {
   color: var(--color-bg) !important;
   border: none !important;
 }
+.tab-inactive {
+  background: transparent !important;
+  color: var(--color-title) !important;
+  border: 2px solid var(--color-title) !important;
+}
 .badge {
   padding: 0.25rem 0.75rem;
   border-radius: 1rem;
@@ -260,4 +344,26 @@ onMounted(() => {
 .badge-success { background: #c8e6c9; color: #256029; }
 .badge-warning { background: #fff3cd; color: #856404; }
 .badge-danger  { background: #f8d7da; color: #721c24; }
+.pagos-filtros {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.filtro-item {
+  flex: 1;
+  min-width: 180px;
+}
+.filtro-item label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+}
+.imeis-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+}
 </style>

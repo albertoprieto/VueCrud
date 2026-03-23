@@ -7,9 +7,12 @@
     </div>
 
     <div v-else-if="item">
-      <h2 class="detalle-title">
-        {{ esNota ? 'Nota' : 'Factura' }} #{{ item.id }}
-      </h2>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 class="detalle-title" style="margin-bottom:0;">
+          {{ esNota ? 'Nota' : 'Factura' }} #{{ item.id }}
+        </h2>
+        <Button icon="pi pi-file-pdf" label="Descargar PDF" class="p-button-outlined p-button-danger" @click="descargarPDF" />
+      </div>
 
       <div class="detalle-card">
         <div class="detalle-row"><strong>Órdenes:</strong> {{ (item.ordenes || []).join(', ') }}</div>
@@ -104,6 +107,7 @@ import {
   subirComprobanteNota,
   subirComprobanteFactura
 } from '@/services/pagosService';
+import { generarPagoPDF } from '@/services/PagoPdfService.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -186,6 +190,15 @@ async function cambiarStatus() {
   saving.value = false;
 }
 
+async function descargarPDF() {
+  if (!item.value) return;
+  try {
+    await generarPagoPDF(tipo.value, item.value);
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF.', life: 4000 });
+  }
+}
+
 onMounted(() => {
   cargarDetalle();
 });
@@ -218,7 +231,7 @@ async function subirComprobante() {
 .detalle-pago-container {
   margin: 2rem auto;
   padding: 2rem 1.5rem;
-  max-width: 900px;
+  max-width: 1200px;
 }
 .detalle-title {
   text-align: center;
