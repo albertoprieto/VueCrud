@@ -4527,3 +4527,486 @@ def eliminar_comprobante_factura(factura_id: int, data: dict = Body(...)):
     cursor.close()
     db.close()
     return {"message": "Comprobante eliminado", "comprobantes": existentes}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ══════════════ PLATAFORMAS IOP / TRACKSOLID ═════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+
+import hashlib
+import time as _time
+import requests as _requests
+
+# ---------- IOP GPS Client ----------
+class IOPGPSClient:
+    TOKEN_MARGIN_SECONDS = 300
+
+    def __init__(self):
+        self.appid = os.getenv("IOPGPS_APPID", "")
+        self.secret_key = os.getenv("IOPGPS_SECRET_KEY", "")
+        self.base_url = os.getenv("IOPGPS_BASE_URL", "https://open.iopgps.com")
+        self._access_token = None
+        self._token_expires_at = 0
+
+    def _md5(self, text: str) -> str:
+        return hashlib.md5(text.encode()).hexdigest().lower()
+
+    def _is_token_valid(self) -> bool:
+        return (
+            self._access_token is not None
+            and _time.time() < (self._token_expires_at - self.TOKEN_MARGIN_SECONDS)
+        )
+
+    def authenticate(self):
+        timestamp = int(_time.time())
+        signature = self._md5(self._md5(self.secret_key) + str(timestamp))
+        resp = _requests.post(
+            f"{self.base_url}/api/auth",
+            json={"appid": self.appid, "time": timestamp, "signature": signature},
+            headers={"Content-Type": "application/json"},
+            timeout=15,
+        )
+        data = resp.json()
+        if data.get("code") != 0:
+            raise Exception(f"IOP auth error: {data.get('result')}")
+        self._access_token = data["accessToken"]
+        self._token_expires_at = _time.time() + data.get("expiresIn", 7200000) / 1000
+
+    def _get_token(self) -> str:
+        if not self._is_token_valid():
+            self.authenticate()
+        return self._access_token
+
+    def _headers(self):
+        return {"accessToken": self._get_token(), "Content-Type": "application/json"}
+
+    # --- Endpoints directos (eficientes) ---
+
+    def get_device_detail(self, imei_val: str):
+        """GET /api/device/detail?imei=XXX - Consulta directa por IMEI."""
+        resp = _requests.get(
+            f"{self.base_url}/api/device/detail",
+            params={"imei": imei_val},
+            headers=self._headers(), timeout=15,
+        )
+        return resp.json()
+
+    def get_device_detail_page(self, imeis: list = None, license_numbers: list = None, vins: list = None, account_id: str = None):
+        """POST /api/device/detail/page - Búsqueda batch por IMEI, placa, VIN o cuenta."""
+        body = {"pageSize": "100", "currentPage": "1"}
+        if account_id:
+            body["accountId"] = account_id
+        elif imeis:
+            body["imei"] = imeis
+        elif license_numbers:
+            body["licenseNumber"] = license_numbers
+        elif vins:
+            body["vin"] = vins
+        resp = _requests.post(
+            f"{self.base_url}/api/device/detail/page",
+            json=body,
+            headers=self._headers(), timeout=15,
+        )
+        return resp.json()
+
+    def get_vehicle_status(self, content: str):
+        """GET /api/vehicle/status?content=XXX - Busca dispositivo por contenido (IMEI, placa, etc.)."""
+        resp = _requests.get(
+            f"{self.base_url}/api/vehicle/status",
+            params={"content": content},
+            headers=self._headers(), timeout=15,
+        )
+        return resp.json()
+
+    def get_device_info(self, imei_val: str = None, account: str = None):
+        """GET /api/device/info - Detalle del dispositivo por IMEI o cuenta."""
+        params = {}
+        if imei_val:
+            params["imei"] = imei_val
+        if account:
+            params["account"] = account
+        resp = _requests.get(
+            f"{self.base_url}/api/device/info",
+            params=params,
+            headers=self._headers(), timeout=15,
+        )
+        return resp.json()
+
+    def search_devices(self, query: str):
+        """
+        Búsqueda inteligente: intenta primero endpoints directos.
+        1. Si parece IMEI (solo dígitos, >=10 chars) → device/detail/page por IMEI
+        2. Si no → vehicle/status por contenido (busca IMEI, placa, nombre)
+        3. Fallback → device/info por cuenta
+        Retorna siempre una lista de resultados raw.
+        """
+        results = []
+
+        # Estrategia 1: Si parece IMEI, buscar directo
+        q_stripped = query.strip()
+        if q_stripped.isdigit() and len(q_stripped) >= 6:
+            detail = self.get_device_detail(q_stripped)
+            if detail.get("code") == 0 and detail.get("data"):
+                data = detail["data"]
+                if isinstance(data, dict):
+                    results = [data]
+                elif isinstance(data, list):
+                    results = data
+                if results:
+                    return results
+
+            # Intentar batch search
+            page_resp = self.get_device_detail_page(imeis=[q_stripped])
+            if page_resp.get("code") == 0:
+                data = page_resp.get("data", {})
+                items = data.get("list", data.get("data", []))  # estructura puede variar
+                if isinstance(items, list) and items:
+                    return items
+
+        # Estrategia 2: Buscar por vehicle/status (acepta contenido libre)
+        vs_resp = self.get_vehicle_status(query)
+        if vs_resp.get("code") == 0 and vs_resp.get("data"):
+            data = vs_resp["data"]
+            if isinstance(data, list) and data:
+                return data
+
+        # Estrategia 3: Buscar por device/info como cuenta
+        info_resp = self.get_device_info(account=query)
+        if info_resp.get("code") == 0 and info_resp.get("data"):
+            data = info_resp["data"]
+            if isinstance(data, list) and data:
+                return data
+            elif isinstance(data, dict):
+                return [data]
+
+        return results
+
+
+# ---------- TrackSolid Client ----------
+# Usando EXACTAMENTE la misma lógica de generate_sign y get_current_date
+# que ya funciona en el script original del usuario.
+import pytz as _pytz
+
+def _tracksolid_current_date():
+    """Exacto de utils.py original."""
+    formatter = "%Y-%m-%d %H:%M:%S"
+    utc_now = datetime.now(_pytz.utc)
+    return utc_now.strftime(formatter)
+
+def _tracksolid_generate_sign(params, app_secret):
+    """Exacto de utils.py original."""
+    sorted_params = ''.join(f"{k}{v}" for k, v in sorted(params.items()))
+    sign_str = f"{app_secret}{sorted_params}{app_secret}"
+    return hashlib.md5(sign_str.encode('utf-8')).hexdigest().upper()
+
+
+class TrackSolidClient:
+    def __init__(self):
+        self.openapi_url = os.getenv("TRACKSOLID_OPENAPI_URL", "").strip()
+        self.app_key = os.getenv("TRACKSOLID_APP_KEY", "").strip()
+        self.app_secret = os.getenv("TRACKSOLID_APP_SECRET", "").strip()
+        self.account = os.getenv("TRACKSOLID_ACCOUNT", "").strip()
+        self.password_md5 = os.getenv("TRACKSOLID_PASSWORD_MD5", "").strip()
+        self._access_token = None
+        self._refresh_token = None
+        self._token_expires_in = 60
+        self._token_time = None
+
+    def _send_post(self, params):
+        resp = _requests.post(
+            self.openapi_url,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data=params,
+            timeout=15,
+        )
+        return resp.json()
+
+    def _is_token_expired(self):
+        if not self._token_time:
+            return True
+        return (_time.time() - self._token_time) >= (self._token_expires_in - 10)
+
+    def _ensure_valid_token(self):
+        if self._is_token_expired():
+            if self._refresh_token:
+                self._refresh_access_token()
+            else:
+                self._get_access_token()
+
+    def _get_access_token(self):
+        param_map = {
+            "app_key": self.app_key,
+            "v": "1.0",
+            "timestamp": _tracksolid_current_date(),
+            "sign_method": "md5",
+            "format": "json",
+            "method": "jimi.oauth.token.get",
+            "user_id": self.account,
+            "user_pwd_md5": self.password_md5,
+            "expires_in": "7200",
+        }
+        sign = _tracksolid_generate_sign(param_map, self.app_secret)
+        param_map["sign"] = sign
+        resp = self._send_post(param_map)
+        if resp.get("code") == 0:
+            self._update_token(resp["result"])
+        else:
+            raise Exception(f"TrackSolid auth error: {resp.get('message')} (code: {resp.get('code')})")
+
+    def _refresh_access_token(self):
+        param_map = {
+            "app_key": self.app_key,
+            "v": "1.0",
+            "timestamp": _tracksolid_current_date(),
+            "sign_method": "md5",
+            "format": "json",
+            "method": "jimi.oauth.token.refresh",
+            "access_token": self._access_token,
+            "refresh_token": self._refresh_token,
+            "expires_in": 7200,
+        }
+        sign = _tracksolid_generate_sign(param_map, self.app_secret)
+        param_map["sign"] = sign
+        resp = self._send_post(param_map)
+        if resp.get("code") == 0:
+            self._update_token(resp["result"])
+        else:
+            self._get_access_token()
+
+    def _update_token(self, result):
+        self._access_token = result["accessToken"]
+        self._refresh_token = result.get("refreshToken", self._refresh_token)
+        self._token_expires_in = int(result.get("expiresIn", 60))
+        self._token_time = _time.time()
+
+    def _api_call(self, build_params_fn):
+        self._ensure_valid_token()
+        resp = build_params_fn()
+        if resp.get("code") == 1004:
+            self._ensure_valid_token()
+            resp = build_params_fn()
+        return resp
+
+    def fetch_child_list(self):
+        def _do():
+            params = {
+                "app_key": self.app_key, "v": "1.0",
+                "timestamp": _tracksolid_current_date(), "sign_method": "md5",
+                "format": "json", "method": "jimi.user.child.list",
+                "access_token": self._access_token, "target": self.account,
+            }
+            params["sign"] = _tracksolid_generate_sign(params, self.app_secret)
+            return self._send_post(params)
+        return self._api_call(_do)
+
+    def fetch_device_list(self, target_account):
+        def _do():
+            params = {
+                "app_key": self.app_key, "v": "1.0",
+                "timestamp": _tracksolid_current_date(), "sign_method": "md5",
+                "format": "json", "method": "jimi.user.device.list",
+                "access_token": self._access_token, "target": target_account,
+            }
+            params["sign"] = _tracksolid_generate_sign(params, self.app_secret)
+            return self._send_post(params)
+        return self._api_call(_do)
+
+    def fetch_device_detail(self, imei_val):
+        def _do():
+            params = {
+                "app_key": self.app_key, "v": "1.0",
+                "timestamp": _tracksolid_current_date(), "sign_method": "md5",
+                "format": "json", "method": "jimi.track.device.detail",
+                "access_token": self._access_token, "imei": imei_val,
+            }
+            params["sign"] = _tracksolid_generate_sign(params, self.app_secret)
+            return self._send_post(params)
+        return self._api_call(_do)
+
+    def search_devices(self, query: str):
+        """
+        Búsqueda inteligente en Tracksolid:
+        1. Si parece IMEI (dígitos, >=6 chars) → jimi.track.device.detail directo
+        2. Si no parece IMEI → busca en sub-cuentas cuyo nombre coincida
+        Retorna siempre una lista de resultados raw.
+        """
+        results = []
+        q_stripped = query.strip()
+
+        # Estrategia 1: Búsqueda directa por IMEI
+        if q_stripped.isdigit() and len(q_stripped) >= 6:
+            detail = self.fetch_device_detail(q_stripped)
+            if detail.get("code") == 0 and detail.get("result"):
+                result = detail["result"]
+                if isinstance(result, dict):
+                    results = [result]
+                elif isinstance(result, list):
+                    results = result
+                if results:
+                    return results
+
+        # Estrategia 2: Buscar por nombre de sub-cuenta
+        child_resp = self.fetch_child_list()
+        if child_resp.get("code") != 0:
+            return results
+        sub_accounts = child_resp.get("result", [])
+        q = query.lower()
+        matched_accounts = [
+            sub for sub in sub_accounts
+            if q in sub.get("account", "").lower() or q in sub.get("name", "").lower()
+        ]
+        # Si no matcheó ninguna cuenta por nombre pero tenemos un IMEI parcial,
+        # iterar todas las cuentas buscando ese IMEI
+        if not matched_accounts and q_stripped.isdigit():
+            matched_accounts = sub_accounts
+
+        for sub in matched_accounts:
+            acc_name = sub.get("account", "")
+            acc_display = sub.get("name", acc_name)
+            dev_resp = self.fetch_device_list(acc_name)
+            if dev_resp.get("code") != 0:
+                continue
+            devices = dev_resp.get("result", [])
+            if not isinstance(devices, list):
+                continue
+            for dev in devices:
+                dev_imei = str(dev.get("imei", ""))
+                dev_name = str(dev.get("deviceName", ""))
+                if q in dev_imei.lower() or q in dev_name.lower() or q in acc_name.lower() or q in acc_display.lower():
+                    dev["_account"] = acc_name
+                    dev["_accountName"] = acc_display
+                    results.append(dev)
+        return results
+
+
+# ---------- Endpoints de búsqueda en plataformas ----------
+
+@app.get("/api/plataformas/buscar")
+def buscar_en_plataforma(q: str = Query(..., min_length=2), plataforma: str = Query(...)):
+    """
+    Busca dispositivos en IOP o Tracksolid.
+    Retorna el response RAW de la API en un array para que el frontend
+    pueda mostrarlos en un dropdown y el usuario seleccione.
+    """
+    plat = plataforma.lower().strip()
+    try:
+        if plat == "iop":
+            if not os.getenv("IOPGPS_APPID"):
+                raise HTTPException(status_code=400, detail="Credenciales IOP no configuradas en .env")
+            client = IOPGPSClient()
+            devices = client.search_devices(q)
+            return {"plataforma": "iop", "total": len(devices), "resultados": devices}
+        elif plat in ("tracksolid", "track"):
+            if not os.getenv("TRACKSOLID_APP_KEY"):
+                raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
+            client = TrackSolidClient()
+            devices = client.search_devices(q)
+            return {"plataforma": "tracksolid", "total": len(devices), "resultados": devices}
+        else:
+            raise HTTPException(status_code=400, detail=f"Plataforma no soportada: {plataforma}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/plataformas/debug")
+def debug_plataformas():
+    """Endpoint temporal para diagnosticar credenciales."""
+    import traceback as _tb
+    ts_key = os.getenv("TRACKSOLID_APP_KEY", "").strip()
+    ts_account = os.getenv("TRACKSOLID_ACCOUNT", "").strip()
+    ts_url = os.getenv("TRACKSOLID_OPENAPI_URL", "").strip()
+    ts_secret = os.getenv("TRACKSOLID_APP_SECRET", "").strip()
+    ts_pwd = os.getenv("TRACKSOLID_PASSWORD_MD5", "").strip()
+    iop_appid = os.getenv("IOPGPS_APPID", "").strip()
+    iop_base = os.getenv("IOPGPS_BASE_URL", "").strip()
+
+    result = {
+        "env": {
+            "tracksolid": {
+                "url": ts_url,
+                "app_key_len": len(ts_key),
+                "app_key_first4": ts_key[:4] if ts_key else "(vacío)",
+                "app_secret_len": len(ts_secret),
+                "account": ts_account,
+                "account_repr": repr(ts_account),
+                "password_md5_len": len(ts_pwd),
+                "password_md5_first6": ts_pwd[:6] if ts_pwd else "(vacío)",
+            },
+            "iop": {
+                "appid": iop_appid,
+                "base_url": iop_base,
+            }
+        },
+    }
+
+    # Intentar auth de Tracksolid con logging detallado
+    if ts_key and ts_secret and ts_account and ts_pwd:
+        try:
+            ts = _tracksolid_current_date()
+            param_map = {
+                "app_key": ts_key,
+                "v": "1.0",
+                "timestamp": ts,
+                "sign_method": "md5",
+                "format": "json",
+                "method": "jimi.oauth.token.get",
+                "user_id": ts_account,
+                "user_pwd_md5": ts_pwd,
+                "expires_in": "7200",
+            }
+            sign = _tracksolid_generate_sign(param_map, ts_secret)
+            param_map["sign"] = sign
+            result["tracksolid_auth_request"] = {
+                "url": ts_url,
+                "timestamp_used": ts,
+                "sign_generated": sign,
+                "params_keys": list(param_map.keys()),
+            }
+            resp = _requests.post(
+                ts_url,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data=param_map,
+                timeout=15,
+            )
+            result["tracksolid_auth_response"] = resp.json()
+        except Exception as e:
+            result["tracksolid_auth_error"] = f"{type(e).__name__}: {e}\n{_tb.format_exc()}"
+
+    return result
+
+
+@app.get("/api/plataformas/dispositivo/{imei_val}")
+def detalle_dispositivo_plataforma(imei_val: str, plataforma: str = Query(...)):
+    """Obtiene el detalle completo de un dispositivo por IMEI (consulta directa)."""
+    plat = plataforma.lower().strip()
+    try:
+        if plat == "iop":
+            if not os.getenv("IOPGPS_APPID"):
+                raise HTTPException(status_code=400, detail="Credenciales IOP no configuradas en .env")
+            client = IOPGPSClient()
+            # Consulta directa por IMEI
+            detail = client.get_device_detail(imei_val)
+            if detail.get("code") == 0 and detail.get("data"):
+                return {"plataforma": "iop", "dispositivo": detail["data"]}
+            # Fallback: device/info
+            info = client.get_device_info(imei_val=imei_val)
+            if info.get("code") == 0 and info.get("data"):
+                data = info["data"]
+                return {"plataforma": "iop", "dispositivo": data[0] if isinstance(data, list) else data}
+            raise HTTPException(status_code=404, detail="Dispositivo no encontrado en IOP")
+        elif plat in ("tracksolid", "track"):
+            if not os.getenv("TRACKSOLID_APP_KEY"):
+                raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
+            client = TrackSolidClient()
+            detail = client.fetch_device_detail(imei_val)
+            if detail.get("code") == 0 and detail.get("result"):
+                return {"plataforma": "tracksolid", "dispositivo": detail["result"]}
+            raise HTTPException(status_code=404, detail="Dispositivo no encontrado en Tracksolid")
+        else:
+            raise HTTPException(status_code=400, detail=f"Plataforma no soportada: {plataforma}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
