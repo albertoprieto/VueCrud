@@ -2,6 +2,7 @@
   <div class="nuevo-reporte-servicio-container">
     <h2 class="reporte-title">Nuevo Reporte de Servicio</h2>
     <div class="servicio-card">
+      <BuscadorPlataforma @seleccionar="onPlataformaSeleccionar" />
       <div class="reporte-fields">
         <div class="full-width-row">
           <div class="field-group">
@@ -237,6 +238,7 @@ import Dialog from 'primevue/dialog';
 import axios from 'axios';
 import { getIMEIs } from '@/services/imeiService';
 import { verificarReportesActivaciones } from '@/services/activacionesService';
+import BuscadorPlataforma from '@/components/BuscadorPlataforma.vue';
 
 const lugar_instalacion = ref('');
 const tipo_servicio = ref('');
@@ -378,6 +380,18 @@ const showDialog = ref(false);
 const dialogMessage = ref('');
 const dialogTitle = ref('');
 
+const onPlataformaSeleccionar = ({ plataforma: plat, dispositivo }) => {
+  // Auto-rellenar campos del formulario con datos del dispositivo de la plataforma
+  if (dispositivo.imei) imei.value = dispositivo.imei;
+  if (plat) plataforma.value = plat === 'iop' ? 'IOP' : 'Tracksolid';
+  if (dispositivo.deviceName) modelo_gps.value = dispositivo.deviceName;
+  // Campos específicos de IOP
+  if (dispositivo._userName) usuario.value = dispositivo._userName;
+  // Campos específicos de Tracksolid
+  if (dispositivo._accountName) usuario.value = dispositivo._accountName;
+  if (dispositivo._account) usuario.value = dispositivo._account;
+};
+
 const limpiarFormulario = () => {
   tipo_servicio.value = '';
   marca.value = '';
@@ -491,11 +505,11 @@ const generarReporte = async () => {
 
 .servicio-card {
   border-radius: 8px;
-  box-shadow: 0 2px 8px var(--card-shadow, rgba(0, 0, 0, 0.07));
+
   margin-bottom: 2rem;
   padding: 1rem;
   transition: box-shadow 0.2s;
-  background: var(--card-bg, inherit);
+
 }
 
 .servicio-card:hover {

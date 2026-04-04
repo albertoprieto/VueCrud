@@ -2,6 +2,7 @@
   <div class="nuevo-reporte-servicio-container">
     <h2 class="reporte-title">Nuevo Reporte de Renovación</h2>
     <div class="servicio-card">
+      <BuscadorPlataforma @seleccionar="onPlataformaSeleccionar" />
 
       <div class="reporte-fields">
         <div class="field-group">
@@ -138,6 +139,7 @@ import Dialog from 'primevue/dialog';
 import axios from 'axios';
 import { getIMEIs } from '@/services/imeiService';
 import { verificarReportesActivaciones } from '@/services/activacionesService';
+import BuscadorPlataforma from '@/components/BuscadorPlataforma.vue';
 
 const lugar_instalacion = ref('');
 const tipo_servicio = ref('');
@@ -272,6 +274,15 @@ watch(ubicacion, async (nuevaUbicacionId) => {
 const showDialog = ref(false);
 const dialogMessage = ref('');
 const dialogTitle = ref('');
+
+const onPlataformaSeleccionar = ({ plataforma: plat, dispositivo }) => {
+  if (dispositivo.imei) imei.value = dispositivo.imei;
+  if (plat) plataforma.value = plat === 'iop' ? 'IOP' : 'Tracksolid';
+  if (dispositivo.deviceName) modelo_gps.value = dispositivo.deviceName;
+  if (dispositivo._userName) usuario.value = dispositivo._userName;
+  if (dispositivo._accountName) usuario.value = dispositivo._accountName;
+  if (dispositivo._account) usuario.value = dispositivo._account;
+};
 
 const limpiarFormulario = () => {
   tipo_servicio.value = '';
