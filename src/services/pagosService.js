@@ -37,6 +37,13 @@ export async function subirComprobanteNota(id, archivo) {
   return res.data;
 }
 
+export async function eliminarComprobanteNota(id, path) {
+  const res = await axios.delete(`${API_URL}/notas-pago/${id}/comprobante`, {
+    data: { path }
+  });
+  return res.data;
+}
+
 // ── Facturas ──
 export async function getFacturas() {
   const res = await axios.get(`${API_URL}/facturas-pago`);
@@ -68,6 +75,13 @@ export async function subirComprobanteFactura(id, archivo) {
   fd.append('archivo', archivo);
   const res = await axios.post(`${API_URL}/facturas-pago/${id}/comprobante`, fd, {
     headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return res.data;
+}
+
+export async function eliminarComprobanteFactura(id, path) {
+  const res = await axios.delete(`${API_URL}/facturas-pago/${id}/comprobante`, {
+    data: { path }
   });
   return res.data;
 }

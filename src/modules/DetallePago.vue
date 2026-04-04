@@ -47,16 +47,27 @@
         </div>
       </div>
 
-      <!-- Comprobante de pago -->
+      <!-- Comprobantes de pago -->
       <div class="comprobante-section">
-        <h3>Comprobante de pago</h3>
-        <div v-if="item.comprobante_path" class="comprobante-actual">
-          <i class="pi pi-file" style="color:#1976d2;margin-right:0.5rem;"></i>
-          <a :href="urlComprobante" target="_blank" rel="noopener noreferrer" style="color:#1976d2;font-weight:bold;">Ver / Descargar comprobante</a>
+        <h3>Comprobantes de pago</h3>
+        <div v-if="item.comprobantes && item.comprobantes.length" class="comprobantes-lista">
+          <div v-for="(comp, idx) in item.comprobantes" :key="idx" class="comprobante-item">
+            <i class="pi pi-file" style="color:#1976d2;margin-right:0.5rem;"></i>
+            <a :href="urlComprobante(comp)" target="_blank" rel="noopener noreferrer" style="color:#1976d2;font-weight:bold;flex:1;">
+              {{ nombreArchivo(comp) }}
+            </a>
+            <Button
+              icon="pi pi-trash"
+              class="p-button-text p-button-danger p-button-sm"
+              :loading="eliminandoComprobante === comp"
+              @click="eliminarComprobante(comp)"
+              v-tooltip.top="'Eliminar comprobante'"
+            />
+          </div>
         </div>
-        <div v-else style="color:#999;margin-bottom:0.75rem;">No se ha cargado comprobante aún.</div>
+        <div v-else style="color:#999;margin-bottom:0.75rem;">No se han cargado comprobantes aún.</div>
         <div class="comprobante-upload">
-          <label for="inputComprobante" style="font-weight:bold;display:block;margin-bottom:0.5rem;">{{ item.comprobante_path ? 'Reemplazar comprobante:' : 'Cargar comprobante:' }}</label>
+          <label for="inputComprobante" style="font-weight:bold;display:block;margin-bottom:0.5rem;">Agregar comprobante:</label>
           <input id="inputComprobante" type="file" @change="onFileChange" accept="application/pdf,image/*" />
           <Button
             label="Subir comprobante"
@@ -105,7 +116,9 @@ import {
   actualizarStatusNota,
   actualizarStatusFactura,
   subirComprobanteNota,
-  subirComprobanteFactura
+  subirComprobanteFactura,
+  eliminarComprobanteNota,
+  eliminarComprobanteFactura
 } from '@/services/pagosService';
 import { generarPagoPDF } from '@/services/PagoPdfService.js';
 
@@ -123,13 +136,20 @@ const saving = ref(false);
 const nuevoStatus = ref('');
 const archivoSeleccionado = ref(null);
 const subiendo = ref(false);
+const eliminandoComprobante = ref(null);
 
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-const urlComprobante = computed(() => {
-  if (!item.value?.comprobante_path) return '';
-  const p = item.value.comprobante_path.startsWith('/') ? item.value.comprobante_path : `/${item.value.comprobante_path}`;
+
+function urlComprobante(path) {
+  if (!path) return '';
+  const p = path.startsWith('/') ? path : `/${path}`;
   return `${API_URL}${p}`;
-});
+}
+
+function nombreArchivo(path) {
+  if (!path) return 'comprobante';
+  return path.split('/').pop();
+}
 
 const opcionesStatusNota = [
   { label: 'Pendiente de pago', value: 'pendiente de pago' },
@@ -219,11 +239,29 @@ async function subirComprobante() {
     }
     toast.add({ severity: 'success', summary: 'Subido', detail: 'Comprobante cargado correctamente.', life: 3000 });
     archivoSeleccionado.value = null;
+    const inputEl = document.getElementById('inputComprobante');
+    if (inputEl) inputEl.value = '';
     await cargarDetalle();
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo subir el comprobante.', life: 4000 });
   }
   subiendo.value = false;
+}
+
+async function eliminarComprobante(path) {
+  eliminandoComprobante.value = path;
+  try {
+    if (esNota.value) {
+      await eliminarComprobanteNota(id.value, path);
+    } else {
+      await eliminarComprobanteFactura(id.value, path);
+    }
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Comprobante eliminado.', life: 3000 });
+    await cargarDetalle();
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el comprobante.', life: 4000 });
+  }
+  eliminandoComprobante.value = null;
 }
 </script>
 
@@ -282,6 +320,18 @@ async function subirComprobante() {
   margin-bottom: 0.75rem;
   display: flex;
   align-items: center;
+}
+.comprobantes-lista {
+  margin-bottom: 0.75rem;
+}
+.comprobante-item {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.comprobante-item:last-child {
+  border-bottom: none;
 }
 .comprobante-upload {
   margin-top: 0.5rem;
