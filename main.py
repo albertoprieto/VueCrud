@@ -4103,6 +4103,14 @@ def get_nota_pago(nota_id: int):
         row['detalle_ordenes'] = detalle_ordenes
         if row.get('fecha') and hasattr(row['fecha'], 'isoformat'):
             row['fecha'] = row['fecha'].isoformat()
+        # Parsear comprobantes JSON
+        if isinstance(row.get('comprobantes'), str):
+            try:
+                row['comprobantes'] = json.loads(row['comprobantes'])
+            except Exception:
+                row['comprobantes'] = []
+        if row.get('comprobantes') is None:
+            row['comprobantes'] = []
     cursor.close()
     db.close()
     if not row:
@@ -4184,27 +4192,81 @@ def subir_comprobante_nota(nota_id: int, archivo: UploadFile = File(...)):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT id FROM notas_pago WHERE id=%s", (nota_id,))
+    cursor.execute("SELECT id, comprobantes FROM notas_pago WHERE id=%s", (nota_id,))
     row = cursor.fetchone()
     if not row:
         cursor.close()
         db.close()
         raise HTTPException(status_code=404, detail="Nota no encontrada")
+    # Parsear lista existente
+    existentes = []
+    if row.get('comprobantes'):
+        try:
+            existentes = json.loads(row['comprobantes']) if isinstance(row['comprobantes'], str) else row['comprobantes']
+        except Exception:
+            existentes = []
     base_dir = os.path.join("uploads", "pagos", "notas", str(nota_id))
     os.makedirs(base_dir, exist_ok=True)
     filename = archivo.filename or "comprobante"
     filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
+    # Evitar colisión de nombres
     dest_path = os.path.join(base_dir, filename)
+    base_name, ext = os.path.splitext(filename)
+    counter = 1
+    while os.path.exists(dest_path):
+        dest_path = os.path.join(base_dir, f"{base_name}_{counter}{ext}")
+        counter += 1
     with open(dest_path, "wb") as out:
         shutil.copyfileobj(archivo.file, out)
     rel_path = dest_path.replace("\\", "/")
+    existentes.append(rel_path)
     cursor2 = db.cursor()
-    cursor2.execute("UPDATE notas_pago SET comprobante_path=%s WHERE id=%s", (rel_path, nota_id))
+    cursor2.execute("UPDATE notas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(existentes), nota_id))
     db.commit()
     cursor2.close()
     cursor.close()
     db.close()
-    return {"message": "Comprobante subido", "path": rel_path}
+    return {"message": "Comprobante subido", "path": rel_path, "comprobantes": existentes}
+
+@app.delete("/notas-pago/{nota_id}/comprobante")
+def eliminar_comprobante_nota(nota_id: int, data: dict = Body(...)):
+    path = data.get('path', '').strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="Se requiere 'path' del comprobante a eliminar")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, comprobantes FROM notas_pago WHERE id=%s", (nota_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    existentes = []
+    if row.get('comprobantes'):
+        try:
+            existentes = json.loads(row['comprobantes']) if isinstance(row['comprobantes'], str) else row['comprobantes']
+        except Exception:
+            existentes = []
+    if path not in existentes:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado en la lista")
+    existentes.remove(path)
+    # Eliminar archivo físico
+    if os.path.exists(path):
+        os.remove(path)
+    cursor2 = db.cursor()
+    cursor2.execute("UPDATE notas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(existentes), nota_id))
+    db.commit()
+    cursor2.close()
+    cursor.close()
+    db.close()
+    return {"message": "Comprobante eliminado", "comprobantes": existentes}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -4304,6 +4366,14 @@ def get_factura_pago(factura_id: int):
         row['detalle_ordenes'] = detalle_ordenes
         if row.get('fecha') and hasattr(row['fecha'], 'isoformat'):
             row['fecha'] = row['fecha'].isoformat()
+        # Parsear comprobantes JSON
+        if isinstance(row.get('comprobantes'), str):
+            try:
+                row['comprobantes'] = json.loads(row['comprobantes'])
+            except Exception:
+                row['comprobantes'] = []
+        if row.get('comprobantes') is None:
+            row['comprobantes'] = []
     cursor.close()
     db.close()
     if not row:
@@ -4385,24 +4455,75 @@ def subir_comprobante_factura(factura_id: int, archivo: UploadFile = File(...)):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT id FROM facturas_pago WHERE id=%s", (factura_id,))
+    cursor.execute("SELECT id, comprobantes FROM facturas_pago WHERE id=%s", (factura_id,))
     row = cursor.fetchone()
     if not row:
         cursor.close()
         db.close()
         raise HTTPException(status_code=404, detail="Factura no encontrada")
+    existentes = []
+    if row.get('comprobantes'):
+        try:
+            existentes = json.loads(row['comprobantes']) if isinstance(row['comprobantes'], str) else row['comprobantes']
+        except Exception:
+            existentes = []
     base_dir = os.path.join("uploads", "pagos", "facturas", str(factura_id))
     os.makedirs(base_dir, exist_ok=True)
     filename = archivo.filename or "comprobante"
     filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
     dest_path = os.path.join(base_dir, filename)
+    base_name, ext = os.path.splitext(filename)
+    counter = 1
+    while os.path.exists(dest_path):
+        dest_path = os.path.join(base_dir, f"{base_name}_{counter}{ext}")
+        counter += 1
     with open(dest_path, "wb") as out:
         shutil.copyfileobj(archivo.file, out)
     rel_path = dest_path.replace("\\", "/")
+    existentes.append(rel_path)
     cursor2 = db.cursor()
-    cursor2.execute("UPDATE facturas_pago SET comprobante_path=%s WHERE id=%s", (rel_path, factura_id))
+    cursor2.execute("UPDATE facturas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(existentes), factura_id))
     db.commit()
     cursor2.close()
     cursor.close()
     db.close()
-    return {"message": "Comprobante subido", "path": rel_path}
+    return {"message": "Comprobante subido", "path": rel_path, "comprobantes": existentes}
+
+@app.delete("/facturas-pago/{factura_id}/comprobante")
+def eliminar_comprobante_factura(factura_id: int, data: dict = Body(...)):
+    path = data.get('path', '').strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="Se requiere 'path' del comprobante a eliminar")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, comprobantes FROM facturas_pago WHERE id=%s", (factura_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    existentes = []
+    if row.get('comprobantes'):
+        try:
+            existentes = json.loads(row['comprobantes']) if isinstance(row['comprobantes'], str) else row['comprobantes']
+        except Exception:
+            existentes = []
+    if path not in existentes:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado en la lista")
+    existentes.remove(path)
+    if os.path.exists(path):
+        os.remove(path)
+    cursor2 = db.cursor()
+    cursor2.execute("UPDATE facturas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(existentes), factura_id))
+    db.commit()
+    cursor2.close()
+    cursor.close()
+    db.close()
+    return {"message": "Comprobante eliminado", "comprobantes": existentes}

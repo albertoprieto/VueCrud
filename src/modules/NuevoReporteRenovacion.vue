@@ -18,14 +18,11 @@
           <Dropdown v-model="cliente" :options="clientes" optionLabel="nombre" optionValue="id"
             placeholder="Selecciona cliente" class="w-full mb-4" filter :filterPlaceholder="'Buscar cliente'" />
         </div>
-
-
           <div class="field-group" v-if="plataformasOptions.length" style="flex:1; margin-right:1rem;">
             <label>Plataforma</label>
             <Dropdown v-model="plataforma" :options="plataformasOptions" placeholder="Selecciona plataforma"
               class="w-full mb-4" />
           </div>
-
         </div>
         <div class="row-group">
           <div class="field-group" v-if="usuariosOptions.length" style="flex:1; margin-right:1rem;">
@@ -33,37 +30,12 @@
             <Dropdown v-model="usuario" :options="usuariosOptions" placeholder="Selecciona usuario"
               class="w-full mb-4" />
           </div>
-
-
-
-        <div class="field-group">
-          <label class="required-label">Ubicación</label>
-          <Dropdown v-model="ubicacion" :options="ubicaciones" optionLabel="nombre" optionValue="id"
-            placeholder="Selecciona ubicación" class="w-full mb-4" />
-        </div>
       </div>
-
-
       <div style="margin-bottom:2rem;" >
         <h4 style="font-size:1.1em; font-weight:bold; margin-bottom:1em;">Asignación de IMEIs y SIM</h4>
         <div style="display:flex; gap:2rem; margin-bottom:1em; flex-wrap:wrap;">
-          <div>
-            <label style="display:flex;align-items:center;gap:0.5em;">
-              <input type="checkbox" v-model="noModificaImei" />
-              No modifica IMEI
-            </label>
-            <span style="color:#888; font-size:0.9em; display:block; margin-top:0.3em;">El IMEI se captura manualmente y no afecta el stock.</span>
-          </div>
-          <div>
-            <label style="display:flex;align-items:center;gap:0.5em;">
-              <input type="checkbox" v-model="noModificaSim" />
-              No modifica SIM
-            </label>
-            <span style="color:#888; font-size:0.9em; display:block; margin-top:0.3em;">El SIM se captura manualmente y no afecta el stock.</span>
-          </div>
         </div>
       </div>
-
 
       <div class="field-group" style="flex:2;">
         <!-- CAMBIO DE EQUIPO: Solo IMEI nuevo + IMEI a devolver (sin SIM) -->
@@ -133,68 +105,10 @@
         </div>
         <div class="field-group">
           <label>Marca</label>
-          <InputText v-model="marca" class="w-full" placeholder="Marca" />
         </div>
-        <!-- <div class="field-group">
-          <label>Submarca</label>
-          <InputText v-model="submarca" class="w-full" placeholder="Submarca" />
-        </div> -->
-        <!-- <div class="field-group">
-          <label>Modelo</label>
-          <InputText v-model="modelo" class="w-full" placeholder="Modelo" />
-        </div> -->
-        <div class="field-group">
-          <label>Placas</label>
-          <InputText v-model="placas" class="w-full" placeholder="Placas" />
-        </div>
-        <!-- <div class="field-group">
-          <label>Color</label>
-          <InputText v-model="color" class="w-full" placeholder="Color" />
-        </div> -->
-        <!-- <div class="field-group">
-          <label>Número económico</label>
-          <InputText v-model="numero_economico" class="w-full" placeholder="Número económico" />
-        </div> -->
+        
         <div class="full-width-row">
-          <h4 class="section-header">Datos del dispositivo (opcionales)</h4>
-        </div>
-        <div class="field-group">
-          <label>Modelo GPS</label>
-          <InputText v-model="modelo_gps" class="w-full" placeholder="Modelo GPS" />
-        </div>
-        <!-- <div class="field-group">
-          <label>Accesorios adicionales (Botón/Micro/Etc.)</label>
-          <InputText v-model="accesorios" class="w-full" placeholder="Accesorios" />
-        </div>
-        <div class="field-group">
-          <label>Ubicación del GPS</label>
-          <InputText v-model="ubicacion_gps" class="w-full" placeholder="Ubicación GPS" />
-        </div>
-        <div class="field-group">
-          <label>Ubicación del Bloqueo (Bomba/Switch/Ignición/Etc.)</label>
-          <InputText v-model="ubicacion_bloqueo" class="w-full" placeholder="Ubicación Bloqueo" />
-        </div> -->
-        <div class="full-width-row">
-          <h4 class="section-header">Datos del cobro</h4>
-        </div>
-        <div class="field-group">
-          <label>Total pagado por el cliente</label>
-          <InputText v-model="total" class="w-full" placeholder="Total" />
-        </div>
-        <!-- <div class="field-group">
-          <label>Monto cobrado por el servicio del técnico</label>
-          <InputText v-model="monto_tecnico" class="w-full" placeholder="Monto técnico" />
-        </div> -->
-        <div class="field-group">
-          <label>Método de pago</label>
-          <Dropdown v-model="metodo_pago" :options="metodoPagoOptions" optionLabel="label" optionValue="value"
-            placeholder="Selecciona método de pago" class="w-full mb-4" />
-        </div>
-        <!-- <div class="field-group">
-          <label>Viáticos cobrados por el técnico</label>
-          <InputText v-model="viaticos" class="w-full" placeholder="Viáticos" />
-        </div> -->
-        <div class="full-width-row">
+          <InputText v-model="marca" class="w-full mb-4" placeholder="Marca" />
           <div class="field-group">
             <label>Observaciones</label>
             <Textarea v-model="observaciones" rows="3" class="w-full" />
