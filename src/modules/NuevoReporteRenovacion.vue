@@ -81,7 +81,7 @@
           <div style="display:flex;gap:1em;margin-bottom:1em;">
             <div style="flex:1;display:flex;flex-direction:column;">
               <label>IMEI 1</label>
-              <Dropdown v-if="!noModificaImei && imeiOptions.length" v-model="imei"
+              <Dropdown v-if="noModificaImei" v-model="imei"
                 :options="imeiOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
                 placeholder="Selecciona IMEI" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
                 :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
@@ -89,7 +89,7 @@
             </div>
             <div style="flex:1;display:flex;flex-direction:column;">
               <label>SIM 1</label>
-              <Dropdown v-if="!noModificaSim && simOptions.length" v-model="sim"
+              <Dropdown v-if="noModificaSim" v-model="sim"
                 :options="simOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
                 placeholder="Selecciona SIM" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
                 :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
@@ -196,9 +196,7 @@ const vendedores = ref([]);
 const plataforma = ref(null);
 const usuariosOptions = ref([]);
 const plataformasOptions = ref([]);
-const ubicacion = ref(null);
-const ubicaciones = ref([]);
-const stockUbicacion = ref([]);
+
 const tiposServicio = [
   'Migracion 1 Año',
   'Migracion 10 año',
@@ -225,11 +223,22 @@ onMounted(async () => {
   } catch (e) {
     clientes.value = [];
   }
+  // Renovaciones no modifican stock, cargar todos los IMEIs sin filtrar por ubicación
   try {
-    const res = await axios.get(`${import.meta.env.VITE_API_URL}/ubicaciones`);
-    ubicaciones.value = res.data || [];
+    const imeis = await getIMEIs();
+    imeiOptions.value = imeis.filter(i => !i.articulo_nombre.toLowerCase().includes('sim')).map(i => ({
+      imei: i.imei,
+      label: `${i.imei} — ${i.articulo_nombre}`,
+      status: i.status
+    }));
+    simOptions.value = imeis.filter(i => i.articulo_nombre.toLowerCase().includes('sim')).map(i => ({
+      imei: i.imei,
+      label: `${i.imei} — ${i.articulo_nombre}`,
+      status: i.status
+    }));
   } catch (e) {
-    ubicaciones.value = [];
+    imeiOptions.value = [];
+    simOptions.value = [];
   }
   try {
     const res = await axios.get(`${import.meta.env.VITE_API_URL}/usuarios`);
@@ -256,41 +265,7 @@ watch(cliente, async (nuevoClienteId) => {
   }
 });
 
-watch(ubicacion, async (nuevaUbicacionId) => {
-  if (!nuevaUbicacionId) {
-    stockUbicacion.value = [];
-    imeiOptions.value = [];
-    simOptions.value = [];
-    imei.value = null;
-    sim.value = null;
-    return;
-  }
-  try {
-    const imeis = await getIMEIs();
-    const stock = imeis.filter(i => i.ubicacion_id === nuevaUbicacionId);
-    stockUbicacion.value = stock;
-    imeiOptions.value = stock.filter(i => !i.articulo_nombre.toLowerCase().includes('sim')).map(i => ({
-      imei: i.imei,
-      label: `${i.imei} — ${i.articulo_nombre}`,
-      status: i.status
-    }));
-    simOptions.value = stock.filter(i => i.articulo_nombre.toLowerCase().includes('sim')).map(i => ({
-      imei: i.imei,
-      label: `${i.imei} — ${i.articulo_nombre}`,
-      status: i.status
-    }));
-    imei.value = null;
-    sim.value = null;
-    console.log('Stock de la ubicación:', stock.length, stock);
-  } catch (e) {
-    stockUbicacion.value = [];
-    imeiOptions.value = [];
-    simOptions.value = [];
-    imei.value = null;
-    sim.value = null;
-    console.log('Error obteniendo stock de la ubicación:', e);
-  }
-});
+
 
 const showDialog = ref(false);
 const dialogMessage = ref('');
@@ -319,19 +294,6 @@ const onPlataformaSeleccionar = async ({ plataforma: plat, dispositivo }) => {
   if (dispositivo._userName) usuario.value = dispositivo._userName;
   if (dispositivo._accountName) usuario.value = dispositivo._accountName;
   if (dispositivo._account) usuario.value = dispositivo._account;
-
-  // Buscar el IMEI en nuestra BD para auto-seleccionar ubicación
-  if (dispositivo.imei) {
-    try {
-      const imeis = await getIMEIs();
-      const encontrado = imeis.find(i => i.imei === dispositivo.imei);
-      if (encontrado && encontrado.ubicacion_id) {
-        ubicacion.value = encontrado.ubicacion_id;
-      }
-    } catch (e) {
-      console.log('No se pudo buscar ubicación del IMEI:', e.message);
-    }
-  }
 };
 
 const onBusquedaResultado = ({ plataforma: plat, resultados: items }) => {
@@ -429,7 +391,6 @@ const limpiarFormulario = () => {
   instalador.value = null;
   vendedor.value = null;
   plataforma.value = null;
-  ubicacion.value = null;
   metodo_pago.value = '';
   lugar_instalacion.value = '';
 };
@@ -454,7 +415,7 @@ const generarReporte = async () => {
     vendedor: 'NA',
     plataforma: plataforma.value || 'NA',
     lugar_instalacion: 'NA',
-    ubicacion_id: ubicacion.value || 0,
+    ubicacion_id: 0,
     imei: imei.value || 'NA',
     sim_serie: sim.value || 'NA',
     imei_devolver: imeiDevolver.value || 'NA',
