@@ -2,7 +2,7 @@
   <div class="nuevo-reporte-servicio-container">
     <h2 class="reporte-title">Nuevo Reporte de Servicio</h2>
     <div class="servicio-card">
-      <BuscadorPlataforma @seleccionar="onPlataformaSeleccionar" />
+      <BuscadorPlataforma @seleccionar="onPlataformaSeleccionar" @busqueda-resultado="onBusquedaResultado" />
       <div class="reporte-fields">
         <div class="full-width-row">
           <div class="field-group">
@@ -225,11 +225,28 @@
         <Button label="Cerrar" @click="showDialog = false" class="p-button-secondary" />
       </template>
     </Dialog>
+
+    <!-- Dialog para crear cliente nuevo desde plataforma -->
+    <Dialog v-model:visible="showCrearClienteDialog" header="Crear cliente desde plataforma" modal :style="{ width: '500px' }">
+      <p style="margin-bottom:1em;color:var(--text-color-secondary);">No se encontró un cliente con el usuario <strong>{{ nuevoClienteForm.usuarios[0] }}</strong>. Revisa y edita los datos antes de crearlo.</p>
+      <div style="display:flex;flex-direction:column;gap:0.8em;">
+        <div><label style="font-weight:600;">Nombre</label><InputText v-model="nuevoClienteForm.nombre" class="w-full" /></div>
+        <div><label style="font-weight:600;">Teléfono</label><InputText v-model="nuevoClienteForm.telefonos[0]" class="w-full" /></div>
+        <div><label style="font-weight:600;">Correo</label><InputText v-model="nuevoClienteForm.correo" class="w-full" /></div>
+        <div><label style="font-weight:600;">Dirección</label><InputText v-model="nuevoClienteForm.direccion" class="w-full" /></div>
+        <div><label style="font-weight:600;">Usuario (plataforma)</label><InputText v-model="nuevoClienteForm.usuarios[0]" class="w-full" /></div>
+        <div><label style="font-weight:600;">Plataforma</label><InputText v-model="nuevoClienteForm.plataformas[0]" class="w-full" disabled /></div>
+      </div>
+      <template #footer>
+        <Button label="Cancelar" @click="showCrearClienteDialog = false" class="p-button-secondary" />
+        <Button label="Crear cliente" icon="pi pi-check" @click="confirmarCrearCliente" :loading="creandoCliente" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, nextTick } from 'vue';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
@@ -238,7 +255,11 @@ import Dialog from 'primevue/dialog';
 import axios from 'axios';
 import { getIMEIs } from '@/services/imeiService';
 import { verificarReportesActivaciones } from '@/services/activacionesService';
+import { addCliente } from '@/services/clientesService';
+import { useLoginStore } from '@/stores/loginStore';
 import BuscadorPlataforma from '@/components/BuscadorPlataforma.vue';
+
+const loginStore = useLoginStore();
 
 const lugar_instalacion = ref('');
 const tipo_servicio = ref('');
@@ -380,16 +401,109 @@ const showDialog = ref(false);
 const dialogMessage = ref('');
 const dialogTitle = ref('');
 
-const onPlataformaSeleccionar = ({ plataforma: plat, dispositivo }) => {
-  // Auto-rellenar campos del formulario con datos del dispositivo de la plataforma
+// --- Crear cliente desde plataforma ---
+const showCrearClienteDialog = ref(false);
+const creandoCliente = ref(false);
+const nuevoClienteForm = ref({
+  nombre: '',
+  telefonos: [''],
+  correo: '',
+  direccion: '',
+  usuarios: [''],
+  plataformas: [''],
+  atendidoPor: '',
+  usuarioSesion: '',
+  rfc: 'XAXX010101000',
+  constancia_path: null,
+});
+
+const onPlataformaSeleccionar = async ({ plataforma: plat, dispositivo }) => {
   if (dispositivo.imei) imei.value = dispositivo.imei;
   if (plat) plataforma.value = plat === 'iop' ? 'IOP' : 'Tracksolid';
   if (dispositivo.deviceName) modelo_gps.value = dispositivo.deviceName;
-  // Campos específicos de IOP
   if (dispositivo._userName) usuario.value = dispositivo._userName;
-  // Campos específicos de Tracksolid
   if (dispositivo._accountName) usuario.value = dispositivo._accountName;
   if (dispositivo._account) usuario.value = dispositivo._account;
+
+  // Buscar el IMEI en nuestra BD para auto-seleccionar ubicación
+  if (dispositivo.imei) {
+    try {
+      const imeis = await getIMEIs();
+      const encontrado = imeis.find(i => i.imei === dispositivo.imei);
+      if (encontrado && encontrado.ubicacion_id) {
+        ubicacion.value = encontrado.ubicacion_id;
+      }
+    } catch (e) {
+      console.log('No se pudo buscar ubicación del IMEI:', e.message);
+    }
+  }
+};
+
+const onBusquedaResultado = ({ plataforma: plat, resultados: items }) => {
+  if (!items || !items.length) return;
+  const primer = items[0];
+  const accountName = primer._accountName || primer._account || '';
+  if (!accountName) return;
+  const platNombre = plat === 'iop' ? 'Wanway' : 'Tracksolidpro';
+
+  const clienteExistente = clientes.value.find(c =>
+    c.usuarios?.some(u => u.toLowerCase() === accountName.toLowerCase())
+  );
+  if (clienteExistente) {
+    cliente.value = clienteExistente.id;
+    nextTick(() => {
+      if (plataformasOptions.value.includes(platNombre)) plataforma.value = platNombre;
+      else if (plataformasOptions.value.length) plataforma.value = plataformasOptions.value[0];
+      if (usuariosOptions.value.includes(accountName)) usuario.value = accountName;
+      else if (usuariosOptions.value.length) usuario.value = usuariosOptions.value[0];
+    });
+  } else {
+    nuevoClienteForm.value = {
+      nombre: primer._userName || accountName,
+      telefonos: [primer._contactTel || ''],
+      correo: primer._email || '',
+      direccion: primer.address || '',
+      usuarios: [accountName],
+      plataformas: [platNombre],
+      atendidoPor: loginStore.user?.username || '',
+      usuarioSesion: loginStore.user?.username || '',
+      rfc: 'XAXX010101000',
+      constancia_path: null,
+    };
+    showCrearClienteDialog.value = true;
+  }
+};
+
+const confirmarCrearCliente = async () => {
+  creandoCliente.value = true;
+  try {
+    await addCliente(nuevoClienteForm.value);
+    // Refrescar lista de clientes
+    const res = await axios.get(`${import.meta.env.VITE_API_URL}/clientes`);
+    clientes.value = res.data || [];
+    // Auto-seleccionar el cliente recién creado
+    const nuevo = clientes.value.find(c =>
+      c.usuarios?.some(u => u.toLowerCase() === nuevoClienteForm.value.usuarios[0].toLowerCase())
+    );
+    if (nuevo) {
+      cliente.value = nuevo.id;
+      nextTick(() => {
+        const platNombre = nuevoClienteForm.value.plataformas[0];
+        const acc = nuevoClienteForm.value.usuarios[0];
+        if (plataformasOptions.value.includes(platNombre)) plataforma.value = platNombre;
+        else if (plataformasOptions.value.length) plataforma.value = plataformasOptions.value[0];
+        if (usuariosOptions.value.includes(acc)) usuario.value = acc;
+        else if (usuariosOptions.value.length) usuario.value = usuariosOptions.value[0];
+      });
+    }
+    showCrearClienteDialog.value = false;
+  } catch (e) {
+    dialogTitle.value = 'Error al crear cliente';
+    dialogMessage.value = e?.response?.data?.detail || e.message || 'Error desconocido';
+    showDialog.value = true;
+  } finally {
+    creandoCliente.value = false;
+  }
 };
 
 const limpiarFormulario = () => {
