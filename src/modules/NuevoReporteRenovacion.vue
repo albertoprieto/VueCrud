@@ -115,6 +115,15 @@
             <Textarea v-model="observaciones" rows="3" class="w-full" />
           </div>
         </div>
+        <div class="field-group">
+          <label>Total</label>
+          <InputText v-model="total" class="w-full mb-4" placeholder="Total" />
+        </div>
+        <div class="field-group">
+          <label>Método de pago</label>
+          <Dropdown v-model="metodo_pago" :options="metodoPagoOptions" optionLabel="label" optionValue="value"
+            placeholder="Selecciona método de pago" class="w-full mb-4" />
+        </div>
       </div>
     </div>
     <Button label="Generar reporte" class="p-button-primary mt-3" @click="generarReporte" />
@@ -432,8 +441,8 @@ const generarReporte = async () => {
     accesorios: 'NA',
     ubicacion_gps: 'NA',
     ubicacion_bloqueo: 'NA',
-    subtotal: total.value || 0,
-    total: total.value || 0,
+    subtotal: total.value || '0',
+    total: total.value || '0',
     monto_tecnico: 0,
     forma_pago: metodo_pago.value || 'NA',
     viaticos: 0,
