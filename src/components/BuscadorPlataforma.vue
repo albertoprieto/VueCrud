@@ -62,6 +62,17 @@ const aplanarResultadoIOP = (item) => {
   return flat;
 };
 
+const aplanarResultadoTracksolid = (item) => {
+  // Mapear campos de Tracksolid al formato que esperan los componentes padres
+  return {
+    ...item,
+    _userName: item.driverName || item._accountName || '',
+    _contactTel: item.driverPhone || '',
+    _email: '',
+    address: '',
+  };
+};
+
 const buscar = async () => {
   if (!plataformaSeleccionada.value || queryBusqueda.value.length < 2) return;
   buscando.value = true;
@@ -72,6 +83,8 @@ const buscar = async () => {
     let items = data.resultados || [];
     if (plataformaSeleccionada.value === 'iop') {
       items = items.map(aplanarResultadoIOP);
+    } else if (plataformaSeleccionada.value === 'tracksolid') {
+      items = items.map(aplanarResultadoTracksolid);
     }
     if (!items.length) {
       error.value = 'No se encontraron dispositivos con ese criterio.';
