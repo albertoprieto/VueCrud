@@ -4713,13 +4713,20 @@ class TrackSolidClient:
         self._token_time = None
 
     def _send_post(self, params):
-        resp = _requests.post(
-            self.openapi_url,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            data=params,
-            timeout=15,
-        )
-        return resp.json()
+        try:
+            resp = _requests.post(
+                self.openapi_url,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data=params,
+                timeout=15,
+            )
+            return resp.json()
+        except _requests.exceptions.Timeout:
+            raise Exception(f"Timeout conectando a Tracksolid API: {self.openapi_url}")
+        except _requests.exceptions.ConnectionError as ce:
+            raise Exception(f"No se pudo conectar a Tracksolid API ({self.openapi_url}): {ce}")
+        except Exception as e:
+            raise Exception(f"Error en llamada a Tracksolid API: {type(e).__name__}: {e}")
 
     def _is_token_expired(self):
         if not self._token_time:
@@ -4782,7 +4789,15 @@ class TrackSolidClient:
     def _api_call(self, build_params_fn):
         self._ensure_valid_token()
         resp = build_params_fn()
-        if resp.get("code") == 1004:
+        code = resp.get("code")
+        # Token inválido: forzar refresco y reintentar
+        if code == 1004:
+            self._token_time = None  # Forzar que _is_token_expired sea True
+            self._ensure_valid_token()
+            resp = build_params_fn()
+        # Rate limit: esperar 2s y reintentar una vez
+        elif code == 1006:
+            _time.sleep(2)
             self._ensure_valid_token()
             resp = build_params_fn()
         return resp
@@ -4823,44 +4838,94 @@ class TrackSolidClient:
             return self._send_post(params)
         return self._api_call(_do)
 
+    # --- Caché de dispositivos ---
+    _device_cache = {}     # {imei: {device_info + _account + _accountName}}
+    _cache_building = False
+    _cache_built_at = None
+
+    def build_device_cache(self):
+        """Itera TODAS las sub-cuentas y construye un índice IMEI → device."""
+        if self._cache_building:
+            return {"status": "already_building"}
+        TrackSolidClient._cache_building = True
+        try:
+            self._ensure_valid_token()
+            child_resp = self.fetch_child_list()
+            if child_resp.get("code") != 0:
+                return {"status": "error", "message": f"child_list failed: {child_resp.get('message')}"}
+            sub_accounts = child_resp.get("result", [])
+            cache = {}
+            errores = 0
+            for i, sub in enumerate(sub_accounts):
+                acc = sub.get("account", "")
+                name = sub.get("name", acc)
+                try:
+                    dev_resp = self.fetch_device_list(acc)
+                    if dev_resp.get("code") != 0:
+                        errores += 1
+                        continue
+                    devices = dev_resp.get("result", [])
+                    if not isinstance(devices, list):
+                        continue
+                    for dev in devices:
+                        imei = str(dev.get("imei", ""))
+                        if imei:
+                            dev["_account"] = acc
+                            dev["_accountName"] = name
+                            cache[imei] = dev
+                except Exception:
+                    errores += 1
+                # Rate limit: pausa cada 5 cuentas
+                if i % 5 == 4:
+                    _time.sleep(0.3)
+            TrackSolidClient._device_cache = cache
+            TrackSolidClient._cache_built_at = _time.time()
+            return {"status": "ok", "total_devices": len(cache), "total_accounts": len(sub_accounts), "errores": errores}
+        finally:
+            TrackSolidClient._cache_building = False
+
     def search_devices(self, query: str):
         """
-        Búsqueda inteligente en Tracksolid:
-        1. Si parece IMEI (dígitos, >=6 chars) → jimi.track.device.detail directo
-        2. Si no parece IMEI → busca en sub-cuentas cuyo nombre coincida
-        Retorna siempre una lista de resultados raw.
+        Búsqueda en Tracksolid:
+        1. Si hay caché, buscar ahí (instantáneo)
+        2. Sin caché: buscar por cuenta en child_list, luego listar dispositivos
         """
         results = []
         q_stripped = query.strip()
+        q = query.lower().strip()
 
-        # Estrategia 1: Búsqueda directa por IMEI
-        if q_stripped.isdigit() and len(q_stripped) >= 6:
-            detail = self.fetch_device_detail(q_stripped)
-            if detail.get("code") == 0 and detail.get("result"):
-                result = detail["result"]
-                if isinstance(result, dict):
-                    results = [result]
-                elif isinstance(result, list):
-                    results = result
-                if results:
-                    return results
+        # Si hay caché construido, buscar ahí
+        if self._device_cache:
+            # Match exacto por IMEI
+            if q_stripped in self._device_cache:
+                return [self._device_cache[q_stripped]]
+            # Match parcial
+            for imei, dev in self._device_cache.items():
+                dev_name = str(dev.get("deviceName", "")).lower()
+                acc = str(dev.get("_account", "")).lower()
+                acc_name = str(dev.get("_accountName", "")).lower()
+                if q in imei or q in dev_name or q in acc or q in acc_name:
+                    results.append(dev)
+                    if len(results) >= 20:
+                        break
+            return results
 
-        # Estrategia 2: Buscar por nombre de sub-cuenta
+        # Sin caché: buscar por cuenta en child_list
         child_resp = self.fetch_child_list()
         if child_resp.get("code") != 0:
             return results
         sub_accounts = child_resp.get("result", [])
-        q = query.lower()
-        matched_accounts = [
+
+        # Filtrar sub-cuentas cuyo nombre/account coincida con la búsqueda
+        matched = [
             sub for sub in sub_accounts
             if q in sub.get("account", "").lower() or q in sub.get("name", "").lower()
         ]
-        # Si no matcheó ninguna cuenta por nombre pero tenemos un IMEI parcial,
-        # iterar todas las cuentas buscando ese IMEI
-        if not matched_accounts and q_stripped.isdigit():
-            matched_accounts = sub_accounts
+        # Si no matcheó por nombre pero es dígito, probar las primeras 10
+        if not matched and q_stripped.isdigit():
+            matched = sub_accounts[:10]
 
-        for sub in matched_accounts:
+        for sub in matched[:10]:
             acc_name = sub.get("account", "")
             acc_display = sub.get("name", acc_name)
             dev_resp = self.fetch_device_list(acc_name)
@@ -4871,13 +4936,21 @@ class TrackSolidClient:
                 continue
             for dev in devices:
                 dev_imei = str(dev.get("imei", ""))
-                dev_name = str(dev.get("deviceName", ""))
-                if q in dev_imei.lower() or q in dev_name.lower() or q in acc_name.lower() or q in acc_display.lower():
+                dev_name = str(dev.get("deviceName", "")).lower()
+                if q in dev_imei or q in dev_name or q in acc_name.lower() or q in acc_display.lower():
                     dev["_account"] = acc_name
                     dev["_accountName"] = acc_display
                     results.append(dev)
         return results
 
+
+# ---------- Singleton de TrackSolid para reusar token ----------
+_tracksolid_client = None
+def _get_tracksolid_client():
+    global _tracksolid_client
+    if _tracksolid_client is None:
+        _tracksolid_client = TrackSolidClient()
+    return _tracksolid_client
 
 # ---------- Endpoints de búsqueda en plataformas ----------
 
@@ -4899,9 +4972,14 @@ def buscar_en_plataforma(q: str = Query(..., min_length=2), plataforma: str = Qu
         elif plat in ("tracksolid", "track"):
             if not os.getenv("TRACKSOLID_APP_KEY"):
                 raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
-            client = TrackSolidClient()
+            client = _get_tracksolid_client()
             devices = client.search_devices(q)
-            return {"plataforma": "tracksolid", "total": len(devices), "resultados": devices}
+            cache_info = {
+                "cache_size": len(client._device_cache),
+                "cache_built": client._cache_built_at is not None,
+                "cache_building": client._cache_building,
+            }
+            return {"plataforma": "tracksolid", "total": len(devices), "resultados": devices, "_cache": cache_info}
         else:
             raise HTTPException(status_code=400, detail=f"Plataforma no soportada: {plataforma}")
     except HTTPException:
@@ -4977,6 +5055,33 @@ def debug_plataformas():
     return result
 
 
+@app.post("/api/plataformas/tracksolid/rebuild-cache")
+def rebuild_tracksolid_cache():
+    """Construye el caché de dispositivos de TODAS las sub-cuentas de Tracksolid.
+    Tarda varios minutos la primera vez (~3000 sub-cuentas)."""
+    if not os.getenv("TRACKSOLID_APP_KEY"):
+        raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas")
+    client = _get_tracksolid_client()
+    if client._cache_building:
+        return {"status": "already_building", "cache_size": len(client._device_cache)}
+    result = client.build_device_cache()
+    return result
+
+
+@app.get("/api/plataformas/tracksolid/cache-status")
+def tracksolid_cache_status():
+    """Muestra el estado del caché de Tracksolid."""
+    client = _get_tracksolid_client()
+    age = None
+    if client._cache_built_at:
+        age = int(_time.time() - client._cache_built_at)
+    return {
+        "cache_size": len(client._device_cache),
+        "cache_building": client._cache_building,
+        "cache_age_seconds": age,
+    }
+
+
 @app.get("/api/plataformas/dispositivo/{imei_val}")
 def detalle_dispositivo_plataforma(imei_val: str, plataforma: str = Query(...)):
     """Obtiene el detalle completo de un dispositivo por IMEI (consulta directa)."""
@@ -4999,7 +5104,7 @@ def detalle_dispositivo_plataforma(imei_val: str, plataforma: str = Query(...)):
         elif plat in ("tracksolid", "track"):
             if not os.getenv("TRACKSOLID_APP_KEY"):
                 raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
-            client = TrackSolidClient()
+            client = _get_tracksolid_client()
             detail = client.fetch_device_detail(imei_val)
             if detail.get("code") == 0 and detail.get("result"):
                 return {"plataforma": "tracksolid", "dispositivo": detail["result"]}
