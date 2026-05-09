@@ -94,6 +94,26 @@
         </div>
       </div>
 
+      <!-- Observaciones -->
+      <div class="observaciones-section">
+        <h3>Observaciones</h3>
+        <Textarea
+          v-model="observacionesTexto"
+          rows="4"
+          placeholder="Escribe observaciones sobre esta nota..."
+          class="w-full"
+          style="width:100%;resize:vertical;"
+        />
+        <Button
+          label="Guardar observaciones"
+          icon="pi pi-save"
+          class="p-button-secondary mt-2"
+          :loading="guardandoObs"
+          :disabled="observacionesTexto === (item.observaciones || '')"
+          @click="guardarObservaciones"
+        />
+      </div>
+
       <!-- Detalle de órdenes incluidas -->
       <div v-if="item.detalle_ordenes && item.detalle_ordenes.length" class="ordenes-detalle">
         <h3>Órdenes incluidas</h3>
@@ -124,6 +144,7 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dropdown from 'primevue/dropdown';
+import Textarea from 'primevue/textarea';
 import { useToast } from 'primevue/usetoast';
 import {
   getNotaById,
@@ -132,6 +153,8 @@ import {
   actualizarStatusFactura,
   actualizarLugarPagoNota,
   actualizarLugarPagoFactura,
+  actualizarObservacionesNota,
+  actualizarObservacionesFactura,
   subirComprobanteNota,
   subirComprobanteFactura,
   eliminarComprobanteNota,
@@ -152,6 +175,8 @@ const loading = ref(false);
 const saving = ref(false);
 const nuevoStatus = ref('');
 const nuevoLugarPago = ref('');
+const observacionesTexto = ref('');
+const guardandoObs = ref(false);
 const archivoSeleccionado = ref(null);
 const subiendo = ref(false);
 const eliminandoComprobante = ref(null);
@@ -215,6 +240,7 @@ async function cargarDetalle() {
     }
     nuevoStatus.value = item.value?.status || '';
     nuevoLugarPago.value = item.value?.lugar_pago || '';
+    observacionesTexto.value = item.value?.observaciones || '';
   } catch {
     item.value = null;
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el detalle.', life: 4000 });
@@ -264,6 +290,22 @@ async function descargarPDF() {
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF.', life: 4000 });
   }
+}
+
+async function guardarObservaciones() {
+  guardandoObs.value = true;
+  try {
+    if (esNota.value) {
+      await actualizarObservacionesNota(id.value, observacionesTexto.value);
+    } else {
+      await actualizarObservacionesFactura(id.value, observacionesTexto.value);
+    }
+    item.value.observaciones = observacionesTexto.value;
+    toast.add({ severity: 'success', summary: 'Guardado', detail: 'Observaciones guardadas correctamente.', life: 3000 });
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron guardar las observaciones.', life: 4000 });
+  }
+  guardandoObs.value = false;
 }
 
 onMounted(() => {
@@ -353,6 +395,13 @@ async function eliminarComprobante(path) {
   min-width: 200px;
 }
 .ordenes-detalle h3 {
+  margin-bottom: 0.75rem;
+  color: var(--color-title);
+}
+.observaciones-section {
+  margin-bottom: 2rem;
+}
+.observaciones-section h3 {
   margin-bottom: 0.75rem;
   color: var(--color-title);
 }
