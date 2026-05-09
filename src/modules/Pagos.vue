@@ -32,6 +32,14 @@
         <label>IMEI (últimos 6 dígitos)</label>
         <InputText v-model="filtroImei" placeholder="Ej: 123456" maxlength="6" class="w-full" />
       </div>
+      <div class="filtro-item">
+        <label>Instalador</label>
+        <InputText v-model="filtroInstalador" placeholder="Buscar por instalador..." class="w-full" />
+      </div>
+      <div class="filtro-item">
+        <label>Vendedor</label>
+        <InputText v-model="filtroVendedor" placeholder="Buscar por vendedor..." class="w-full" />
+      </div>
     </div>
 
     <!-- ════════ NOTAS ════════ -->
@@ -67,6 +75,14 @@
             {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
           </template>
         </Column>
+        <Column field="lugar_pago" header="Pagado en">
+          <template #body="{ data }">
+            <span v-if="data.lugar_pago" class="badge-lugar">{{ data.lugar_pago }}</span>
+            <span v-else style="color:#999;">—</span>
+          </template>
+        </Column>
+        <Column field="instalador" header="Instalador" />
+        <Column field="vendedor" header="Vendedor" />
         <Column field="status" header="Estatus">
           <template #body="{ data }">
             <span :class="'badge badge-' + badgeClassNota(data.status)">{{ data.status }}</span>
@@ -124,6 +140,14 @@
             {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
           </template>
         </Column>
+        <Column field="lugar_pago" header="Pagado en">
+          <template #body="{ data }">
+            <span v-if="data.lugar_pago" class="badge-lugar">{{ data.lugar_pago }}</span>
+            <span v-else style="color:#999;">—</span>
+          </template>
+        </Column>
+        <Column field="instalador" header="Instalador" />
+        <Column field="vendedor" header="Vendedor" />
         <Column field="status" header="Estatus">
           <template #body="{ data }">
             <span :class="'badge badge-' + badgeClassFactura(data.status)">{{ data.status }}</span>
@@ -189,12 +213,16 @@ const loadingFacturas = ref(false);
 const filtroCliente = ref('');
 const filtroOrden = ref('');
 const filtroImei = ref('');
+const filtroInstalador = ref('');
+const filtroVendedor = ref('');
 
 function filtrarRegistros(rows) {
   let result = rows;
   const cl = filtroCliente.value.trim().toLowerCase();
   const ord = filtroOrden.value.trim().toLowerCase();
   const imei6 = filtroImei.value.trim();
+  const inst = filtroInstalador.value.trim().toLowerCase();
+  const vend = filtroVendedor.value.trim().toLowerCase();
   if (cl) {
     result = result.filter(r => (r.cliente || '').toLowerCase().includes(cl));
   }
@@ -203,6 +231,12 @@ function filtrarRegistros(rows) {
   }
   if (imei6) {
     result = result.filter(r => (r.imeis || []).some(im => String(im).endsWith(imei6)));
+  }
+  if (inst) {
+    result = result.filter(r => (r.instalador || '').toLowerCase().includes(inst));
+  }
+  if (vend) {
+    result = result.filter(r => (r.vendedor || '').toLowerCase().includes(vend));
   }
   return result;
 }
@@ -344,6 +378,14 @@ onMounted(() => {
 .badge-success { background: #c8e6c9; color: #256029; }
 .badge-warning { background: #fff3cd; color: #856404; }
 .badge-danger  { background: #f8d7da; color: #721c24; }
+.badge-lugar {
+  background: #e3f2fd;
+  color: #1565c0;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
 .pagos-filtros {
   display: flex;
   gap: 1rem;

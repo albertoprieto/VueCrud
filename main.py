@@ -4082,6 +4082,17 @@ def get_notas_pago():
                             if im:
                                 imeis_set.append(im)
             r['imeis'] = imeis_set
+        # Obtener instalador y vendedor desde reportes_servicio
+        r['instalador'] = ''
+        r['vendedor'] = ''
+        if rids:
+            placeholders2 = ','.join(['%s'] * len(rids))
+            cursor.execute(f"SELECT nombre_instalador, vendedor FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
+            reps2 = cursor.fetchall()
+            instaladores = list({rep['nombre_instalador'] for rep in reps2 if rep.get('nombre_instalador')})
+            vendedores_list = list({rep['vendedor'] for rep in reps2 if rep.get('vendedor')})
+            r['instalador'] = ', '.join(instaladores)
+            r['vendedor'] = ', '.join(vendedores_list)
     cursor.close()
     db.close()
     return rows
@@ -4204,6 +4215,25 @@ def actualizar_lugar_pago_nota(nota_id: int, data: dict = Body(...)):
     if affected == 0:
         raise HTTPException(status_code=404, detail="Nota no encontrada")
     return {"message": "Lugar de pago actualizado", "id": nota_id, "lugar_pago": lugar_pago or None}
+
+@app.put("/notas-pago/{nota_id}/observaciones")
+def actualizar_observaciones_nota(nota_id: int, data: dict = Body(...)):
+    observaciones = data.get('observaciones', '')
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE notas_pago SET observaciones=%s WHERE id=%s", (observaciones or None, nota_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    return {"message": "Observaciones actualizadas", "id": nota_id}
 
 @app.delete("/notas-pago/{nota_id}")
 def eliminar_nota_pago(nota_id: int):
@@ -4368,6 +4398,17 @@ def get_facturas_pago():
                             if im:
                                 imeis_set.append(im)
             r['imeis'] = imeis_set
+        # Obtener instalador y vendedor desde reportes_servicio
+        r['instalador'] = ''
+        r['vendedor'] = ''
+        if rids:
+            placeholders2 = ','.join(['%s'] * len(rids))
+            cursor.execute(f"SELECT nombre_instalador, vendedor FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
+            reps2 = cursor.fetchall()
+            instaladores = list({rep['nombre_instalador'] for rep in reps2 if rep.get('nombre_instalador')})
+            vendedores_list = list({rep['vendedor'] for rep in reps2 if rep.get('vendedor')})
+            r['instalador'] = ', '.join(instaladores)
+            r['vendedor'] = ', '.join(vendedores_list)
     cursor.close()
     db.close()
     return rows
@@ -4489,6 +4530,25 @@ def actualizar_lugar_pago_factura(factura_id: int, data: dict = Body(...)):
     if affected == 0:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
     return {"message": "Lugar de pago actualizado", "id": factura_id, "lugar_pago": lugar_pago or None}
+
+@app.put("/facturas-pago/{factura_id}/observaciones")
+def actualizar_observaciones_factura(factura_id: int, data: dict = Body(...)):
+    observaciones = data.get('observaciones', '')
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE facturas_pago SET observaciones=%s WHERE id=%s", (observaciones or None, factura_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return {"message": "Observaciones actualizadas", "id": factura_id}
 
 @app.delete("/facturas-pago/{factura_id}")
 def eliminar_factura_pago(factura_id: int):
