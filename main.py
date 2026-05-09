@@ -2041,12 +2041,16 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
     cursor = db.cursor()
     # Lista de columnas válidas según DESCRIBE reportes_servicio
     valid_columns = [
-        "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos",
+        "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos", "vendedor",
         # nuevas columnas para comprobantes
         "comprobante_path", "comprobante_estado", "aprobado_por", "aprobado_fecha",
         # NUEVO: columnas JSON
         "imeis_articulos", "sim_series"
     ]
+
+    vendedor_update = reporte.get("vendedor", None) if isinstance(reporte, dict) else None
+    incluye_vendedor = isinstance(reporte, dict) and ("vendedor" in reporte)
+
     campos = []
     valores = []
     for k, v in reporte.items():
@@ -2059,13 +2063,28 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
                     pass
             campos.append(f"{k}=%s")
             valores.append(v)
-    if not campos:
+
+    if not campos and not incluye_vendedor:
         cursor.close()
         db.close()
         raise HTTPException(status_code=400, detail="No hay campos válidos para actualizar.")
-    valores.append(reporte_id)
-    sql = f"UPDATE reportes_servicio SET {', '.join(campos)} WHERE id=%s"
-    cursor.execute(sql, valores)
+
+    if campos:
+        valores.append(reporte_id)
+        sql = f"UPDATE reportes_servicio SET {', '.join(campos)} WHERE id=%s"
+        cursor.execute(sql, valores)
+
+    # Si viene vendedor, se actualiza en la venta relacionada a la asignación del reporte.
+    if incluye_vendedor:
+        cursor.execute("SELECT asignacion_id FROM reportes_servicio WHERE id=%s", (reporte_id,))
+        row_asig = cursor.fetchone()
+        if row_asig and row_asig[0]:
+            asignacion_id = row_asig[0]
+            cursor.execute("SELECT venta_id FROM venta_tecnico WHERE id=%s", (asignacion_id,))
+            row_venta = cursor.fetchone()
+            if row_venta and row_venta[0]:
+                cursor.execute("UPDATE ventas SET vendedor=%s WHERE id=%s", (vendedor_update, row_venta[0]))
+
     db.commit()
     cursor.close()
     db.close()
@@ -4164,6 +4183,28 @@ def actualizar_status_nota(nota_id: int, data: dict = Body(...)):
         raise HTTPException(status_code=404, detail="Nota no encontrada")
     return {"message": "Status actualizado", "id": nota_id, "status": new_status}
 
+@app.put("/notas-pago/{nota_id}/lugar-pago")
+def actualizar_lugar_pago_nota(nota_id: int, data: dict = Body(...)):
+    lugar_pago = data.get('lugar_pago', '').strip()
+    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago']
+    if lugar_pago and lugar_pago not in lugares_validos:
+        raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE notas_pago SET lugar_pago=%s WHERE id=%s", (lugar_pago if lugar_pago else None, nota_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    return {"message": "Lugar de pago actualizado", "id": nota_id, "lugar_pago": lugar_pago or None}
+
 @app.delete("/notas-pago/{nota_id}")
 def eliminar_nota_pago(nota_id: int):
     db = mysql.connector.connect(
@@ -4427,6 +4468,28 @@ def actualizar_status_factura_pago(factura_id: int, data: dict = Body(...)):
         raise HTTPException(status_code=404, detail="Factura no encontrada")
     return {"message": "Status actualizado", "id": factura_id, "status": new_status}
 
+@app.put("/facturas-pago/{factura_id}/lugar-pago")
+def actualizar_lugar_pago_factura(factura_id: int, data: dict = Body(...)):
+    lugar_pago = data.get('lugar_pago', '').strip()
+    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago']
+    if lugar_pago and lugar_pago not in lugares_validos:
+        raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("UPDATE facturas_pago SET lugar_pago=%s WHERE id=%s", (lugar_pago if lugar_pago else None, factura_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return {"message": "Lugar de pago actualizado", "id": factura_id, "lugar_pago": lugar_pago or None}
+
 @app.delete("/facturas-pago/{factura_id}")
 def eliminar_factura_pago(factura_id: int):
     db = mysql.connector.connect(
@@ -4536,6 +4599,7 @@ def eliminar_comprobante_factura(factura_id: int, data: dict = Body(...)):
 import hashlib
 import time as _time
 import requests as _requests
+import threading as _threading
 
 # ---------- IOP GPS Client ----------
 class IOPGPSClient:
@@ -4711,6 +4775,16 @@ class TrackSolidClient:
         self._refresh_token = None
         self._token_expires_in = 60
         self._token_time = None
+        self._token_lock = _threading.Lock()
+        self._last_api_call = 0.0
+        self._min_api_interval = 1.5  # mínimo 1.5s entre llamadas a JIMI
+        self._child_list_cache = None
+        self._child_list_cache_time = None
+        self._child_list_cache_ttl = 300  # 5 min cache para child_list
+        self._device_list_cache = {}     # {account: {"resp": ..., "time": ...}}
+        self._device_list_cache_ttl = 180  # 3 min cache para device_list por cuenta
+        self._search_cache = {}           # {query: {"result": [...], "time": ...}}
+        self._search_cache_ttl = 120      # 2 min cache para resultados de búsqueda
 
     def _send_post(self, params):
         try:
@@ -4728,19 +4802,23 @@ class TrackSolidClient:
         except Exception as e:
             raise Exception(f"Error en llamada a Tracksolid API: {type(e).__name__}: {e}")
 
+    def _has_token(self):
+        """Retorna True si tenemos un access_token (sin importar si creemos que expiró)."""
+        return self._access_token is not None
+
     def _is_token_expired(self):
         if not self._token_time:
             return True
         return (_time.time() - self._token_time) >= (self._token_expires_in - 10)
 
     def _ensure_valid_token(self):
-        if self._is_token_expired():
-            if self._refresh_token:
-                self._refresh_access_token()
-            else:
+        """Solo obtiene token si no tenemos uno. NO re-autentica proactivamente."""
+        with self._token_lock:
+            if not self._has_token():
                 self._get_access_token()
 
     def _get_access_token(self):
+        self._throttle()
         param_map = {
             "app_key": self.app_key,
             "v": "1.0",
@@ -4761,6 +4839,7 @@ class TrackSolidClient:
             raise Exception(f"TrackSolid auth error: {resp.get('message')} (code: {resp.get('code')})")
 
     def _refresh_access_token(self):
+        self._throttle()
         param_map = {
             "app_key": self.app_key,
             "v": "1.0",
@@ -4770,7 +4849,7 @@ class TrackSolidClient:
             "method": "jimi.oauth.token.refresh",
             "access_token": self._access_token,
             "refresh_token": self._refresh_token,
-            "expires_in": 7200,
+            "expires_in": "7200",
         }
         sign = _tracksolid_generate_sign(param_map, self.app_secret)
         param_map["sign"] = sign
@@ -4778,31 +4857,77 @@ class TrackSolidClient:
         if resp.get("code") == 0:
             self._update_token(resp["result"])
         else:
+            # Refresh falló: limpiar y hacer auth completa
+            self._refresh_token = None
             self._get_access_token()
 
     def _update_token(self, result):
         self._access_token = result["accessToken"]
         self._refresh_token = result.get("refreshToken", self._refresh_token)
-        self._token_expires_in = int(result.get("expiresIn", 60))
+        expires_raw = result.get("expiresIn", 7200)
+        expires_val = int(expires_raw)
+        # Si viene en milisegundos (>100000), convertir a segundos
+        if expires_val > 100000:
+            expires_val = expires_val // 1000
+        self._token_expires_in = expires_val
         self._token_time = _time.time()
+
+    def _force_full_reauth(self):
+        """Limpia tokens y fuerza autenticación completa desde cero."""
+        with self._token_lock:
+            self._access_token = None
+            self._refresh_token = None
+            self._token_time = None
+            self._get_access_token()
+
+    def _throttle(self):
+        """Espera lo necesario para respetar el intervalo mínimo entre llamadas."""
+        now = _time.time()
+        elapsed = now - self._last_api_call
+        if elapsed < self._min_api_interval:
+            _time.sleep(self._min_api_interval - elapsed)
+        self._last_api_call = _time.time()
 
     def _api_call(self, build_params_fn):
         self._ensure_valid_token()
+        self._throttle()
         resp = build_params_fn()
         code = resp.get("code")
-        # Token inválido: forzar refresco y reintentar
+        # Token inválido/expirado: refrescar y reintentar UNA vez
         if code == 1004:
-            self._token_time = None  # Forzar que _is_token_expired sea True
-            self._ensure_valid_token()
+            with self._token_lock:
+                if self._refresh_token:
+                    try:
+                        self._refresh_access_token()
+                    except Exception:
+                        self._access_token = None
+                        self._refresh_token = None
+                        self._token_time = None
+                        self._get_access_token()
+                else:
+                    self._access_token = None
+                    self._token_time = None
+                    self._get_access_token()
+            self._throttle()
             resp = build_params_fn()
-        # Rate limit: esperar 2s y reintentar una vez
+        # Rate limit: esperar con backoff, reintentar SIN re-autenticar
         elif code == 1006:
-            _time.sleep(2)
-            self._ensure_valid_token()
-            resp = build_params_fn()
+            for attempt in range(3):
+                wait = 3 * (attempt + 1)  # 3s, 6s, 9s
+                _time.sleep(wait)
+                self._throttle()
+                resp = build_params_fn()
+                if resp.get("code") != 1006:
+                    break
         return resp
 
-    def fetch_child_list(self):
+    def fetch_child_list(self, use_cache=True):
+        # Retornar caché si está vigente
+        if use_cache and self._child_list_cache is not None and self._child_list_cache_time:
+            age = _time.time() - self._child_list_cache_time
+            if age < self._child_list_cache_ttl:
+                return self._child_list_cache
+
         def _do():
             params = {
                 "app_key": self.app_key, "v": "1.0",
@@ -4812,9 +4937,18 @@ class TrackSolidClient:
             }
             params["sign"] = _tracksolid_generate_sign(params, self.app_secret)
             return self._send_post(params)
-        return self._api_call(_do)
+        resp = self._api_call(_do)
+        if resp.get("code") == 0:
+            self._child_list_cache = resp
+            self._child_list_cache_time = _time.time()
+        return resp
 
     def fetch_device_list(self, target_account):
+        # Cache por cuenta
+        cached = self._device_list_cache.get(target_account)
+        if cached and (_time.time() - cached["time"]) < self._device_list_cache_ttl:
+            return cached["resp"]
+
         def _do():
             params = {
                 "app_key": self.app_key, "v": "1.0",
@@ -4824,7 +4958,10 @@ class TrackSolidClient:
             }
             params["sign"] = _tracksolid_generate_sign(params, self.app_secret)
             return self._send_post(params)
-        return self._api_call(_do)
+        resp = self._api_call(_do)
+        if resp.get("code") == 0:
+            self._device_list_cache[target_account] = {"resp": resp, "time": _time.time()}
+        return resp
 
     def fetch_device_detail(self, imei_val):
         def _do():
@@ -4875,9 +5012,9 @@ class TrackSolidClient:
                             cache[imei] = dev
                 except Exception:
                     errores += 1
-                # Rate limit: pausa cada 5 cuentas
-                if i % 5 == 4:
-                    _time.sleep(0.3)
+                # Rate limit: pausa cada 3 cuentas
+                if i % 3 == 2:
+                    _time.sleep(1.0)
             TrackSolidClient._device_cache = cache
             TrackSolidClient._cache_built_at = _time.time()
             return {"status": "ok", "total_devices": len(cache), "total_accounts": len(sub_accounts), "errores": errores}
@@ -4887,14 +5024,21 @@ class TrackSolidClient:
     def search_devices(self, query: str):
         """
         Búsqueda en Tracksolid:
-        1. Si hay caché, buscar ahí (instantáneo)
-        2. Sin caché: buscar por cuenta en child_list, luego listar dispositivos
+        1. Cache de búsquedas recientes (instantáneo)
+        2. Si hay caché de dispositivos, buscar ahí (instantáneo)
+        3. Sin caché: buscar por cuenta en child_list, luego listar dispositivos
         """
-        results = []
         q_stripped = query.strip()
         q = query.lower().strip()
 
-        # Si hay caché construido, buscar ahí
+        # 0. Cache de búsquedas recientes
+        cached_search = self._search_cache.get(q)
+        if cached_search and (_time.time() - cached_search["time"]) < self._search_cache_ttl:
+            return cached_search["result"]
+
+        results = []
+
+        # 1. Si hay caché global de dispositivos, buscar ahí
         if self._device_cache:
             # Match exacto por IMEI
             if q_stripped in self._device_cache:
@@ -4908,9 +5052,10 @@ class TrackSolidClient:
                     results.append(dev)
                     if len(results) >= 20:
                         break
+            self._search_cache[q] = {"result": results, "time": _time.time()}
             return results
 
-        # Sin caché: buscar por cuenta en child_list
+        # 2. Sin caché: buscar por cuenta en child_list
         child_resp = self.fetch_child_list()
         if child_resp.get("code") != 0:
             return results
@@ -4925,10 +5070,12 @@ class TrackSolidClient:
         if not matched and q_stripped.isdigit():
             matched = sub_accounts[:10]
 
-        for sub in matched[:10]:
+        for i, sub in enumerate(matched[:5]):
             acc_name = sub.get("account", "")
             acc_display = sub.get("name", acc_name)
             dev_resp = self.fetch_device_list(acc_name)
+            if dev_resp.get("code") == 1006:
+                break  # Rate limited, dejar de iterar
             if dev_resp.get("code") != 0:
                 continue
             devices = dev_resp.get("result", [])
@@ -4941,6 +5088,7 @@ class TrackSolidClient:
                     dev["_account"] = acc_name
                     dev["_accountName"] = acc_display
                     results.append(dev)
+        self._search_cache[q] = {"result": results, "time": _time.time()}
         return results
 
 

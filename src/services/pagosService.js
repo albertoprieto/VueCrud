@@ -23,6 +23,11 @@ export async function actualizarStatusNota(id, status) {
   return res.data;
 }
 
+export async function actualizarLugarPagoNota(id, lugar_pago) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/lugar-pago`, { lugar_pago });
+  return res.data;
+}
+
 export async function eliminarNota(id) {
   const res = await axios.delete(`${API_URL}/notas-pago/${id}`);
   return res.data;
@@ -62,6 +67,11 @@ export async function crearFactura(payload) {
 
 export async function actualizarStatusFactura(id, status) {
   const res = await axios.put(`${API_URL}/facturas-pago/${id}/status`, { status });
+  return res.data;
+}
+
+export async function actualizarLugarPagoFactura(id, lugar_pago) {
+  const res = await axios.put(`${API_URL}/facturas-pago/${id}/lugar-pago`, { lugar_pago });
   return res.data;
 }
 

@@ -1,5 +1,9 @@
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf";
+import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker?url";
+
+GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const empresa = {
   nombre: 'COMERCIALIZADORA TECNOLOGICA DEL RIO',
@@ -17,6 +21,71 @@ function formatFechaPDF(f) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+function buildComprobanteUrl(pathOrUrl) {
+  if (!pathOrUrl) return '';
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const normalized = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return `${API_URL}${normalized}`;
+}
+
+function isPdfFile(pathOrUrl) {
+  return /\.pdf(\?|$)/i.test(pathOrUrl || '');
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('No se pudo convertir el archivo a data URL.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function renderPdfFirstPageToImageDataUrl(pdfBlob) {
+  const bytes = new Uint8Array(await pdfBlob.arrayBuffer());
+  const loadingTask = getDocument({ data: bytes });
+  const pdf = await loadingTask.promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 1.4 });
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  if (!ctx) {
+    throw new Error('No se pudo obtener el contexto del canvas para renderizar el PDF.');
+  }
+
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas.toDataURL('image/png');
+}
+
+async function getComprobantePreviewDataUrl(pathOrUrl) {
+  const url = buildComprobanteUrl(pathOrUrl);
+  if (!url) return null;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`No se pudo descargar el comprobante (${res.status}).`);
+  }
+
+  const blob = await res.blob();
+  const contentType = (blob.type || '').toLowerCase();
+
+  if (contentType.startsWith('image/')) {
+    return blobToDataUrl(blob);
+  }
+
+  if (contentType.includes('pdf') || isPdfFile(pathOrUrl)) {
+    return renderPdfFirstPageToImageDataUrl(blob);
+  }
+
+  throw new Error('Formato de comprobante no soportado para previsualización.');
+}
+
 /**
  * Genera y descarga un PDF para una Nota o Factura de pago.
  * @param {'nota'|'factura'} tipo
@@ -31,6 +100,21 @@ export async function generarPagoPDF(tipo, pago) {
   const folio = `${prefijo}-${String(pago.id).padStart(6, '0')}`;
 
   const ordenes = pago.detalle_ordenes || [];
+  const comprobantes = Array.isArray(pago.comprobantes)
+    ? pago.comprobantes.filter(Boolean)
+    : [];
+
+  let comprobantePreviewDataUrl = null;
+  let comprobantePreviewError = false;
+
+  if (tipo === 'nota' && comprobantes.length > 0) {
+    try {
+      comprobantePreviewDataUrl = await getComprobantePreviewDataUrl(comprobantes[0]);
+    } catch (error) {
+      comprobantePreviewError = true;
+      console.warn('No se pudo previsualizar el comprobante para el PDF:', error);
+    }
+  }
   const tableBody = [
     [
       { text: '#', style: 'tableHeader' },
@@ -203,6 +287,49 @@ export async function generarPagoPDF(tipo, pago) {
         style: 'observaciones',
         margin: [0, 2, 0, 8],
       },
+      ...(tipo === 'nota'
+        ? [
+            {
+              text: 'Comprobante de pago',
+              style: 'sectionHeader',
+              pageBreak: 'before',
+            },
+            ...(comprobantePreviewDataUrl
+              ? [
+                  {
+                    image: comprobantePreviewDataUrl,
+                    fit: [515, 700],
+                    alignment: 'center',
+                    margin: [0, 8, 0, 8],
+                  },
+                  ...(comprobantes.length > 1
+                    ? [
+                        {
+                          text: `Hay ${comprobantes.length} comprobantes cargados. Se muestra el primero en esta vista.`,
+                          style: 'disclaimer',
+                        },
+                      ]
+                    : []),
+                ]
+              : [
+                  {
+                    text: 'Todavía no cuenta con comprobante de pago.',
+                    style: 'sectionHeader',
+                    alignment: 'center',
+                    margin: [0, 300, 0, 8],
+                  },
+                  ...(comprobantePreviewError
+                    ? [
+                        {
+                          text: 'No fue posible previsualizar el comprobante cargado. Verifíquelo desde el detalle del pago.',
+                          style: 'disclaimer',
+                          alignment: 'center',
+                        },
+                      ]
+                    : []),
+                ]),
+          ]
+        : []),
     ],
     styles: {
       empresaHeader: { fontSize: 12, bold: true, color: '#1e293b' },

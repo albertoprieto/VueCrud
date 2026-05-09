@@ -211,6 +211,10 @@
             <InputText v-model="reporteEditando.tipo_servicio" class="w-full" />
           </div>
           <div class="form-group">
+            <label>Vendedor</label>
+            <InputText v-model="reporteEditando.vendedor" class="w-full" />
+          </div>
+          <div class="form-group">
             <label>Lugar / Centro de instalación</label>
             <InputText v-model="reporteEditando.lugar_instalacion" class="w-full" />
           </div>
