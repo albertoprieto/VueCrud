@@ -249,7 +249,7 @@
           <h4 class="section-title">Datos del cobro</h4>
           <div class="form-group">
             <label>Subtotal (orden de servicio)</label>
-            <InputText v-model="reporteEditando.subtotal" class="w-full mb-2" disabled />
+            <InputText v-model="reporteEditando.subtotal" class="w-full mb-2" />
           </div>
           <div class="form-group">
             <label>Total a cobrar</label>
@@ -515,10 +515,26 @@ const opcionesStatusFactura = [
   { label: 'Cancelado', value: 'Cancelado' }
 ];
 
+function obtenerMontoParaPago(reporte) {
+  const tieneSubtotal =
+    reporte?.subtotal !== null &&
+    reporte?.subtotal !== undefined &&
+    String(reporte.subtotal).trim() !== '';
+
+  const valorBase = tieneSubtotal ? reporte.subtotal : reporte?.total;
+  if (typeof valorBase === 'number') {
+    return Number.isFinite(valorBase) ? valorBase : 0;
+  }
+
+  const limpio = String(valorBase ?? '').replace(/[^\d.-]/g, '');
+  const numero = Number(limpio);
+  return Number.isFinite(numero) ? numero : 0;
+}
+
 function abrirCrearNota() {
   crearPagoTipo.value = 'nota';
   crearPagoCliente.value = seleccionados.value[0]?.nombre_cliente || '';
-  crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + Number(r.total || 0), 0);
+  crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + obtenerMontoParaPago(r), 0);
   crearPagoStatus.value = 'pendiente de pago';
   showCrearPagoDialog.value = true;
 }
@@ -526,7 +542,7 @@ function abrirCrearNota() {
 function abrirCrearFactura() {
   crearPagoTipo.value = 'factura';
   crearPagoCliente.value = seleccionados.value[0]?.nombre_cliente || '';
-  crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + Number(r.total || 0), 0);
+  crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + obtenerMontoParaPago(r), 0);
   crearPagoStatus.value = 'Pendiente timbre';
   showCrearPagoDialog.value = true;
 }
@@ -537,7 +553,7 @@ async function confirmarCrearPago() {
   const payload = {
     ordenes,
     cliente: crearPagoCliente.value,
-    total: crearPagoTotal.value,
+    total: Number(crearPagoTotal.value) || 0,
     status: crearPagoStatus.value,
     reporte_ids: seleccionados.value.map(r => r.id)
   };
