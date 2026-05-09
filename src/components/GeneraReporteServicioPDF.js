@@ -8,7 +8,7 @@ import pdfFonts from 'pdfmake/build/vfs_fonts';
 // Pega aquí tu string base64 del logo, por ejemplo:
 // const logoBase64 = 'data:image/png;base64,...';
 
-export function generarReporteServicioPDF({ reporte, empresaz }) {
+export function generarReporteServicioPDF({ reporte, empresaz, mode = 'download' }) {
 
 
 const empresa = {
@@ -277,5 +277,10 @@ const empresa = {
   
   const nombreArchivo = `${nombreServicio}_${nombreTecnico}_${imeiStr}_${usuarioStr}.pdf`;
 
-  pdfMake.createPdf(docDefinition).download(nombreArchivo);
+  const pdf = pdfMake.createPdf(docDefinition);
+  if (mode === 'open') {
+    pdf.open();
+  } else {
+    pdf.download(nombreArchivo);
+  }
 }
