@@ -19,30 +19,44 @@
         <div class="detalle-row"><strong>Cliente:</strong> {{ item.cliente || '-' }}</div>
         <div class="detalle-row"><strong>Total:</strong> {{ item.total != null ? '$' + Number(item.total).toFixed(2) : '-' }}</div>
         <div class="detalle-row"><strong>Fecha:</strong> {{ formatFecha(item.fecha) }}</div>
+        <div class="detalle-row"><strong>Lugar de pago:</strong> {{ item.lugar_pago || '-' }}</div>
         <div class="detalle-row">
           <strong>Estatus actual:</strong>
           <span :class="'badge badge-' + badgeClass(item.status)" style="margin-left:0.5rem;">{{ item.status }}</span>
         </div>
       </div>
 
-      <!-- Cambiar estatus -->
+      <!-- Cambiar estatus y lugar de pago -->
       <div class="cambiar-status">
-        <h3>Cambiar estatus</h3>
+        <h3>Cambiar estatus y lugar de pago</h3>
         <div class="status-options">
-          <Dropdown
-            v-model="nuevoStatus"
-            :options="opcionesStatus"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Seleccionar estatus"
-            class="w-full"
-          />
+          <div style="flex: 1; min-width: 200px;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Estatus:</label>
+            <Dropdown
+              v-model="nuevoStatus"
+              :options="opcionesStatus"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Seleccionar estatus"
+              class="w-full"
+            />
+          </div>
+          <div style="flex: 1; min-width: 200px;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Lugar de pago:</label>
+            <Dropdown
+              v-model="nuevoLugarPago"
+              :options="lugaresDisponibles"
+              placeholder="Seleccionar lugar de pago"
+              class="w-full"
+            />
+          </div>
           <Button
             label="Guardar"
             icon="pi pi-save"
-            :disabled="!nuevoStatus || nuevoStatus === item.status"
-            @click="cambiarStatus"
+            :disabled="(!nuevoStatus || nuevoStatus === item.status) && (!nuevoLugarPago || nuevoLugarPago === item.lugar_pago)"
+            @click="cambiarStatusYLugar"
             :loading="saving"
+            style="align-self: flex-end;"
           />
         </div>
       </div>
@@ -87,6 +101,7 @@
           <Column field="folio" header="Orden" />
           <Column field="tipo_servicio" header="Tipo" />
           <Column field="nombre_cliente" header="Cliente" />
+          <Column field="imei" header="IMEI" />
           <Column field="total" header="Total">
             <template #body="{ data }">
               {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
@@ -115,6 +130,8 @@ import {
   getFacturaById,
   actualizarStatusNota,
   actualizarStatusFactura,
+  actualizarLugarPagoNota,
+  actualizarLugarPagoFactura,
   subirComprobanteNota,
   subirComprobanteFactura,
   eliminarComprobanteNota,
@@ -134,9 +151,20 @@ const item = ref(null);
 const loading = ref(false);
 const saving = ref(false);
 const nuevoStatus = ref('');
+const nuevoLugarPago = ref('');
 const archivoSeleccionado = ref(null);
 const subiendo = ref(false);
 const eliminandoComprobante = ref(null);
+
+const lugaresDisponibles = [
+  'ASP Vianey',
+  'ASP Renovaciones',
+  'Comercializadora',
+  'BBVA PAU',
+  'Tecnico',
+  'Oficina',
+  'Mercadopago'
+];
 
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
@@ -186,6 +214,7 @@ async function cargarDetalle() {
       item.value = await getFacturaById(id.value);
     }
     nuevoStatus.value = item.value?.status || '';
+    nuevoLugarPago.value = item.value?.lugar_pago || '';
   } catch {
     item.value = null;
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el detalle.', life: 4000 });
@@ -193,19 +222,37 @@ async function cargarDetalle() {
   loading.value = false;
 }
 
-async function cambiarStatus() {
-  if (!nuevoStatus.value || nuevoStatus.value === item.value?.status) return;
+async function cambiarStatusYLugar() {
+  const statusChanged = nuevoStatus.value && nuevoStatus.value !== item.value?.status;
+  const lugarChanged = nuevoLugarPago.value && nuevoLugarPago.value !== item.value?.lugar_pago;
+  
+  if (!statusChanged && !lugarChanged) return;
+  
   saving.value = true;
   try {
     if (esNota.value) {
-      await actualizarStatusNota(id.value, nuevoStatus.value);
+      if (statusChanged) {
+        await actualizarStatusNota(id.value, nuevoStatus.value);
+        item.value.status = nuevoStatus.value;
+      }
+      if (lugarChanged) {
+        await actualizarLugarPagoNota(id.value, nuevoLugarPago.value);
+        item.value.lugar_pago = nuevoLugarPago.value;
+      }
     } else {
-      await actualizarStatusFactura(id.value, nuevoStatus.value);
+      if (statusChanged) {
+        await actualizarStatusFactura(id.value, nuevoStatus.value);
+        item.value.status = nuevoStatus.value;
+      }
+      if (lugarChanged) {
+        await actualizarLugarPagoFactura(id.value, nuevoLugarPago.value);
+        item.value.lugar_pago = nuevoLugarPago.value;
+      }
     }
-    item.value.status = nuevoStatus.value;
-    toast.add({ severity: 'success', summary: 'Actualizado', detail: 'Estatus actualizado correctamente.', life: 3000 });
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el estatus.', life: 4000 });
+    toast.add({ severity: 'success', summary: 'Actualizado', detail: 'Datos actualizados correctamente.', life: 3000 });
+  } catch (error) {
+    console.error(error);
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar los datos.', life: 4000 });
   }
   saving.value = false;
 }
