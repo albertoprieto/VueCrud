@@ -155,6 +155,12 @@
                 label="Reporte de servicio"
                 @click="descargarReporteServicio(slotProps.data)"
               />
+              <Button
+                icon="pi pi-search"
+                class="p-button-sm p-button-help"
+                label="Consultar PDF"
+                @click="consultarReporteServicio(slotProps.data)"
+              />
               <!-- Ver comprobante cuando existe -->
               <a v-if="slotProps.data.comprobante_path" :href="urlComprobante(slotProps.data)" target="_blank" rel="noopener noreferrer" style="display: contents;">
                 <Button
@@ -406,7 +412,6 @@ import { getClientes } from '@/services/clientesService';
 import { getTodosArticulos } from '@/services/articulosService';
 import { getAsignacionesTecnicos } from '@/services/asignacionesService';
 import { useToast } from 'primevue/usetoast';
-import { generarReporteServicioPDF } from '@/services/reporteServicioPdfService.js';
 import { useLoginStore } from '@/stores/loginStore';
 import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
 import { useRouter } from 'vue-router';
@@ -905,6 +910,30 @@ async function descargarReporteServicio(reporte, empresa) {
   } finally {
     loading.value = false;
   }
+}
+
+async function consultarReporteServicio(reporte) {
+  loading.value = true;
+  try {
+    const resp = await axios.get(`${API_URL}/${reporte.id}`);
+    const detalleReporte = resp.data || null;
+    const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
+    let venta = null;
+    let cliente = null;
+    if (asignacion && asignacion.venta_id) {
+      venta = ventasCache.find(v => v.id == asignacion.venta_id);
+      cliente = venta ? (clientesCache.find(c => c.id === venta.cliente_id) || {}) : {};
+    }
+    const reporteCampos = {
+      ...reporte,
+      ...detalleReporte
+    };
+    const { generarReporteServicioPDF } = await import('@/components/GeneraReporteServicioPDF.js');
+    generarReporteServicioPDF({ reporte: reporteCampos, empresa, mode: 'open' });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo abrir el PDF en línea.', life: 3500 });
+  }
+  loading.value = false;
 }
 
 function formatearFecha(fecha) {
