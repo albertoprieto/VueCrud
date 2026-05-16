@@ -59,6 +59,11 @@ export async function agregarReportesNota(id, reporte_ids) {
   return res.data;
 }
 
+export async function quitarReportesNota(id, reporte_ids) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/quitar-reportes`, { reporte_ids });
+  return res.data;
+}
+
 // ── Facturas ──
 export async function getFacturas() {
   const res = await axios.get(`${API_URL}/facturas-pago`);
@@ -113,5 +118,10 @@ export async function eliminarComprobanteFactura(id, path) {
 
 export async function agregarReportesFactura(id, reporte_ids) {
   const res = await axios.put(`${API_URL}/facturas-pago/${id}/agregar-reportes`, { reporte_ids });
+  return res.data;
+}
+
+export async function quitarReportesFactura(id, reporte_ids) {
+  const res = await axios.put(`${API_URL}/facturas-pago/${id}/quitar-reportes`, { reporte_ids });
   return res.data;
 }

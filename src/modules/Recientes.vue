@@ -538,6 +538,7 @@ const cargarDatos = async () => {
     // Mapear datos de BD al formato de la tabla
     const datosMapeados = response.activaciones.map(a => ({
       _id: a.id,
+      _hora_sort: new Date(a.hora_activacion || 0).getTime(),
       'Plataforma': a.plataforma || 'IOP',
       'Cuenta': a.cuenta,
       'Número de dispositivo': a.numero_dispositivo,
@@ -551,7 +552,16 @@ const cargarDatos = async () => {
       _folioReporte: a.folio_reporte
     }));
     
-    dataEnriquecida.value = datosMapeados;
+    dataEnriquecida.value = datosMapeados.sort((a, b) => {
+      if (b._hora_sort !== a._hora_sort) return b._hora_sort - a._hora_sort;
+      return (b._id || 0) - (a._id || 0); // desempate: ID más reciente primero
+    });
+    console.log('[Recientes] Primeros 10 tras sort:', dataEnriquecida.value.slice(0, 10).map(r => ({
+      id: r._id,
+      plataforma: r['Plataforma'],
+      hora_activacion: r['Hora de activación'],
+      _hora_sort: r._hora_sort
+    })));
     actualizarTotales();
     
   } catch (err) {

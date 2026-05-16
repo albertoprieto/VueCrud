@@ -176,13 +176,23 @@
         </Column>
         <Column header="Acciones">
           <template #body="{ data }">
-            <Button
-              icon="pi pi-file-pdf"
-              label="Ver PDF"
-              class="p-button-sm p-button-warning"
-              :loading="loadingPdf"
-              @click="verPDF(data)"
-            />
+            <div style="display:flex;gap:0.5rem;">
+              <Button
+                icon="pi pi-file-pdf"
+                label="Ver PDF"
+                class="p-button-sm p-button-warning"
+                :loading="loadingPdf"
+                @click="verPDF(data)"
+              />
+              <Button
+                v-if="esEditable"
+                icon="pi pi-times"
+                label="Quitar"
+                class="p-button-sm p-button-danger p-button-outlined"
+                :loading="quitando === data.id"
+                @click="quitarReporte(data)"
+              />
+            </div>
           </template>
         </Column>
       </DataTable>
@@ -288,6 +298,8 @@ import {
   eliminarComprobanteFactura,
   agregarReportesNota,
   agregarReportesFactura,
+  quitarReportesNota,
+  quitarReportesFactura,
   getNotas,
   getFacturas
 } from '@/services/pagosService';
@@ -348,6 +360,7 @@ const loadingReportes = ref(false);
 const pdfUrl = ref('');
 const pdfTitle = ref('');
 const loadingPdf = ref(false);
+const quitando = ref(null);  // ID del reporte que se está quitando
 
 const lugaresDisponibles = [
   'ASP Vianey',
@@ -447,6 +460,9 @@ async function cambiarStatusYLugar() {
       }
     }
     toast.add({ severity: 'success', summary: 'Actualizado', detail: 'Datos actualizados correctamente.', life: 3000 });
+    // Si se canceló, recargar para reflejar que reporte_ids quedó vacío
+    const cancelado = ['cancelado', 'Cancelado'].includes(nuevoStatus.value);
+    if (statusChanged && cancelado) await cargarDetalle();
   } catch (error) {
     console.error(error);
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar los datos.', life: 4000 });
@@ -564,6 +580,24 @@ function cerrarPdfDialog() {
     URL.revokeObjectURL(pdfUrl.value);
     pdfUrl.value = '';
   }
+}
+
+async function quitarReporte(reporte) {
+  quitando.value = reporte.id;
+  try {
+    if (esNota.value) {
+      await quitarReportesNota(id.value, [reporte.id]);
+    } else {
+      await quitarReportesFactura(id.value, [reporte.id]);
+    }
+    reportesList.value = reportesList.value.filter(r => r.id !== reporte.id);
+    if (reportesList.value.length === 0) reportesDialogVisible.value = false;
+    await cargarDetalle();
+    toast.add({ severity: 'success', summary: 'Quitado', detail: `Reporte "${reporte.folio || '#' + reporte.id}" quitado correctamente.`, life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo quitar el reporte.', life: 4000 });
+  }
+  quitando.value = null;
 }
 
 async function abrirAgregarDialog() {
