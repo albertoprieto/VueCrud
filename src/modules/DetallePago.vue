@@ -20,6 +20,13 @@
             :loading="loadingReportes"
             @click="abrirReportesDialog"
           />
+          <Button
+            v-if="esEditable"
+            icon="pi pi-plus"
+            label="Agregar Servicios"
+            class="p-button-outlined p-button-success"
+            @click="abrirAgregarDialog"
+          />
           <Button icon="pi pi-file-pdf" label="Descargar PDF" class="p-button-outlined p-button-danger" @click="descargarPDF" />
         </div>
       </div>
@@ -196,6 +203,61 @@
         style="width:100%;height:80vh;border:none;"
       />
     </Dialog>
+
+    <!-- Dialog: Agregar Servicios a la nota/factura -->
+    <Dialog
+      v-model:visible="agregarDialogVisible"
+      :header="`Agregar servicios a ${esNota ? 'Nota' : 'Factura'} #${item?.id}`"
+      :modal="true"
+      :style="{ width: '75vw' }"
+      :draggable="false"
+    >
+      <div v-if="loadingDisponibles" style="text-align:center;padding:2rem;">
+        <i class="pi pi-spin pi-spinner" style="font-size:2rem;"></i>
+      </div>
+      <template v-else>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem;">
+          <InputText v-model="filtroAgregarFolio" placeholder="Buscar por folio / OS" style="flex:1;min-width:150px;" />
+          <InputText v-model="filtroAgregarCliente" placeholder="Buscar por cliente" style="flex:1;min-width:150px;" />
+          <InputText v-model="filtroAgregarTipo" placeholder="Buscar por tipo" style="flex:1;min-width:150px;" />
+        </div>
+        <p v-if="!reportesDisponiblesFiltrados.length" style="text-align:center;color:var(--color-text-muted,#888);">
+          {{ reportesDisponibles.length ? 'Sin resultados para los filtros aplicados.' : 'No hay reportes de servicio disponibles para agregar.' }}
+        </p>
+        <DataTable
+          v-else
+          v-model:selection="reportesSeleccionados"
+          :value="reportesDisponiblesFiltrados"
+          dataKey="id"
+          :paginator="reportesDisponiblesFiltrados.length > 10"
+          :rows="10"
+          selectionMode="multiple"
+          size="small"
+        >
+          <Column selectionMode="multiple" style="width:3rem" />
+          <Column field="folio" header="Folio" />
+          <Column field="tipo_servicio" header="Tipo" />
+          <Column field="nombre_cliente" header="Cliente" />
+          <Column field="total" header="Total">
+            <template #body="{ data }">{{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}</template>
+          </Column>
+          <Column field="fecha" header="Fecha">
+            <template #body="{ data }">{{ formatFecha(data.fecha) }}</template>
+          </Column>
+        </DataTable>
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
+          <Button label="Cancelar" class="p-button-text" @click="agregarDialogVisible = false" />
+          <Button
+            label="Agregar seleccionados"
+            icon="pi pi-check"
+            class="p-button-success"
+            :disabled="!reportesSeleccionados.length"
+            :loading="agregando"
+            @click="confirmarAgregar"
+          />
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -209,6 +271,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import Textarea from 'primevue/textarea';
+import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
 import {
   getNotaById,
@@ -222,7 +285,11 @@ import {
   subirComprobanteNota,
   subirComprobanteFactura,
   eliminarComprobanteNota,
-  eliminarComprobanteFactura
+  eliminarComprobanteFactura,
+  agregarReportesNota,
+  agregarReportesFactura,
+  getNotas,
+  getFacturas
 } from '@/services/pagosService';
 import { generarPagoPDF } from '@/services/PagoPdfService.js';
 
@@ -244,6 +311,34 @@ const guardandoObs = ref(false);
 const archivoSeleccionado = ref(null);
 const subiendo = ref(false);
 const eliminandoComprobante = ref(null);
+
+// Agregar servicios
+const agregarDialogVisible = ref(false);
+const reportesDisponibles = ref([]);
+const loadingDisponibles = ref(false);
+const reportesSeleccionados = ref([]);
+const agregando = ref(false);
+const filtroAgregarCliente = ref('');
+const filtroAgregarFolio = ref('');
+const filtroAgregarTipo = ref('');
+
+const reportesDisponiblesFiltrados = computed(() => {
+  return reportesDisponibles.value.filter(r => {
+    const cliente = filtroAgregarCliente.value.trim().toLowerCase();
+    const folio = filtroAgregarFolio.value.trim().toLowerCase();
+    const tipo = filtroAgregarTipo.value.trim().toLowerCase();
+    if (cliente && !(r.nombre_cliente || '').toLowerCase().includes(cliente)) return false;
+    if (folio && !(r.folio || '').toLowerCase().includes(folio)) return false;
+    if (tipo && !(r.tipo_servicio || '').toLowerCase().includes(tipo)) return false;
+    return true;
+  });
+});
+
+const esEditable = computed(() => {
+  if (!item.value?.status) return false;
+  const s = item.value.status.toLowerCase();
+  return !['pagado', 'timbrado', 'cancelado'].includes(s);
+});
 
 // Reportes de servicio
 const reportesDialogVisible = ref(false);
@@ -469,6 +564,61 @@ function cerrarPdfDialog() {
     URL.revokeObjectURL(pdfUrl.value);
     pdfUrl.value = '';
   }
+}
+
+async function abrirAgregarDialog() {
+  loadingDisponibles.value = true;
+  agregarDialogVisible.value = true;
+  try {
+    const [todosReportes, notas, facturas] = await Promise.all([
+      axios.get(`${API_URL}/reportes-servicio-todos`).then(r => r.data),
+      getNotas(),
+      getFacturas()
+    ]);
+    const asignados = new Set();
+    const currentIds = new Set(item.value?.reporte_ids || []);
+    for (const n of notas) {
+      for (const rid of (n.reporte_ids || [])) {
+        if (esNota.value && n.id === Number(id.value)) continue;
+        asignados.add(rid);
+      }
+    }
+    for (const f of facturas) {
+      for (const rid of (f.reporte_ids || [])) {
+        if (!esNota.value && f.id === Number(id.value)) continue;
+        asignados.add(rid);
+      }
+    }
+    reportesDisponibles.value = todosReportes.filter(r => !asignados.has(r.id) && !currentIds.has(r.id));
+    reportesSeleccionados.value = [];
+    filtroAgregarCliente.value = '';
+    filtroAgregarFolio.value = '';
+    filtroAgregarTipo.value = '';
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los reportes disponibles.', life: 4000 });
+    agregarDialogVisible.value = false;
+  }
+  loadingDisponibles.value = false;
+}
+
+async function confirmarAgregar() {
+  if (!reportesSeleccionados.value.length) return;
+  agregando.value = true;
+  try {
+    const nuevos_ids = reportesSeleccionados.value.map(r => r.id);
+    if (esNota.value) {
+      await agregarReportesNota(id.value, nuevos_ids);
+    } else {
+      await agregarReportesFactura(id.value, nuevos_ids);
+    }
+    agregarDialogVisible.value = false;
+    reportesSeleccionados.value = [];
+    await cargarDetalle();
+    toast.add({ severity: 'success', summary: 'Agregado', detail: `Se agregaron ${nuevos_ids.length} servicio(s) correctamente.`, life: 3000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudieron agregar los servicios.', life: 4000 });
+  }
+  agregando.value = false;
 }
 </script>
 
