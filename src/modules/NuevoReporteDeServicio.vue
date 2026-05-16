@@ -323,7 +323,8 @@ const metodoPagoOptions = [
   { label: 'Pago con Tarjeta de Crédito', value: 'tarjeta_credito' },
   { label: 'Pago con Tarjeta de Débito', value: 'tarjeta_debito' },
   { label: 'Transferencia', value: 'transferencia' },
-  { label: 'Pago en Oficina', value: 'efectivo_oficina' }
+  { label: 'Pago en Oficina', value: 'efectivo_oficina' },
+  { label: 'Garantia', value: 'garantia' }
 ];
 
 onMounted(async () => {

@@ -169,13 +169,13 @@
                   label="Ver comprobante"
                 />
               </a>
-              <Button
+              <!-- <Button
                 v-if="!slotProps.data.pagado && !slotProps.data.comprobante_path"
                 icon="pi pi-upload"
                 class="p-button-sm p-button-success"
                 label="Marcar como pagado"
                 @click="marcarComoPagado(slotProps.data)"
-              />
+              /> -->
               <Button
                 v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
                 icon="pi pi-check-circle"
