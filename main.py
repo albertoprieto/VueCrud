@@ -4339,6 +4339,50 @@ def eliminar_comprobante_nota(nota_id: int, data: dict = Body(...)):
     db.close()
     return {"message": "Comprobante eliminado", "comprobantes": existentes}
 
+@app.put("/notas-pago/{nota_id}/agregar-reportes")
+def agregar_reportes_nota(nota_id: int, data: dict = Body(...)):
+    nuevos_ids = data.get('reporte_ids', [])
+    if not nuevos_ids:
+        raise HTTPException(status_code=400, detail="Se requiere 'reporte_ids'")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, reporte_ids, status FROM notas_pago WHERE id=%s", (nota_id,))
+    nota = cursor.fetchone()
+    if not nota:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if nota.get('status') == 'pagado':
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="No se puede modificar una nota pagada")
+    existing_ids = []
+    if nota.get('reporte_ids'):
+        try:
+            existing_ids = json.loads(nota['reporte_ids']) if isinstance(nota['reporte_ids'], str) else nota['reporte_ids']
+        except Exception:
+            existing_ids = []
+    combined_ids = list(dict.fromkeys(existing_ids + nuevos_ids))  # preservar orden, sin duplicados
+    new_ordenes = []
+    new_total = 0.0
+    if combined_ids:
+        placeholders = ','.join(['%s'] * len(combined_ids))
+        cursor.execute(f"SELECT id, folio, total FROM reportes_servicio WHERE id IN ({placeholders})", tuple(combined_ids))
+        reportes = cursor.fetchall()
+        new_ordenes = [r['folio'] for r in reportes if r.get('folio')]
+        new_total = sum(float(r['total'] or 0) for r in reportes)
+    cursor2 = db.cursor()
+    cursor2.execute(
+        "UPDATE notas_pago SET reporte_ids=%s, ordenes=%s, total=%s WHERE id=%s",
+        (json.dumps(combined_ids), json.dumps(new_ordenes), new_total, nota_id)
+    )
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+    return {"message": "Reportes agregados", "id": nota_id, "reporte_ids": combined_ids}
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # ══════════════ FACTURAS DE PAGO ═════════════════════════════════════
@@ -4650,6 +4694,50 @@ def eliminar_comprobante_factura(factura_id: int, data: dict = Body(...)):
     cursor.close()
     db.close()
     return {"message": "Comprobante eliminado", "comprobantes": existentes}
+
+@app.put("/facturas-pago/{factura_id}/agregar-reportes")
+def agregar_reportes_factura(factura_id: int, data: dict = Body(...)):
+    nuevos_ids = data.get('reporte_ids', [])
+    if not nuevos_ids:
+        raise HTTPException(status_code=400, detail="Se requiere 'reporte_ids'")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, reporte_ids, status FROM facturas_pago WHERE id=%s", (factura_id,))
+    factura = cursor.fetchone()
+    if not factura:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.get('status') in ('pagado', 'Timbrado', 'Cancelado'):
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="No se puede modificar una factura en ese estado")
+    existing_ids = []
+    if factura.get('reporte_ids'):
+        try:
+            existing_ids = json.loads(factura['reporte_ids']) if isinstance(factura['reporte_ids'], str) else factura['reporte_ids']
+        except Exception:
+            existing_ids = []
+    combined_ids = list(dict.fromkeys(existing_ids + nuevos_ids))
+    new_ordenes = []
+    new_total = 0.0
+    if combined_ids:
+        placeholders = ','.join(['%s'] * len(combined_ids))
+        cursor.execute(f"SELECT id, folio, total FROM reportes_servicio WHERE id IN ({placeholders})", tuple(combined_ids))
+        reportes = cursor.fetchall()
+        new_ordenes = [r['folio'] for r in reportes if r.get('folio')]
+        new_total = sum(float(r['total'] or 0) for r in reportes)
+    cursor2 = db.cursor()
+    cursor2.execute(
+        "UPDATE facturas_pago SET reporte_ids=%s, ordenes=%s, total=%s WHERE id=%s",
+        (json.dumps(combined_ids), json.dumps(new_ordenes), new_total, factura_id)
+    )
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+    return {"message": "Reportes agregados", "id": factura_id, "reporte_ids": combined_ids}
 
 
 # ═══════════════════════════════════════════════════════════════════════
