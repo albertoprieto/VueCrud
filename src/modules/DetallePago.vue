@@ -7,11 +7,21 @@
     </div>
 
     <div v-else-if="item">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
         <h2 class="detalle-title" style="margin-bottom:0;">
           {{ esNota ? 'Nota' : 'Factura' }} #{{ item.id }}
         </h2>
-        <Button icon="pi pi-file-pdf" label="Descargar PDF" class="p-button-outlined p-button-danger" @click="descargarPDF" />
+        <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+          <Button
+            v-if="item.reporte_ids && item.reporte_ids.length"
+            icon="pi pi-list"
+            :label="`Ver Reportes de Servicio (${item.reporte_ids.length})`"
+            class="p-button-outlined p-button-info"
+            :loading="loadingReportes"
+            @click="abrirReportesDialog"
+          />
+          <Button icon="pi pi-file-pdf" label="Descargar PDF" class="p-button-outlined p-button-danger" @click="descargarPDF" />
+        </div>
       </div>
 
       <div class="detalle-card">
@@ -134,15 +144,69 @@
     <div v-else style="text-align:center;padding:3rem;">
       <p>No se encontró el registro.</p>
     </div>
+
+    <!-- Dialog: Lista de Reportes de Servicio -->
+    <Dialog
+      v-model:visible="reportesDialogVisible"
+      :header="`Reportes de Servicio (${reportesList.length})`"
+      :modal="true"
+      :style="{ width: '750px', maxWidth: '95vw' }"
+      :draggable="false"
+    >
+      <div v-if="reportesList.length === 0" style="text-align:center;padding:1rem;color:#999;">
+        Sin reportes cargados.
+      </div>
+      <DataTable v-else :value="reportesList" responsiveLayout="scroll">
+        <Column header="Folio">
+          <template #body="{ data }">
+            {{ data.folio || `SERVICIO-${String(data.id).padStart(5, '0')}` }}
+          </template>
+        </Column>
+        <Column field="tipo_servicio" header="Tipo de Servicio" />
+        <Column field="nombre_cliente" header="Cliente" />
+        <Column header="Fecha">
+          <template #body="{ data }">{{ formatFecha(data.fecha) }}</template>
+        </Column>
+        <Column header="Acciones">
+          <template #body="{ data }">
+            <Button
+              icon="pi pi-file-pdf"
+              label="Ver PDF"
+              class="p-button-sm p-button-warning"
+              :loading="loadingPdf"
+              @click="verPDF(data)"
+            />
+          </template>
+        </Column>
+      </DataTable>
+    </Dialog>
+
+    <!-- Dialog: PDF de Reporte de Servicio -->
+    <Dialog
+      v-model:visible="pdfDialogVisible"
+      :header="pdfTitle"
+      :modal="true"
+      :style="{ width: '85vw' }"
+      :draggable="false"
+      @hide="cerrarPdfDialog"
+    >
+      <iframe
+        v-if="pdfUrl"
+        :src="pdfUrl"
+        style="width:100%;height:80vh;border:none;"
+      />
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import axios from 'axios';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import Textarea from 'primevue/textarea';
 import { useToast } from 'primevue/usetoast';
@@ -181,6 +245,15 @@ const archivoSeleccionado = ref(null);
 const subiendo = ref(false);
 const eliminandoComprobante = ref(null);
 
+// Reportes de servicio
+const reportesDialogVisible = ref(false);
+const pdfDialogVisible = ref(false);
+const reportesList = ref([]);
+const loadingReportes = ref(false);
+const pdfUrl = ref('');
+const pdfTitle = ref('');
+const loadingPdf = ref(false);
+
 const lugaresDisponibles = [
   'ASP Vianey',
   'ASP Renovaciones',
@@ -211,7 +284,10 @@ const opcionesStatusNota = [
 ];
 
 const opcionesStatusFactura = [
+  { label: 'Pendiente de pago', value: 'pendiente de pago' },
+  { label: 'Pagado', value: 'pagado' },
   { label: 'Timbrado', value: 'Timbrado' },
+  { label: 'No timbrado', value: 'No timbrado' },
   { label: 'Pendiente timbre', value: 'Pendiente timbre' },
   { label: 'Cancelado', value: 'Cancelado' }
 ];
@@ -351,6 +427,48 @@ async function eliminarComprobante(path) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el comprobante.', life: 4000 });
   }
   eliminandoComprobante.value = null;
+}
+
+async function abrirReportesDialog() {
+  if (!item.value?.reporte_ids?.length) return;
+  loadingReportes.value = true;
+  try {
+    const results = await Promise.all(
+      item.value.reporte_ids.map(rid =>
+        axios.get(`${API_URL}/reportes-servicio/${rid}`).then(r => r.data)
+      )
+    );
+    reportesList.value = results;
+    reportesDialogVisible.value = true;
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los reportes de servicio.', life: 4000 });
+  }
+  loadingReportes.value = false;
+}
+
+async function verPDF(reporte) {
+  loadingPdf.value = true;
+  try {
+    const resp = await axios.get(`${API_URL}/reportes-servicio/${reporte.id}`);
+    const merged = { ...reporte, ...resp.data };
+    const { generarReporteServicioPDF } = await import('@/components/GeneraReporteServicioPDF.js');
+    const url = await generarReporteServicioPDF({ reporte: merged, mode: 'bloburl' });
+    if (pdfUrl.value) URL.revokeObjectURL(pdfUrl.value);
+    pdfUrl.value = url;
+    pdfTitle.value = merged.folio || `Reporte #${merged.id}`;
+    pdfDialogVisible.value = true;
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF del reporte.', life: 4000 });
+  }
+  loadingPdf.value = false;
+}
+
+function cerrarPdfDialog() {
+  pdfDialogVisible.value = false;
+  if (pdfUrl.value) {
+    URL.revokeObjectURL(pdfUrl.value);
+    pdfUrl.value = '';
+  }
 }
 </script>
 

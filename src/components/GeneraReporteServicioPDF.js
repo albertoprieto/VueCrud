@@ -280,6 +280,10 @@ const empresa = {
   const pdf = pdfMake.createPdf(docDefinition);
   if (mode === 'open') {
     pdf.open();
+  } else if (mode === 'bloburl') {
+    return new Promise(resolve => {
+      pdf.getBlob(blob => resolve(URL.createObjectURL(blob)));
+    });
   } else {
     pdf.download(nombreArchivo);
   }
