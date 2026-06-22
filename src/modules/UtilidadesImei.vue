@@ -2,9 +2,17 @@
   <section class="util-page">
     <header class="util-hero">
       <h1>SIM ESPAÑOL</h1>
+      <p>Agrega un nuevo registro arriba y usa los filtros dentro de la tabla para buscar en el histórico.</p>
     </header>
 
-    <div class="util-card">
+    <div class="util-card util-form-card">
+      <div class="section-head">
+        <div>
+          <h2>Nuevo registro</h2>
+          <p>Captura IMEI y plataforma para consultar y guardar un nuevo movimiento.</p>
+        </div>
+      </div>
+
       <div class="util-grid">
         <div class="field">
           <label for="tipo">Tipo</label>
@@ -43,57 +51,12 @@
         </div>
       </div>
 
-      <div class="filters-panel">
-        <div class="filters-header">
-          <div>
-            <h2>Filtros</h2>
-            <p>Busca por cualquiera de los criterios mostrados en la tabla.</p>
-          </div>
-          <div class="filters-summary">
-            <span class="summary-pill">Histórico: {{ historicalRecords }}</span>
-            <span class="summary-pill">Filtrados: {{ filteredRecords }}</span>
-          </div>
-        </div>
-
-        <div class="filters-grid">
-          <div class="field">
-            <label for="filterTipo">Tipo</label>
-            <Dropdown
-              id="filterTipo"
-              v-model="filters.tipo"
-              :options="filterTipoOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="Todos"
-              showClear
-            />
-          </div>
-
-          <div class="field">
-            <label for="filterUsuario">Usuario</label>
-            <InputText id="filterUsuario" v-model="filters.deaccount" placeholder="Buscar usuario" @keyup.enter="aplicarFiltros" />
-          </div>
-          <div class="field">
-            <label for="filterPlataforma">Plataforma</label>
-            <InputText id="filterPlataforma" v-model="filters.plataforma" placeholder="IOP / TRACKSOLID" @keyup.enter="aplicarFiltros" />
-          </div>
-          <div class="field">
-            <label for="filterImei">IMEI</label>
-            <InputText id="filterImei" v-model="filters.imei" placeholder="IMEI" @keyup.enter="aplicarFiltros" />
-          </div>
-        </div>
-
-        <div class="filters-actions">
-          <Button label="Buscar" icon="pi pi-search" @click="aplicarFiltros" :loading="loading" />
-          <Button label="Limpiar filtros" icon="pi pi-filter-slash" severity="secondary" outlined @click="limpiarFiltros" :disabled="loading" />
-        </div>
-      </div>
-
       <div class="actions">
-        <Button :label="loading ? 'Consultando...' : 'Consultar'" icon="pi pi-search" :loading="loading" :disabled="loading" @click="consultar" />
+        <Button :label="loading ? 'Agregando...' : 'Agregar'" icon="pi pi-search" :loading="loading" :disabled="loading" @click="consultar" />
         <Button label="Exportar Excel" icon="pi pi-file-excel" :disabled="!rows.length || loading" @click="exportarExcel" />
         <Button label="Limpiar" icon="pi pi-eraser" severity="secondary" outlined :disabled="loading" @click="limpiar" />
       </div>
+    </div>
 
       <p v-if="message" :class="['status', messageError ? 'is-error' : 'is-ok']">{{ message }}</p>
 
@@ -110,9 +73,45 @@
           @page="onPage"
           responsiveLayout="scroll"
         >
+          <template #header>
+            <div class="table-tools">
+              <div class="table-tools__summary">
+                <span class="summary-pill">Histórico: {{ historicalRecords }}</span>
+                <span class="summary-pill">Filtrados: {{ filteredRecords }}</span>
+              </div>
+              <div class="table-tools__filters">
+                <Dropdown
+                  v-model="filters.tipo"
+                  :options="filterTipoOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Tipo"
+                  showClear
+                />
+                <InputText v-model="filters.deaccount" placeholder="Usuario" @keyup.enter="aplicarFiltros" />
+                <InputText v-model="filters.plataforma" placeholder="Plataforma" @keyup.enter="aplicarFiltros" />
+                <InputText v-model="filters.imei" placeholder="IMEI" @keyup.enter="aplicarFiltros" />
+                <Dropdown
+                  v-model="filters.vigencia_sim"
+                  :options="vigenciaSimOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Vigencia SIM"
+                  showClear
+                />
+                <div class="table-tools__buttons">
+                  <Button label="Buscar" icon="pi pi-search" @click="aplicarFiltros" :loading="loading" />
+                  <Button label="Limpiar" icon="pi pi-filter-slash" severity="secondary" outlined @click="limpiarFiltros" :disabled="loading" />
+                </div>
+              </div>
+            </div>
+          </template>
           <Column field="tipo" header="TIPO">
             <template #body="{ data }">
-              <Tag :value="data.tipo" :severity="data.tipo === 'activacion' ? 'success' : 'info'" />
+              <Tag
+                :value="data.tipo"
+                :severity="data.tipo === 'activacion' ? 'success' : data.tipo === 'renovacion' ? 'info' : 'danger'"
+              />
             </template>
           </Column>
           <Column field="activation_date" header="Fecha. Act">
@@ -149,7 +148,6 @@
           </Column>
         </DataTable>
       </div>
-    </div>
 
     <Dialog v-model:visible="showEditDialog" header="Editar Registro" :style="{ width: '520px' }" modal>
       <div class="edit-grid">
@@ -223,11 +221,16 @@ const plataformas = ref([]);
 const tipo = ref('activacion');
 const tiposOptions = [
   { label: 'Activación', value: 'activacion' },
-  { label: 'Renovación', value: 'renovacion' }
+  { label: 'Renovación', value: 'renovacion' },
+  { label: 'Cancelado', value: 'cancelado' }
 ];
 const filterTipoOptions = [
   { label: 'Activación', value: 'activacion' },
-  { label: 'Renovación', value: 'renovacion' }
+  { label: 'Renovación', value: 'renovacion' },
+  { label: 'Cancelado', value: 'cancelado' }
+];
+const vigenciaSimOptions = [
+  { label: 'Últimos 7 días', value: 'ultimos_7_dias' }
 ];
 const rows = ref([]);
 const loading = ref(false);
@@ -242,14 +245,10 @@ const showEditDialog = ref(false);
 const editRow = ref({});
 const filters = ref({
   tipo: '',
-  activation_date: '',
   deaccount: '',
-  account_name: '',
   plataforma: '',
   imei: '',
-  iccid: '',
-  device_mobile: '',
-  vigencia_sim: ''
+  vigencia_sim: '',
 });
 
 function sanitizeImei() {
@@ -349,14 +348,10 @@ async function aplicarFiltros() {
 async function limpiarFiltros() {
   filters.value = {
     tipo: '',
-    activation_date: '',
     deaccount: '',
-    account_name: '',
     plataforma: '',
     imei: '',
-    iccid: '',
-    device_mobile: '',
-    vigencia_sim: ''
+    vigencia_sim: '',
   };
   currentPage.value = 1;
   await cargarDesdeDB();
@@ -621,56 +616,6 @@ onMounted(loadPlataformas);
 
 .filters-panel {
   margin-top: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.45);
-}
-
-.filters-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-}
-
-.filters-header h2 {
-  margin: 0;
-}
-
-.filters-header p {
-  margin: 0.3rem 0 0;
-  color: var(--color-text);
-}
-
-.filters-summary {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.summary-pill {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0.35rem 0.75rem;
-  background: var(--color-title);
-  color: var(--color-bg);
-  font-weight: 700;
-}
-
-.filters-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 0.85rem;
-}
-
-.filters-actions {
-  margin-top: 1rem;
-  display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
 }
 
 .util-grid {
@@ -757,6 +702,51 @@ onMounted(loadPlataformas);
   min-width: 980px;
 }
 
+.result :deep(.p-datatable-header) {
+  background: transparent;
+  border: 0;
+  padding: 0 0 0.75rem;
+}
+
+.table-tools {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.table-tools__summary {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.summary-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  background: var(--color-title);
+  color: var(--color-bg);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.table-tools__filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.table-tools__filters :deep(.p-inputtext),
+.table-tools__filters :deep(.p-dropdown) {
+  width: 100%;
+}
+
+.table-tools__buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .row-actions {
   display: flex;
   align-items: center;
@@ -774,11 +764,7 @@ onMounted(loadPlataformas);
     grid-template-columns: 1fr;
   }
 
-  .filters-header {
-    flex-direction: column;
-  }
-
-  .filters-grid {
+  .table-tools__filters {
     grid-template-columns: 1fr;
   }
 }
