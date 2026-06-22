@@ -193,6 +193,13 @@ const items = computed(() => {
         ]
       },
       {
+        label: 'Utilidades',
+        icon: 'pi pi-fw pi-wrench',
+        items: [
+          { label: 'Consulta IMEI', route: '/utilidades-imei', icon: 'pi pi-fw pi-search' }
+        ]
+      },
+      {
         label: 'Cerrar Sesión',
         icon: 'pi pi-fw pi-sign-out',
         command: handleLogout
@@ -263,6 +270,13 @@ const items = computed(() => {
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
         ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
         ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
+      ]
+    },
+    {
+      label: 'Utilidades',
+      icon: 'pi pi-fw pi-wrench',
+      items: [
+        { label: 'Consulta IMEI', route: '/utilidades-imei', icon: 'pi pi-fw pi-search' }
       ]
     },
     {
