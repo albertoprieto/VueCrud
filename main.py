@@ -4023,6 +4023,181 @@ def get_renovaciones_stats():
         "total": sum(por_status.values()) if por_status else 0
     }
 
+@app.post("/renovaciones-recientes/datos-reporte")
+def get_datos_reporte_renovacion(data: dict = Body(...)):
+    """
+    Recibe: imei, plataforma, sim, tipo_servicio, total, forma_pago
+    Devuelve: todos los datos necesarios para generar el reporte de renovación:
+      - datos de renovaciones_recientes (BD interna)
+      - datos en vivo del dispositivo desde la API de la plataforma (IOP o Tracksolid)
+      - datos del cliente relacionado
+    """
+    imei_input = str(data.get("imei", "")).strip()
+    plataforma_input = str(data.get("plataforma", "")).strip()
+    sim_input = str(data.get("sim", "")).strip()
+    tipo_servicio_input = str(data.get("tipo_servicio", "")).strip()
+    total_input = data.get("total", 0)
+    forma_pago_input = str(data.get("forma_pago", "")).strip()
+
+    if not imei_input:
+        raise HTTPException(status_code=400, detail="El campo 'imei' es requerido")
+
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+
+    # 1. Buscar renovación reciente por IMEI en BD interna
+    if plataforma_input:
+        cursor.execute("""
+            SELECT * FROM renovaciones_recientes
+            WHERE numero_dispositivo = %s AND plataforma = %s
+            ORDER BY hora_activacion DESC
+            LIMIT 1
+        """, (imei_input, plataforma_input))
+    else:
+        cursor.execute("""
+            SELECT * FROM renovaciones_recientes
+            WHERE numero_dispositivo = %s
+            ORDER BY hora_activacion DESC
+            LIMIT 1
+        """, (imei_input,))
+    renovacion = cursor.fetchone()
+
+    # Convertir fechas a string
+    if renovacion:
+        for key in ['hora_activacion', 'fecha_carga', 'fecha_actualizacion',
+                    'tiempo_vencimiento_plataforma', 'hora_vencimiento_usuario']:
+            if renovacion.get(key) and hasattr(renovacion[key], 'isoformat'):
+                renovacion[key] = renovacion[key].isoformat()
+
+    cuenta = renovacion["cuenta"] if renovacion else ""
+    nombre_dispositivo = renovacion["nombre_dispositivo"] if renovacion else ""
+    modelo_dispositivo = renovacion["modelo_dispositivo"] if renovacion else ""
+    sim_renovacion = renovacion["numero_tarjeta_sim"] if renovacion else ""
+    periodo_renovacion = renovacion["periodo_de_renovacion"] if renovacion else ""
+    vencimiento_plataforma = renovacion.get("tiempo_vencimiento_plataforma") if renovacion else None
+    plataforma_final = renovacion["plataforma"] if renovacion else plataforma_input
+
+    sim_final = sim_input if sim_input else sim_renovacion
+
+    # 2. Buscar cliente por cuenta de plataforma
+    cliente_id = None
+    nombre_cliente = "NA"
+    telefono_cliente = ""
+    correo_cliente = ""
+    direccion_cliente = ""
+
+    if cuenta:
+        cursor.execute("""
+            SELECT c.id, c.nombre, c.correo, c.direccion
+            FROM clientes c
+            INNER JOIN usuarios_cliente uc ON uc.cliente_id = c.id
+            WHERE LOWER(uc.usuario) = LOWER(%s)
+            LIMIT 1
+        """, (cuenta,))
+        cliente_row = cursor.fetchone()
+        if cliente_row:
+            cliente_id = cliente_row["id"]
+            nombre_cliente = cliente_row["nombre"]
+            correo_cliente = cliente_row["correo"] or ""
+            direccion_cliente = cliente_row["direccion"] or ""
+            cursor.execute("SELECT telefono FROM telefonos_cliente WHERE cliente_id = %s LIMIT 1", (cliente_id,))
+            tel_row = cursor.fetchone()
+            telefono_cliente = tel_row["telefono"] if tel_row else ""
+
+    cursor.close()
+    db.close()
+
+    # 3. Consultar la API de la plataforma en vivo por IMEI
+    plataforma_data = None
+    plataforma_error = None
+    plat_lower = plataforma_final.lower().strip() if plataforma_final else plataforma_input.lower().strip()
+
+    try:
+        if plat_lower == "iop":
+            if not os.getenv("IOPGPS_APPID"):
+                plataforma_error = "Credenciales IOP no configuradas en .env"
+            else:
+                iop = IOPGPSClient()
+                resp = iop.get_device_detail(imei_input)
+                if resp.get("code") == 0 and resp.get("data"):
+                    raw = resp["data"]
+                    # raw puede ser dict o list; normalizar a dict
+                    if isinstance(raw, list) and raw:
+                        raw = raw[0]
+                    plataforma_data = raw
+                    # Rellenar campos vacíos con datos de la plataforma si los tenemos
+                    if not nombre_dispositivo:
+                        nombre_dispositivo = raw.get("deviceName") or raw.get("name") or ""
+                    if not modelo_dispositivo:
+                        modelo_dispositivo = raw.get("model") or raw.get("deviceModel") or ""
+                    if not cuenta:
+                        cuenta = raw.get("account") or raw.get("accountId") or ""
+                    if not sim_final:
+                        sim_final = raw.get("sim") or raw.get("simNum") or ""
+                else:
+                    plataforma_error = resp.get("result") or resp.get("message") or "Sin datos"
+
+        elif plat_lower in ("tracksolid", "tracksolidpro", "track"):
+            if not os.getenv("TRACKSOLID_APP_KEY"):
+                plataforma_error = "Credenciales Tracksolid no configuradas en .env"
+            else:
+                ts = _get_tracksolid_client()
+                resp = ts.fetch_device_detail(imei_input)
+                if resp.get("code") == 0 and resp.get("result"):
+                    raw = resp["result"]
+                    if isinstance(raw, list) and raw:
+                        raw = raw[0]
+                    plataforma_data = raw
+                    if not nombre_dispositivo:
+                        nombre_dispositivo = raw.get("deviceName") or raw.get("name") or ""
+                    if not modelo_dispositivo:
+                        modelo_dispositivo = raw.get("model") or raw.get("deviceModel") or ""
+                    if not cuenta:
+                        cuenta = raw.get("_account") or raw.get("account") or ""
+                    if not sim_final:
+                        sim_final = raw.get("sim") or raw.get("simNum") or ""
+                    if not vencimiento_plataforma:
+                        vencimiento_plataforma = raw.get("expireTime") or raw.get("serviceExpiredTime") or None
+                else:
+                    plataforma_error = resp.get("message") or f"code={resp.get('code')}"
+        else:
+            plataforma_error = f"Plataforma no reconocida: '{plataforma_final}'"
+
+    except Exception as e:
+        plataforma_error = str(e)
+
+    return {
+        # Datos que llegaron del frontend
+        "imei": imei_input,
+        "sim": sim_final,
+        "plataforma": plataforma_final,
+        "tipo_servicio": tipo_servicio_input,
+        "total": total_input,
+        "forma_pago": forma_pago_input,
+        # Datos del dispositivo (combinados: BD interna + plataforma en vivo)
+        "nombre_dispositivo": nombre_dispositivo,
+        "modelo_dispositivo": modelo_dispositivo,
+        "periodo_renovacion": periodo_renovacion,
+        "vencimiento_plataforma": vencimiento_plataforma,
+        "cuenta_plataforma": cuenta,
+        # Datos del cliente
+        "cliente_id": cliente_id,
+        "nombre_cliente": nombre_cliente,
+        "telefono_cliente": telefono_cliente,
+        "correo_cliente": correo_cliente,
+        "direccion_cliente": direccion_cliente,
+        # Datos en vivo de la plataforma (respuesta RAW para uso adicional)
+        "plataforma_live": plataforma_data,
+        "plataforma_error": plataforma_error,
+        # Registro completo de renovacion_reciente (BD interna)
+        "renovacion_reciente": renovacion,
+    }
+
 # ═══════════════════════════════════════════════════════════════════════
 # ══════════════ NOTAS DE PAGO ═════════════════════════════════════════
 # ═══════════════════════════════════════════════════════════════════════
@@ -5507,3 +5682,386 @@ def detalle_dispositivo_plataforma(imei_val: str, plataforma: str = Query(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class UtilidadesConsultaRequest(BaseModel):
+    imei: str
+    plataforma: str
+
+
+def _normalize_plataforma_utilidades(plataforma: str) -> str:
+    p = str(plataforma or "").strip().lower()
+    if p in ("iop", "iopsgps"):
+        return "iop"
+    if p in ("tracksolid", "tracksolidpro", "track"):
+        return "tracksolid"
+    return p
+
+
+def _extract_digits(value: str) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _extract_sim_and_account(dispositivo: dict, plataforma: str) -> tuple[str, str, str]:
+    cuenta = ""
+    cliente = ""
+    sim = ""
+
+    if plataforma == "tracksolid":
+        cuenta = str(dispositivo.get("account") or dispositivo.get("_account") or "")
+        cliente = str(dispositivo.get("customerName") or dispositivo.get("userName") or "")
+        sim = _extract_digits(dispositivo.get("sim") or dispositivo.get("simNum") or "")
+    else:
+        account = dispositivo.get("account") if isinstance(dispositivo.get("account"), dict) else {}
+        brief = dispositivo.get("deviceBrief") if isinstance(dispositivo.get("deviceBrief"), dict) else {}
+        cuenta = str(account.get("accountName") or dispositivo.get("account") or dispositivo.get("accountId") or "")
+        cliente = str(account.get("userName") or dispositivo.get("customerName") or "")
+        sim = _extract_digits(brief.get("deviceMobile") or dispositivo.get("sim") or dispositivo.get("simNum") or "")
+
+    return cuenta, cliente, sim
+
+
+def _extract_campos_utilidades(dispositivo: dict, plataforma: str) -> dict:
+    if plataforma == "tracksolid":
+        account_val = str(dispositivo.get("account") or "")
+        customer_val = str(dispositivo.get("customerName") or "")
+        sim_val = _extract_digits(dispositivo.get("sim") or dispositivo.get("simNum") or "")
+        return {
+            "deaccount": account_val,
+            "accountName": customer_val,
+            "userName": customer_val,
+            "deviceMobile": sim_val,
+        }
+
+    account = dispositivo.get("account") if isinstance(dispositivo.get("account"), dict) else {}
+    brief = dispositivo.get("deviceBrief") if isinstance(dispositivo.get("deviceBrief"), dict) else {}
+    account_name = str(account.get("accountName") or "")
+    user_name = str(account.get("userName") or "")
+    mobile = _extract_digits(brief.get("deviceMobile") or dispositivo.get("sim") or dispositivo.get("simNum") or "")
+
+    return {
+        "deaccount": account_name,
+        "accountName": account_name,
+        "userName": user_name,
+        "deviceMobile": mobile,
+    }
+
+
+@app.get("/api/utilidades/plataformas")
+def utilidades_plataformas():
+    return {
+        "plataformas": [
+            {"label": "IOP", "value": "IOP"},
+            {"label": "Tracksolid", "value": "TRACKSOLID"},
+        ]
+    }
+
+
+@app.get("/api/utilidades/sims/details")
+def utilidades_sims_details(identifiers: str = Query(..., min_length=6)):
+    identifier = _extract_digits(identifiers)
+    if len(identifier) < 6:
+        raise HTTPException(status_code=400, detail="Identificador de SIM invalido")
+
+    sim_api_client = os.getenv("SIMPRO_API_CLIENT", "").strip()
+    sim_api_key = os.getenv("SIMPRO_API_KEY", "").strip()
+    sim_base = os.getenv("SIMPRO_BASE_URL", "https://simpro4.wirelesslogic.com").strip().rstrip("/")
+
+    if not sim_api_client or not sim_api_key:
+        raise HTTPException(status_code=400, detail="Faltan credenciales SIMPRO_API_CLIENT y SIMPRO_API_KEY en el entorno")
+
+    try:
+        sim_url = f"{sim_base}/api/v3/sims/details"
+        sim_resp = _requests.get(
+            sim_url,
+            params={"identifiers": identifier},
+            headers={
+                "x-api-client": sim_api_client,
+                "x-api-key": sim_api_key,
+            },
+            timeout=20,
+        )
+        if not sim_resp.ok:
+            raise HTTPException(status_code=sim_resp.status_code, detail=f"SIM details HTTP {sim_resp.status_code}")
+
+        payload = sim_resp.json()
+        first = payload[0] if isinstance(payload, list) and payload else {}
+        active_connection = first.get("active_connection") if isinstance(first, dict) and isinstance(first.get("active_connection"), dict) else {}
+
+        return {
+            "identifiers": identifier,
+            "items": payload if isinstance(payload, list) else [],
+            "iccid": str(first.get("iccid") or "") if isinstance(first, dict) else "",
+            "activation_date": str(active_connection.get("activation_date") or ""),
+            "contract_end_date": str(active_connection.get("contract_end_date") or ""),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo consultar SIM details: {e}")
+
+
+@app.post("/api/utilidades/consulta-imei")
+def utilidades_consulta_imei(payload: UtilidadesConsultaRequest):
+    imei = _extract_digits(payload.imei)
+    plataforma = _normalize_plataforma_utilidades(payload.plataforma)
+
+    if len(imei) < 6:
+        raise HTTPException(status_code=400, detail="IMEI invalido")
+    if plataforma not in ("iop", "tracksolid"):
+        raise HTTPException(status_code=400, detail="Plataforma no soportada. Usa IOP o TRACKSOLID.")
+
+    base_detail = detalle_dispositivo_plataforma(imei, plataforma=plataforma)
+    dispositivo = base_detail.get("dispositivo")
+    if isinstance(dispositivo, list):
+        dispositivo = dispositivo[0] if dispositivo else {}
+    if not isinstance(dispositivo, dict):
+        dispositivo = {}
+
+    campos = _extract_campos_utilidades(dispositivo, plataforma)
+    cuenta = campos.get("deaccount") or ""
+    cliente = campos.get("accountName") or ""
+    user_name = campos.get("userName") or ""
+    sim = campos.get("deviceMobile") or ""
+
+    sim_error = None
+    sim_payload = None
+    iccid = ""
+    activation_date = ""
+
+    sim_api_client = os.getenv("SIMPRO_API_CLIENT", "").strip()
+    sim_api_key = os.getenv("SIMPRO_API_KEY", "").strip()
+    sim_base = os.getenv("SIMPRO_BASE_URL", "https://simpro4.wirelesslogic.com").strip().rstrip("/")
+
+    if sim:
+        if sim_api_client and sim_api_key:
+            try:
+                sim_url = f"{sim_base}/api/v3/sims/details"
+                sim_resp = _requests.get(
+                    sim_url,
+                    params={"identifiers": sim},
+                    headers={
+                        "x-api-client": sim_api_client,
+                        "x-api-key": sim_api_key,
+                    },
+                    timeout=20,
+                )
+                if not sim_resp.ok:
+                    raise Exception(f"HTTP {sim_resp.status_code}")
+                sim_payload = sim_resp.json()
+                first = sim_payload[0] if isinstance(sim_payload, list) and sim_payload else {}
+                if isinstance(first, dict):
+                    iccid = str(first.get("iccid") or "")
+                    active_connection = first.get("active_connection") if isinstance(first.get("active_connection"), dict) else {}
+                    activation_date = str(active_connection.get("activation_date") or "")
+            except Exception as e:
+                sim_error = f"No se pudo consultar SIM details: {e}"
+        else:
+            sim_error = "Faltan credenciales SIMPRO_API_CLIENT y SIMPRO_API_KEY en el entorno"
+
+    return {
+        "imei": imei,
+        "plataforma": "TRACKSOLID" if plataforma == "tracksolid" else "IOP",
+        "deaccount": cuenta,
+        "accountName": cliente,
+        "userName": user_name,
+        "deviceMobile": sim,
+        "cuenta_plataforma": cuenta,
+        "nombre_cliente": cliente,
+        "sim": sim,
+        "iccid": iccid,
+        "activation_date": activation_date,
+        "dispositivo": dispositivo,
+        "sim_details": sim_payload,
+        "plataforma_error": None,
+        "sim_error": sim_error,
+    }
+
+
+# ── consultas_sim ────────────────────────────────────────────────────────────
+
+class ConsultaSimRecord(BaseModel):
+    tipo: str = "activacion"
+    activation_date: str = ""
+    deaccount: str = ""
+    account_name: str = ""
+    plataforma: str = ""
+    imei: str = ""
+    iccid: str = ""
+    device_mobile: str = ""
+    vigencia_sim: str = ""
+
+
+def _get_db():
+    return mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+
+
+@app.get("/api/utilidades/consultas-sim")
+def list_consultas_sim(
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+    tipo: str | None = Query(None),
+    activation_date: str | None = Query(None),
+    deaccount: str | None = Query(None),
+    account_name: str | None = Query(None),
+    plataforma: str | None = Query(None),
+    imei: str | None = Query(None),
+    iccid: str | None = Query(None),
+    device_mobile: str | None = Query(None),
+    vigencia_sim: str | None = Query(None),
+):
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    offset = (page - 1) * size
+    conditions = []
+    values = []
+
+    def add_like(column: str, value: str | None):
+        if value is None:
+            return
+        cleaned = str(value).strip()
+        if not cleaned:
+            return
+        conditions.append(f"{column} LIKE %s")
+        values.append(f"%{cleaned}%")
+
+    if tipo:
+        cleaned_tipo = str(tipo).strip()
+        if cleaned_tipo:
+            conditions.append("tipo = %s")
+            values.append(cleaned_tipo)
+
+    add_like("activation_date", activation_date)
+    add_like("deaccount", deaccount)
+    add_like("account_name", account_name)
+    add_like("plataforma", plataforma)
+    add_like("imei", imei)
+    add_like("iccid", iccid)
+    add_like("device_mobile", device_mobile)
+    add_like("vigencia_sim", vigencia_sim)
+
+    where_sql = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    cursor.execute(f"SELECT COUNT(*) AS total FROM consultas_sim{where_sql}", values)
+    total = cursor.fetchone()["total"]
+
+    query_values = list(values) + [size, offset]
+    cursor.execute(
+        f"SELECT * FROM consultas_sim{where_sql} ORDER BY activation_date DESC, creado_en DESC LIMIT %s OFFSET %s",
+        query_values
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    for row in rows:
+        if row.get("creado_en") and hasattr(row["creado_en"], "isoformat"):
+            row["creado_en"] = row["creado_en"].isoformat()
+    return {"total": total, "page": page, "size": size, "items": rows}
+
+
+@app.post("/api/utilidades/consultas-sim", status_code=201)
+def save_consulta_sim(record: ConsultaSimRecord):
+    required = {
+        "tipo": record.tipo,
+        "activation_date": record.activation_date,
+        "deaccount": record.deaccount,
+        "account_name": record.account_name,
+        "plataforma": record.plataforma,
+        "imei": record.imei,
+        "iccid": record.iccid,
+        "device_mobile": record.device_mobile,
+        "vigencia_sim": record.vigencia_sim,
+    }
+    missing = [k for k, v in required.items() if not str(v or "").strip()]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Datos incompletos: {', '.join(missing)}")
+
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        """INSERT INTO consultas_sim
+           (tipo, activation_date, deaccount, account_name, plataforma,
+            imei, iccid, device_mobile, vigencia_sim)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (
+            record.tipo,
+            record.activation_date,
+            record.deaccount,
+            record.account_name,
+            record.plataforma,
+            record.imei,
+            record.iccid,
+            record.device_mobile,
+            record.vigencia_sim,
+        )
+    )
+    new_id = cursor.lastrowid
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"id": new_id, "message": "Guardado"}
+
+
+@app.put("/api/utilidades/consultas-sim/{record_id}")
+def update_consulta_sim(record_id: int, record: ConsultaSimRecord):
+    required = {
+        "tipo": record.tipo,
+        "activation_date": record.activation_date,
+        "deaccount": record.deaccount,
+        "account_name": record.account_name,
+        "plataforma": record.plataforma,
+        "imei": record.imei,
+        "iccid": record.iccid,
+        "device_mobile": record.device_mobile,
+        "vigencia_sim": record.vigencia_sim,
+    }
+    missing = [k for k, v in required.items() if not str(v or "").strip()]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Datos incompletos: {', '.join(missing)}")
+
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        """UPDATE consultas_sim
+           SET tipo=%s, activation_date=%s, deaccount=%s, account_name=%s, plataforma=%s,
+               imei=%s, iccid=%s, device_mobile=%s, vigencia_sim=%s
+           WHERE id=%s""",
+        (
+            record.tipo,
+            record.activation_date,
+            record.deaccount,
+            record.account_name,
+            record.plataforma,
+            record.imei,
+            record.iccid,
+            record.device_mobile,
+            record.vigencia_sim,
+            record_id,
+        )
+    )
+    db.commit()
+    changed = cursor.rowcount
+    cursor.close()
+    db.close()
+    if changed == 0:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    return {"id": record_id, "message": "Actualizado"}
+
+
+@app.delete("/api/utilidades/consultas-sim/{record_id}")
+def delete_consulta_sim(record_id: int):
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM consultas_sim WHERE id=%s", (record_id,))
+    db.commit()
+    changed = cursor.rowcount
+    cursor.close()
+    db.close()
+    if changed == 0:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    return {"id": record_id, "message": "Eliminado"}

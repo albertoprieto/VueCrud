@@ -37,10 +37,12 @@ import RenovacionesRecientes from '@/modules/RenovacionesRecientes.vue';
 import NuevoReporteRenovacion from '@/modules/NuevoReporteRenovacion.vue';
 import Pagos from '@/modules/Pagos.vue';
 import DetallePago from '@/modules/DetallePago.vue';
+import UtilidadesImei from '@/modules/UtilidadesImei.vue';
 
 const routes = [
   { path: '/nuevo-reporte-servicio', name: 'nuevo-reporte-servicio', component: NuevoReporteDeServicio },
   { path: '/', name: 'home', component: Informacion },
+  { path: '/dashboard', name: 'dashboard', component: Informacion },
   { path: '/login', name: 'login', component: Login },
   { path: '/informacion', name: 'informacion', component: Informacion },
   { path: '/registrar', name: 'registrar', component: Registrar },
@@ -78,6 +80,7 @@ const routes = [
   ,{ path: '/nuevo-reporte-renovacion', name: 'nuevo-reporte-renovacion', component: NuevoReporteRenovacion }
   ,{ path: '/pagos', name: 'pagos', component: Pagos }
   ,{ path: '/pagos/:tipo/:id', name: 'detalle-pago', component: DetallePago, props: true }
+  ,{ path: '/utilidades-imei', name: 'utilidades-imei', component: UtilidadesImei }
 ];
 
 const router = createRouter({
