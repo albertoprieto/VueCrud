@@ -5901,6 +5901,17 @@ def _get_db():
     )
 
 
+def _consultas_sim_imei_exists(cursor, imei: str, exclude_id: int | None = None):
+    query = "SELECT id FROM consultas_sim WHERE imei=%s"
+    params = [str(imei or "").strip()]
+    if exclude_id is not None:
+        query += " AND id<>%s"
+        params.append(exclude_id)
+    query += " LIMIT 1"
+    cursor.execute(query, params)
+    return cursor.fetchone()
+
+
 @app.get("/api/utilidades/consultas-sim")
 def list_consultas_sim(
     page: int = Query(1, ge=1),
@@ -5930,6 +5941,13 @@ def list_consultas_sim(
         conditions.append(f"{column} LIKE %s")
         values.append(f"%{cleaned}%")
 
+    def add_vigencia_sim_range(value: str | None):
+        cleaned = str(value or "").strip()
+        if cleaned != "ultimos_7_dias":
+            return False
+        conditions.append("LEFT(vigencia_sim, 10) BETWEEN DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '%Y-%m-%d') AND DATE_FORMAT(CURDATE(), '%Y-%m-%d')")
+        return True
+
     if tipo:
         cleaned_tipo = str(tipo).strip()
         if cleaned_tipo:
@@ -5943,7 +5961,8 @@ def list_consultas_sim(
     add_like("imei", imei)
     add_like("iccid", iccid)
     add_like("device_mobile", device_mobile)
-    add_like("vigencia_sim", vigencia_sim)
+    if not add_vigencia_sim_range(vigencia_sim):
+        add_like("vigencia_sim", vigencia_sim)
 
     where_sql = f" WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -5983,6 +6002,10 @@ def save_consulta_sim(record: ConsultaSimRecord):
 
     db = _get_db()
     cursor = db.cursor()
+    if _consultas_sim_imei_exists(cursor, record.imei):
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=409, detail="Ya existe un registro con ese IMEI")
     cursor.execute(
         """INSERT INTO consultas_sim
            (tipo, activation_date, deaccount, account_name, plataforma,
@@ -6026,6 +6049,10 @@ def update_consulta_sim(record_id: int, record: ConsultaSimRecord):
 
     db = _get_db()
     cursor = db.cursor()
+    if _consultas_sim_imei_exists(cursor, record.imei, exclude_id=record_id):
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=409, detail="Ya existe otro registro con ese IMEI")
     cursor.execute(
         """UPDATE consultas_sim
            SET tipo=%s, activation_date=%s, deaccount=%s, account_name=%s, plataforma=%s,
