@@ -78,24 +78,26 @@
           </div>
         </template>
         <template v-else>
-          <div style="display:flex;gap:1em;margin-bottom:1em;">
-            <div style="flex:1;display:flex;flex-direction:column;">
-              <label>IMEI 1</label>
-              <Dropdown v-if="noModificaImei" v-model="imei"
-                :options="imeiOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
-                placeholder="Selecciona IMEI" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
-              <InputText v-else v-model="imei" placeholder="Captura IMEI manualmente" />
+          <div v-for="(disp, idx) in dispositivos" :key="idx" style="display:flex;gap:0.8em;margin-bottom:0.75em;align-items:flex-end;flex-wrap:wrap;">
+            <div style="flex:1;min-width:130px;display:flex;flex-direction:column;">
+              <label>IMEI {{ idx + 1 }}</label>
+              <InputText v-model="disp.imei" placeholder="IMEI" />
             </div>
-            <div style="flex:1;display:flex;flex-direction:column;">
-              <label>SIM 1</label>
-              <Dropdown v-if="noModificaSim" v-model="sim"
-                :options="simOptions.filter(opt => opt.status === 'Disponible')" optionLabel="label" optionValue="imei"
-                placeholder="Selecciona SIM" filter :filterPlaceholder="'Buscar por últimos 6 dígitos'"
-                :filterFunction="(value, option) => option.imei.slice(-6).includes(value)" />
-              <InputText v-else v-model="sim" placeholder="Captura SIM manualmente" />
+            <div style="flex:1;min-width:110px;display:flex;flex-direction:column;">
+              <label>SIM {{ idx + 1 }}</label>
+              <InputText v-model="disp.sim" placeholder="SIM" />
             </div>
+            <div style="flex:1;min-width:100px;display:flex;flex-direction:column;">
+              <label>Equipo GPS</label>
+              <InputText v-model="disp.equipo" placeholder="Ej: GS10G" />
+            </div>
+            <div style="flex:1;min-width:100px;display:flex;flex-direction:column;">
+              <label>Modelo vehículo</label>
+              <InputText v-model="disp.modelo" placeholder="Ej: Vocho" />
+            </div>
+            <Button v-if="dispositivos.length > 1" icon="pi pi-trash" class="p-button-sm p-button-danger p-button-text" @click="quitarDispositivo(idx)" style="margin-bottom:0.1rem;" />
           </div>
+          <Button icon="pi pi-plus" label="Agregar equipo" class="p-button-sm p-button-secondary p-button-outlined" @click="agregarDispositivo" style="margin-bottom:0.5rem;" />
         </template>
       </div>
 
@@ -123,6 +125,11 @@
           <label>Método de pago</label>
           <Dropdown v-model="metodo_pago" :options="metodoPagoOptions" optionLabel="label" optionValue="value"
             placeholder="Selecciona método de pago" class="w-full mb-4" />
+        </div>
+        <div class="field-group">
+          <label>Comprobante de pago (opcional)</label>
+          <input type="file" accept="image/png,image/jpeg,image/jpg" @change="onComprobanteChange" style="margin-top:0.4rem;" />
+          <small v-if="comprobanteDataUrl" style="color:#28a745;display:block;margin-top:0.3rem;">Imagen cargada ✓</small>
         </div>
       </div>
     </div>
@@ -191,6 +198,9 @@ const imeiDevolver = ref('');
 const simDevolver = ref('');
 const noModificaImei = ref(false);
 const noModificaSim = ref(false);
+// Multi-IMEI para renovaciones
+const dispositivos = ref([{ imei: '', sim: '', equipo: '', modelo: '' }]);
+const comprobanteDataUrl = ref(null);
 const total = ref('');
 const monto_tecnico = ref('');
 const viaticos = ref('');
@@ -298,13 +308,47 @@ const nuevoClienteForm = ref({
 });
 
 const onPlataformaSeleccionar = async ({ plataforma: plat, dispositivo }) => {
-  if (dispositivo.imei) imei.value = dispositivo.imei;
+  if (dispositivo.imei) {
+    imei.value = dispositivo.imei;
+    if (dispositivos.value[0]) dispositivos.value[0].imei = dispositivo.imei;
+  }
   if (plat) plataforma.value = plat === 'iop' ? 'IOP' : 'Tracksolid';
   if (dispositivo.deviceName) modelo_gps.value = dispositivo.deviceName;
   if (dispositivo._userName) usuario.value = dispositivo._userName;
   if (dispositivo._accountName) usuario.value = dispositivo._accountName;
   if (dispositivo._account) usuario.value = dispositivo._account;
 };
+
+function agregarDispositivo() {
+  dispositivos.value.push({ imei: '', sim: '', equipo: '', modelo: '' });
+}
+
+function quitarDispositivo(idx) {
+  dispositivos.value.splice(idx, 1);
+}
+
+function agruparPorEquipo(disps) {
+  const grupos = {};
+  for (const d of disps) {
+    const equipo = (d.equipo || 'GPS').trim();
+    if (!grupos[equipo]) grupos[equipo] = { imeis: [], sims: [] };
+    if (d.imei && d.imei.trim()) grupos[equipo].imeis.push(d.imei.trim());
+    if (d.sim && d.sim.trim()) grupos[equipo].sims.push(d.sim.trim());
+  }
+  return Object.entries(grupos).map(([nombre, g]) => ({
+    articulo_nombre: nombre,
+    imeis: g.imeis,
+    sims: g.sims,
+  }));
+}
+
+function onComprobanteChange(e) {
+  const file = e.target.files?.[0];
+  if (!file) { comprobanteDataUrl.value = null; return; }
+  const reader = new FileReader();
+  reader.onload = () => { comprobanteDataUrl.value = reader.result; };
+  reader.readAsDataURL(file);
+}
 
 const onBusquedaResultado = ({ plataforma: plat, resultados: items }) => {
   if (!items || !items.length) return;
@@ -392,6 +436,8 @@ const limpiarFormulario = () => {
   simDevolver.value = '';
   noModificaImei.value = false;
   noModificaSim.value = false;
+  dispositivos.value = [{ imei: '', sim: '', equipo: '', modelo: '' }];
+  comprobanteDataUrl.value = null;
   total.value = '';
   monto_tecnico.value = '';
   viaticos.value = '';
@@ -408,14 +454,25 @@ const limpiarFormulario = () => {
 const generarReporte = async () => {
   const clienteSeleccionado = clientes.value.find(c => c.id === cliente.value);
   const nombreCliente = clienteSeleccionado ? clienteSeleccionado.nombre : '';
-  // Determinar si no debe modificar stock (por tipo de servicio o por checkbox)
   const esTipoSinStock = tiposSinStock.includes(tipo_servicio.value);
-  
-  // Observaciones siempre debe incluir 'Renovacion', y si el usuario agrega texto, concatenar
+
   let obs = 'Renovacion';
   if (observaciones.value && observaciones.value.trim() !== '') {
     obs = `Renovacion, ${observaciones.value.trim()}`;
   }
+
+  // Para renovaciones, usar el array de dispositivos como fuente de IMEIs
+  const esRenovacion = !['Cambio de Equipo', 'Cambio de Chip'].includes(tipo_servicio.value);
+  const dispsActivos = esRenovacion
+    ? dispositivos.value.filter(d => d.imei || d.sim)
+    : [];
+  const primerImei = esRenovacion ? (dispsActivos[0]?.imei || 'NA') : (imei.value || 'NA');
+  const primerSim  = esRenovacion ? (dispsActivos[0]?.sim  || 'NA') : (sim.value  || 'NA');
+  const primerModelo = esRenovacion ? (dispsActivos[0]?.modelo || 'NA') : 'NA';
+  const imeisArticulos = esRenovacion && dispsActivos.length > 0
+    ? agruparPorEquipo(dispsActivos)
+    : [];
+
   const payload = {
     tipo_servicio: tipo_servicio.value || 'NA',
     cliente_id: cliente.value || 0,
@@ -424,20 +481,20 @@ const generarReporte = async () => {
     nombre_instalador: instalador.value || 'NA',
     vendedor: 'NA',
     plataforma: plataforma.value || 'NA',
-    lugar_instalacion: 'NA',
+    lugar_instalacion: 'GDL',
     ubicacion_id: 0,
-    imei: imei.value || 'NA',
-    sim_serie: sim.value || 'NA',
+    imei: primerImei,
+    sim_serie: primerSim,
     imei_devolver: imeiDevolver.value || 'NA',
     sim_devolver: simDevolver.value || 'NA',
     no_modifica_imei: esTipoSinStock || noModificaImei.value,
     no_modifica_sim: esTipoSinStock || noModificaSim.value,
     marca: 'NA',
     submarca: 'NA',
-    modelo: 'NA',
+    modelo: primerModelo,
     placas: placas.value || 'NA',
     color: 'NA',
-    numero_economico:'NA',
+    numero_economico: 'NA',
     modelo_gps: modelo_gps.value || 'NA',
     accesorios: 'NA',
     ubicacion_gps: 'NA',
@@ -448,17 +505,48 @@ const generarReporte = async () => {
     forma_pago: metodo_pago.value || 'NA',
     viaticos: 0,
     observaciones: obs,
-    folio: `${Date.now()}`
+    folio: `${Date.now()}`,
+    imeis_articulos: imeisArticulos,
   };
+
   try {
     const res = await axios.post(`${import.meta.env.VITE_API_URL}/reportes-servicio`, payload);
-    // El backend ahora maneja la actualización de IMEIs según el campo no_modifica_stock
+    // Actualizar folio con el devuelto por la API
+    const reporte_id = res.data?.reporte_id;
+    if (reporte_id) {
+      try {
+        const detalle = await axios.get(`${import.meta.env.VITE_API_URL}/reportes-servicio/${reporte_id}`);
+        if (detalle.data?.folio) payload.folio = detalle.data.folio;
+      } catch (_) {}
+    }
+
+    // Generar y descargar el PDF de servicio
+    try {
+      const { generarReporteServicioPDF } = await import('@/components/GeneraReporteServicioPDF.js');
+      const empresa = {
+        nombre: 'COMERCIALIZADORA TECNOLOGICA DEL RIO',
+        direccion: 'Fresno 1441 44910 Guadalajara, Jalisco, México',
+        rfc: 'CTR1905206K5',
+        regimen: '626 - Régimen Simplificado de Confianza',
+        telefono: '3325373183',
+        correo: 'gpsvector@gmail.com',
+        web: 'gpsubicacion.com',
+      };
+      generarReporteServicioPDF({
+        reporte: { ...payload, id: reporte_id || 0 },
+        empresaz: empresa,
+        comprobante: comprobanteDataUrl.value || null,
+        mode: 'download',
+      });
+    } catch (pdfErr) {
+      console.error('Error generando PDF:', pdfErr);
+    }
+
     dialogTitle.value = 'Reporte generado';
     dialogMessage.value = res.data.message || 'Reporte creado exitosamente';
     showDialog.value = true;
     limpiarFormulario();
-    
-    // Sincronizar activaciones recientes para que el IMEI quede marcado como "con reporte"
+
     try {
       await verificarReportesActivaciones();
     } catch (syncErr) {

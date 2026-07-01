@@ -8,7 +8,7 @@ import pdfFonts from 'pdfmake/build/vfs_fonts';
 // Pega aquí tu string base64 del logo, por ejemplo:
 // const logoBase64 = 'data:image/png;base64,...';
 
-export function generarReporteServicioPDF({ reporte, empresaz, mode = 'download' }) {
+export function generarReporteServicioPDF({ reporte, empresaz, comprobante = null, mode = 'download' }) {
 
 
 const empresa = {
@@ -24,6 +24,27 @@ const empresa = {
   const fecha = reporte.fecha ? new Date(reporte.fecha) : new Date();
   const fechaStr = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth()+1).toString().padStart(2, '0')}/${fecha.getFullYear()}`;
   const folio = reporte.folio || `SERVICIO-${String(reporte.id).padStart(5, '0')}`;
+
+  const esMultiDispositivo = reporte.imeis_articulos && reporte.imeis_articulos.length > 0;
+  const filasMulti = [];
+  if (esMultiDispositivo) {
+    filasMulti.push([
+      { text: 'Equipo', style: 'tableHeader' },
+      { text: 'IMEI',   style: 'tableHeader' },
+      { text: 'SIM Serie', style: 'tableHeader' },
+    ]);
+    for (const grupo of reporte.imeis_articulos) {
+      const maxLen = Math.max(grupo.imeis.length, (grupo.sims || []).length);
+      for (let i = 0; i < maxLen; i++) {
+        filasMulti.push([
+          grupo.articulo_nombre || '',
+          grupo.imeis[i] || '',
+          (grupo.sims || [])[i] || '',
+        ]);
+      }
+    }
+  }
+
   const logoBase64 = empresa?.logoBase64 || null;
   const empresaFull = {
     nombre: empresa?.nombre || 'GPSubicacion.com',
@@ -161,41 +182,54 @@ const empresa = {
             width: '50%',
             stack: [
               { text: 'Equipo Instalado', style: 'tableHeader' },
-              {
-                table: {
-                  headerRows: 1,
-                  widths: [70, 70, 70],
-                  body: [
-                    [
-                      { text: 'Modelo GPS', style: 'tableHeader' },
-                      { text: 'IMEI', style: 'tableHeader' },
-                      { text: 'SIM Serie', style: 'tableHeader' }
-                    ],
-                    [
-                      reporte.modelo_gps || '',
-                      reporte.imei || '',
-                      reporte.sim_serie || ''
-                    ],
-                    [
-                      { text: 'Accesorios', style: 'tableHeader' },
-                      { text: 'Ubicación GPS', style: 'tableHeader' },
-                      { text: 'Bloqueo', style: 'tableHeader' }
-                    ],
-                    [
-                      reporte.accesorios || '',
-                      reporte.ubicacion_gps || '',
-                      reporte.ubicacion_bloqueo || ''
-                    ]
-                  ]
-                },
-                layout: {
-                  fillColor: function (rowIndex) {
-                    return rowIndex === 0 ? '#eeeeee' : null;
+              esMultiDispositivo
+              ? {
+                  table: {
+                    headerRows: 1,
+                    widths: [60, 110, 90],
+                    body: filasMulti,
                   },
-                  hLineColor: function () { return '#ccc'; },
-                  vLineColor: function () { return '#ccc'; }
+                  layout: {
+                    fillColor: function (rowIndex) { return rowIndex === 0 ? '#eeeeee' : null; },
+                    hLineColor: function () { return '#ccc'; },
+                    vLineColor: function () { return '#ccc'; },
+                  }
                 }
-              },
+              : {
+                  table: {
+                    headerRows: 1,
+                    widths: [70, 70, 70],
+                    body: [
+                      [
+                        { text: 'Modelo GPS', style: 'tableHeader' },
+                        { text: 'IMEI', style: 'tableHeader' },
+                        { text: 'SIM Serie', style: 'tableHeader' }
+                      ],
+                      [
+                        reporte.modelo_gps || '',
+                        reporte.imei || '',
+                        reporte.sim_serie || ''
+                      ],
+                      [
+                        { text: 'Accesorios', style: 'tableHeader' },
+                        { text: 'Ubicación GPS', style: 'tableHeader' },
+                        { text: 'Bloqueo', style: 'tableHeader' }
+                      ],
+                      [
+                        reporte.accesorios || '',
+                        reporte.ubicacion_gps || '',
+                        reporte.ubicacion_bloqueo || ''
+                      ]
+                    ]
+                  },
+                  layout: {
+                    fillColor: function (rowIndex) {
+                      return rowIndex === 0 ? '#eeeeee' : null;
+                    },
+                    hLineColor: function () { return '#ccc'; },
+                    vLineColor: function () { return '#ccc'; }
+                  }
+                },
               // Sección especial para Cambio de Equipo / Cambio de Chip
               ...((['Cambio de Equipo', 'Cambio de Chip'].includes(reporte.tipo_servicio) && (reporte.imei_devolver || reporte.sim_devolver)) ? [
                 { text: '', margin: [0, 8, 0, 0] },
@@ -245,7 +279,15 @@ const empresa = {
           },
         ],
         margin: [0, 0, 0, 12]
-      }
+      },
+      ...(comprobante ? [
+        {
+          image: comprobante,
+          width: 480,
+          alignment: 'center',
+          pageBreak: 'before'
+        }
+      ] : [])
     ],
     styles: {
       empresaHeader: { fontSize: 14, bold: true, color: '#444' },

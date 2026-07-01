@@ -390,6 +390,24 @@
         </div>
       </form>
     </Dialog>
+
+    <!-- Dialog: Adjuntar comprobante al PDF de servicio -->
+    <Dialog v-model:visible="showDescargarReporteDialog" header="Reporte de Servicio" :modal="true" :style="{ width: '440px' }">
+      <div style="margin-bottom:1.2rem;">
+        <label style="font-weight:600;display:block;margin-bottom:0.5rem;">Adjuntar comprobante de pago al PDF <span style="font-weight:400;color:#888;">(opcional)</span></label>
+        <div v-if="reporteDescargando?.comprobante_path" style="background:#e3f2fd;border-radius:6px;padding:0.5rem 0.75rem;margin-bottom:0.6rem;color:#1565c0;font-size:0.9em;">
+          ✓ Este reporte tiene comprobante guardado — se incluirá automáticamente en el PDF.
+        </div>
+        <input type="file" accept="image/png,image/jpeg,image/jpg" @change="onComprobanteReporteChange" style="width:100%;" />
+        <small v-if="comprobanteReporteDataUrl" style="color:#28a745;display:block;margin-top:0.4rem;">Nueva imagen cargada ✓{{ reporteDescargando?.comprobante_path ? ' (reemplazará el guardado)' : '' }}</small>
+        <small v-else-if="!reporteDescargando?.comprobante_path" style="color:#888;display:block;margin-top:0.4rem;">Si no adjuntas ninguna imagen, el PDF se genera solo con el reporte.</small>
+      </div>
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+        <Button label="Descargar PDF" icon="pi pi-download" @click="confirmarDescargarReporte('download')" :loading="loading" />
+        <Button label="Ver en línea" icon="pi pi-eye" class="p-button-info" @click="confirmarDescargarReporte('open')" :loading="loading" />
+        <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showDescargarReporteDialog = false" />
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -450,6 +468,9 @@ const reporteAEliminar = ref(null);
 const showComprobanteDialog = ref(false);
 const archivoComprobante = ref(null);
 const showNuevoReporteDialog = ref(false);
+const showDescargarReporteDialog = ref(false);
+const reporteDescargando = ref(null);
+const comprobanteReporteDataUrl = ref(null);
 
 // ── Selección múltiple y creación de nota/factura ──
 const seleccionados = ref([]);
@@ -896,60 +917,71 @@ async function descargarOrdenVenta(reporte) {
   }
 }
 
-async function descargarReporteServicio(reporte, empresa) {
+function descargarReporteServicio(reporte) {
+  reporteDescargando.value = reporte;
+  comprobanteReporteDataUrl.value = null;
+  showDescargarReporteDialog.value = true;
+}
+
+function consultarReporteServicio(reporte) {
+  reporteDescargando.value = reporte;
+  comprobanteReporteDataUrl.value = null;
+  showDescargarReporteDialog.value = true;
+}
+
+function onComprobanteReporteChange(e) {
+  const file = e.target.files?.[0];
+  if (!file) { comprobanteReporteDataUrl.value = null; return; }
+  const reader = new FileReader();
+  reader.onload = () => { comprobanteReporteDataUrl.value = reader.result; };
+  reader.readAsDataURL(file);
+}
+
+async function confirmarDescargarReporte(mode = 'download') {
+  if (!reporteDescargando.value) return;
   loading.value = true;
   try {
-    // Usar el PDF profesional del archivo de servicios
     let detalleReporte = null;
-    let venta = null;
-    let cliente = null;
     try {
-      const resp = await axios.get(`${API_URL}/${reporte.id}`);
+      const resp = await axios.get(`${API_URL}/${reporteDescargando.value.id}`);
       detalleReporte = resp.data || null;
-    } catch (_) {
-      detalleReporte = null;
+    } catch (_) {}
+    const reporteCampos = { ...reporteDescargando.value, ...detalleReporte };
+
+    // Comprobante: el que subió el usuario ahora tiene prioridad;
+    // si no hay uno nuevo, intentar usar el comprobante guardado en el reporte
+    let comprobanteParaPDF = comprobanteReporteDataUrl.value || null;
+    if (!comprobanteParaPDF && reporteCampos.comprobante_path) {
+      try {
+        const imgUrl = urlComprobante(reporteCampos);
+        const res = await fetch(imgUrl);
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          if (ct.startsWith('image/')) {
+            const blob = await res.blob();
+            comprobanteParaPDF = await new Promise(resolve => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.readAsDataURL(blob);
+            });
+          }
+        }
+      } catch (_) {}
     }
-    // Buscar venta y cliente si hay asignación - usar datos cacheados
-    const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
-    if (asignacion && asignacion.venta_id) {
-      venta = ventasCache.find(v => v.id == asignacion.venta_id);
-      cliente = venta ? (clientesCache.find(c => c.id === venta.cliente_id) || {}) : {};
-    }
-    // Unir campos relevantes
-    const reporteCampos = {
-      ...reporte,
-      ...detalleReporte
-    };
-    // Importar la función profesional
+
     const { generarReporteServicioPDF } = await import('@/components/GeneraReporteServicioPDF.js');
-    generarReporteServicioPDF({ reporte: reporteCampos, empresa });
+    generarReporteServicioPDF({
+      reporte: reporteCampos,
+      empresa,
+      comprobante: comprobanteParaPDF,
+      mode,
+    });
+    showDescargarReporteDialog.value = false;
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF.', life: 3500 });
   } finally {
     loading.value = false;
   }
-}
-
-async function consultarReporteServicio(reporte) {
-  loading.value = true;
-  try {
-    const resp = await axios.get(`${API_URL}/${reporte.id}`);
-    const detalleReporte = resp.data || null;
-    const asignacion = asignaciones.find(a => a.id == reporte.asignacion_id);
-    let venta = null;
-    let cliente = null;
-    if (asignacion && asignacion.venta_id) {
-      venta = ventasCache.find(v => v.id == asignacion.venta_id);
-      cliente = venta ? (clientesCache.find(c => c.id === venta.cliente_id) || {}) : {};
-    }
-    const reporteCampos = {
-      ...reporte,
-      ...detalleReporte
-    };
-    const { generarReporteServicioPDF } = await import('@/components/GeneraReporteServicioPDF.js');
-    generarReporteServicioPDF({ reporte: reporteCampos, empresa, mode: 'open' });
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo abrir el PDF en línea.', life: 3500 });
-  }
-  loading.value = false;
 }
 
 function formatearFecha(fecha) {
@@ -1028,10 +1060,7 @@ async function aprobarComprobante(reporte) {
   }
   loading.value = true;
   try {
-    const token = localStorage.getItem('access_token') || '';
-    await axios.put(`${API_URL}/${reporte.id}/aprobar-comprobante`, {}, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    await axios.put(`${API_URL}/${reporte.id}/aprobar-comprobante`, {});
     // Registrar movimiento de dinero al aprobar
     await registrarAbonoDinero({
       fecha: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -1228,10 +1257,7 @@ async function rechazarComprobante(reporte) {
   }
   loading.value = true;
   try {
-    const token = localStorage.getItem('access_token') || '';
-    await axios.put(`${API_URL}/${reporte.id}/rechazar-comprobante`, {}, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    await axios.put(`${API_URL}/${reporte.id}/rechazar-comprobante`, {});
     await cargarReportes();
     toast.add({ severity: 'success', summary: 'Rechazado', detail: 'Comprobante rechazado.', life: 3000 });
   } catch (e) {
