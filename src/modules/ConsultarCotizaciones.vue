@@ -546,8 +546,9 @@ function generatePDF(cotizacion) {
   // Calcular subtotal y total antes de usar en docDefinition
   const subtotal = articulosArr.reduce((sum, a) => sum + (Number(a.cantidad) * Number(a.precio_unitario)), 0);
   const descuentoMonto = subtotal * ((Number(cotizacion.descuento) || 0) / 100);
-  const iva = subtotal * 0.16;
-  const total = subtotal - descuentoMonto + iva;
+  const subtotalConDescuento = subtotal - descuentoMonto;
+  const iva = subtotalConDescuento * 0.16;
+  const total = subtotalConDescuento + iva;
 
   // body debe estar definido antes de usarlo en docDefinition
   const body = [
