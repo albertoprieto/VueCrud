@@ -435,6 +435,7 @@ import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/servi
 import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
 import { crearNota, crearFactura, getNotas, getFacturas } from '@/services/pagosService';
+import { generarNotaServicioPDF } from '@/services/NotaServicioPdfService.js';
 import NuevoReporteDeServicio from './NuevoReporteDeServicio.vue';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
@@ -580,8 +581,20 @@ async function confirmarCrearPago() {
   };
   try {
     if (crearPagoTipo.value === 'nota') {
-      await crearNota(payload);
+      const notaResp = await crearNota(payload);
+      const notaId = notaResp?.id || notaResp?.data?.id || null;
       toast.add({ severity: 'success', summary: 'Nota creada', detail: 'La nota se creó correctamente.', life: 3000 });
+      try {
+        await generarNotaServicioPDF({
+          notaId,
+          cliente:  crearPagoCliente.value,
+          total:    Number(crearPagoTotal.value) || 0,
+          ordenes:  seleccionados.value.map(r => r.folio),
+          reportes: seleccionados.value,
+        });
+      } catch (pdfErr) {
+        console.error('generarNotaServicioPDF:', pdfErr);
+      }
     } else {
       await crearFactura(payload);
       toast.add({ severity: 'success', summary: 'Factura creada', detail: 'La factura se creó correctamente.', life: 3000 });
@@ -654,6 +667,62 @@ const filtroIMEI = ref('');
 const filtroSimSerie = ref('');
 const filtroPagado = ref('');
 
+function valorIncluyeBusqueda(value, needle) {
+  if (!needle) return true;
+  if (value == null) return false;
+  return String(value).toLowerCase().includes(needle);
+}
+
+function jsonAArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function coincideImeiEnReporte(reporte, needle) {
+  if (!needle) return true;
+
+  // IMEI principal del reporte
+  if (valorIncluyeBusqueda(reporte.imei, needle)) return true;
+
+  // IMEIs de artículos (renovaciones o reportes multi-dispositivo)
+  const items = jsonAArray(reporte.imeis_articulos);
+  return items.some((item) => {
+    if (typeof item === 'string') return valorIncluyeBusqueda(item, needle);
+
+    // Formato plano histórico: { imei: '...' }
+    if (valorIncluyeBusqueda(item?.imei, needle)) return true;
+
+    // Formato de renovaciones: { imeis: ['...','...'], sims: [...] }
+    if (Array.isArray(item?.imeis)) {
+      return item.imeis.some((v) => valorIncluyeBusqueda(v, needle));
+    }
+    return false;
+  });
+}
+
+function coincideSimEnReporte(reporte, needle) {
+  if (!needle) return true;
+
+  // SIM principal del reporte
+  if (valorIncluyeBusqueda(reporte.sim_serie, needle)) return true;
+
+  // SIM series de artículos
+  const sims = jsonAArray(reporte.sim_series);
+  if (sims.some((s) => valorIncluyeBusqueda(s, needle))) return true;
+
+  // Fallback: algunos reportes guardan SIMs dentro de imeis_articulos[].sims
+  const items = jsonAArray(reporte.imeis_articulos);
+  return items.some((item) => Array.isArray(item?.sims) && item.sims.some((s) => valorIncluyeBusqueda(s, needle)));
+}
+
 const reportesFiltrados = computed(() => {
   let lista = reportes.value;
   // Si es técnico y NO es admin, filtra solo sus reportes
@@ -666,14 +735,16 @@ const reportesFiltrados = computed(() => {
   }
   // Admin ve todo, otros perfiles pueden tener lógica aquí si se requiere
   return lista.filter(r => {
+      const imeiNeedle = filtroIMEI.value.toLowerCase();
+      const simNeedle = filtroSimSerie.value.toLowerCase();
       const clienteOk = !filtroCliente.value || (r.nombre_cliente && r.nombre_cliente.toLowerCase().includes(filtroCliente.value.toLowerCase()));
       const so = r.folio || obtenerSO(r);
       const soOk = !filtroSO.value || (so && so.toLowerCase().includes(filtroSO.value.toLowerCase()));
       const vendedorOk = !filtroVendedor.value || (r.vendedor && r.vendedor.toLowerCase().includes(filtroVendedor.value.toLowerCase()));
       const fechaOk = !filtroFecha.value || (r.fecha && r.fecha.includes(filtroFecha.value));
       const tecnicoOk = !filtroTecnico.value || (r.nombre_instalador && r.nombre_instalador.toLowerCase().includes(filtroTecnico.value.toLowerCase()));
-      const imeiOk = !filtroIMEI.value || (r.imei && String(r.imei).toLowerCase().includes(filtroIMEI.value.toLowerCase()));
-      const simSerieOk = !filtroSimSerie.value || (r.sim_serie && String(r.sim_serie).toLowerCase().includes(filtroSimSerie.value.toLowerCase()));
+      const imeiOk = coincideImeiEnReporte(r, imeiNeedle);
+      const simSerieOk = coincideSimEnReporte(r, simNeedle);
       const pagadoOk = filtroPagado.value === '' || r.pagado === filtroPagado.value;
       return clienteOk && soOk && vendedorOk && fechaOk && tecnicoOk && imeiOk && simSerieOk && pagadoOk;
     });

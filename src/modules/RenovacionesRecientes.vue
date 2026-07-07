@@ -333,6 +333,12 @@
                   @click="irACrearReporte(slotProps.data)"
                 />
                 <Button
+                  icon="pi pi-link"
+                  title="Vincular a reporte existente"
+                  class="p-button-sm p-button-info p-button-outlined"
+                  @click="abrirVincularDialog(slotProps.data)"
+                />
+                <Button
                   v-if="slotProps.data._status !== 'es_envio'"
                   icon="pi pi-truck"
                   class="p-button-sm p-button-warning p-button-outlined"
@@ -378,17 +384,101 @@
       <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
       <p>Cargando renovaciones...</p>
     </div>
+
+    <!-- ── Dialog: Vincular a Reporte Existente ─────────────────────────── -->
+    <Dialog
+      v-model:visible="vincularDialog.visible"
+      header="Vincular IMEI a Reporte de Servicio"
+      :modal="true"
+      :style="{ width: '460px' }"
+      :draggable="false"
+    >
+      <div style="padding: 0.25rem 0;">
+        <!-- Info del IMEI a vincular -->
+        <div style="background:#f1f5f9;border-radius:6px;padding:0.7rem 1rem;margin-bottom:1rem;">
+          <div><strong>IMEI:</strong> {{ vincularDialog.row?.['Número de dispositivo'] }}</div>
+          <div><strong>Cuenta:</strong> {{ vincularDialog.row?.['Cuenta'] }}</div>
+        </div>
+
+        <!-- Sugerencias de la misma cuenta -->
+        <div v-if="vincularDialog.sugerencias.length" style="margin-bottom:1rem;">
+          <small style="color:#64748b;display:block;margin-bottom:0.5rem;">Reportes de la misma cuenta:</small>
+          <div
+            v-for="s in vincularDialog.sugerencias"
+            :key="s._reporteId"
+            class="vincular-sugerencia"
+            :class="{ 'vincular-sugerencia-activa': vincularDialog.reporteEncontrado?._reporteId === s._reporteId }"
+            @click="seleccionarReporte(s)"
+          >
+            <i class="pi pi-file" style="color:#3b82f6;"></i>
+            <strong>{{ s._folioReporte }}</strong>
+            <span style="color:#94a3b8;font-size:0.78rem;margin-left:auto;">ID {{ s._reporteId }}</span>
+          </div>
+        </div>
+
+        <!-- Búsqueda manual por folio -->
+        <div style="margin-bottom:0.75rem;">
+          <label style="display:block;font-weight:600;margin-bottom:0.4rem;">O buscar por folio:</label>
+          <div style="display:flex;gap:0.5rem;">
+            <InputText
+              v-model="vincularDialog.folioInput"
+              placeholder="Ej: SERVICIO-01699"
+              class="w-full"
+              @keyup.enter="buscarReportePorFolio"
+            />
+            <Button
+              icon="pi pi-search"
+              :loading="vincularDialog.buscando"
+              @click="buscarReportePorFolio"
+            />
+          </div>
+        </div>
+
+        <!-- Reporte seleccionado/encontrado -->
+        <div
+          v-if="vincularDialog.reporteEncontrado"
+          style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:0.7rem 1rem;margin-bottom:0.75rem;"
+        >
+          <div style="color:#166534;font-weight:600;margin-bottom:0.25rem;">
+            <i class="pi pi-check-circle"></i> Reporte seleccionado
+          </div>
+          <div><strong>Folio:</strong> {{ vincularDialog.reporteEncontrado._folioReporte || vincularDialog.reporteEncontrado.folio }}</div>
+          <div><strong>ID:</strong> {{ vincularDialog.reporteEncontrado._reporteId ?? vincularDialog.reporteEncontrado.id }}</div>
+          <div v-if="vincularDialog.reporteEncontrado.nombre_cliente">
+            <strong>Cliente:</strong> {{ vincularDialog.reporteEncontrado.nombre_cliente }}
+          </div>
+        </div>
+
+        <div v-if="vincularDialog.error" style="color:#dc2626;font-size:0.875rem;">
+          <i class="pi pi-exclamation-circle"></i> {{ vincularDialog.error }}
+        </div>
+      </div>
+
+      <template #footer>
+        <Button label="Cancelar" icon="pi pi-times" class="p-button-text" @click="vincularDialog.visible = false" />
+        <Button
+          label="Vincular"
+          icon="pi pi-link"
+          class="p-button-success"
+          :disabled="!vincularDialog.reporteEncontrado"
+          :loading="vincularDialog.vinculando"
+          @click="ejecutarVincular"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
+import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Message from 'primevue/message';
 import Tag from 'primevue/tag';
@@ -402,6 +492,7 @@ import {
   guardarRenovacionesBulk,
   getRenovacionesRecientes,
   verificarReportesRenovaciones,
+  actualizarStatusRenovacion,
   actualizarStatusRenovacionPorDispositivo
 } from '@/services/renovacionesService';
 
@@ -441,6 +532,18 @@ const dataEnriquecida = ref([]);
 const totales = ref({ totalRegistros: 0, conReporte: 0, sinReporte: 0, esEnvio: 0, noRequiere: 0, desconocido: 0, noEncontrado: 0 });
 const imeiColumn = ref('Número de dispositivo');
 const formatoSeleccionado = ref('iop'); // 'iop' o 'tracksolid'
+
+// ── Estado del dialog "Vincular a reporte" ─────────────────────────────────
+const vincularDialog = reactive({
+  visible: false,
+  row: null,
+  folioInput: '',
+  buscando: false,
+  reporteEncontrado: null,
+  sugerencias: [],
+  error: null,
+  vinculando: false,
+});
 
 // Columnas que se mostrarán en la tabla (homogéneas para ambos formatos)
 const COLUMNAS_VISIBLES = [
@@ -1284,7 +1387,109 @@ const irACrearReporte = (rowData) => {
   });
 };
 
-// Marcar registro con un status especial (es_envio, no_requiere, sin_reporte)
+// ── Vincular a reporte existente ──────────────────────────────────────────
+const abrirVincularDialog = (rowData) => {
+  vincularDialog.visible = true;
+  vincularDialog.row = rowData;
+  vincularDialog.folioInput = '';
+  vincularDialog.reporteEncontrado = null;
+  vincularDialog.error = null;
+  vincularDialog.vinculando = false;
+
+  // Pre-cargar sugerencias: otras filas de la MISMA cuenta que ya tienen reporte
+  const cuenta = rowData['Cuenta'];
+  const vistas = new Set();
+  vincularDialog.sugerencias = dataEnriquecida.value
+    .filter(r => r._tieneReporte && r['Cuenta'] === cuenta && r !== rowData && r._reporteId)
+    .filter(r => {
+      if (vistas.has(r._reporteId)) return false;
+      vistas.add(r._reporteId);
+      return true;
+    })
+    .slice(0, 5);
+};
+
+const seleccionarReporte = (rowData) => {
+  vincularDialog.reporteEncontrado = rowData;
+  vincularDialog.folioInput = rowData._folioReporte || '';
+  vincularDialog.error = null;
+};
+
+const buscarReportePorFolio = async () => {
+  const folio = vincularDialog.folioInput.trim();
+  if (!folio) return;
+
+  vincularDialog.buscando = true;
+  vincularDialog.reporteEncontrado = null;
+  vincularDialog.error = null;
+
+  try {
+    // 1. Buscar en datos ya cargados en memoria (O(n) inmediato)
+    const encontrado = dataEnriquecida.value.find(
+      r => r._tieneReporte && (r._folioReporte || '').toLowerCase() === folio.toLowerCase()
+    );
+    if (encontrado) {
+      vincularDialog.reporteEncontrado = encontrado;
+      return;
+    }
+
+    // 2. Fallback: buscar en todos los reportes de la API
+    const { getTodosReportes } = await import('@/services/reportesServicio');
+    const todos = await getTodosReportes();
+    const hallado = todos.find(
+      r => (r.folio || '').toLowerCase() === folio.toLowerCase()
+    );
+    if (hallado) {
+      vincularDialog.reporteEncontrado = { _folioReporte: hallado.folio, _reporteId: hallado.id, ...hallado };
+    } else {
+      vincularDialog.error = `No se encontró ningún reporte con folio "${folio}"`;
+    }
+  } catch (err) {
+    vincularDialog.error = 'Error al buscar el reporte';
+    console.error(err);
+  } finally {
+    vincularDialog.buscando = false;
+  }
+};
+
+const ejecutarVincular = async () => {
+  if (!vincularDialog.reporteEncontrado || !vincularDialog.row) return;
+
+  const reporteId = vincularDialog.reporteEncontrado._reporteId ?? vincularDialog.reporteEncontrado.id;
+  const renovacionId = vincularDialog.row._id;
+
+  if (!renovacionId || !reporteId) {
+    vincularDialog.error = 'No se puede determinar el ID de la renovación o del reporte';
+    return;
+  }
+
+  vincularDialog.vinculando = true;
+  try {
+    await actualizarStatusRenovacion(renovacionId, 'con_reporte', reporteId);
+
+    // Actualizar fila localmente
+    vincularDialog.row._tieneReporte = true;
+    vincularDialog.row._status = 'con_reporte';
+    vincularDialog.row._reporteId = reporteId;
+    vincularDialog.row._folioReporte =
+      vincularDialog.reporteEncontrado._folioReporte || vincularDialog.reporteEncontrado.folio || String(reporteId);
+
+    actualizarTotales();
+
+    toast.add({
+      severity: 'success',
+      summary: 'Vinculado',
+      detail: `IMEI vinculado al reporte ${vincularDialog.row._folioReporte}`,
+      life: 3000,
+    });
+    vincularDialog.visible = false;
+  } catch (err) {
+    vincularDialog.error = 'Error al vincular: ' + (err.response?.data?.detail || err.message);
+  } finally {
+    vincularDialog.vinculando = false;
+  }
+};
+
 // Los datos provienen de activaciones_recientes, así que usamos ese servicio
 const marcarStatus = async (rowData, nuevoStatus) => {
   try {
@@ -2008,6 +2213,18 @@ const exportarSinReporte = () => {
   display: flex;
   gap: 0.25rem;
   flex-wrap: wrap;
+}
+
+/* Sugerencias en el dialog de vincular */
+.vincular-sugerencia {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-bottom: 0.3rem;
+  transition: background 0.15s;
 }
 
 .estado-especial {

@@ -305,7 +305,15 @@ async function descargarPDF(tipo, data) {
     const detalle = tipo === 'nota'
       ? await getNotaById(data.id)
       : await getFacturaById(data.id);
-    generarPagoPDF(tipo, detalle);
+    // El endpoint de detalle puede no devolver imeis completos, instalador ni vendedor;
+    // esos campos vienen del listado (data). Se fusionan tomando el listado como fuente.
+    const pdfData = {
+      ...detalle,
+      imeis:      data.imeis?.length      ? data.imeis      : (detalle.imeis      || []),
+      instalador: data.instalador         || detalle.instalador || '',
+      vendedor:   data.vendedor           || detalle.vendedor   || '',
+    };
+    generarPagoPDF(tipo, pdfData);
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF.', life: 4000 });
   }
