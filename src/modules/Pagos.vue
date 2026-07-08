@@ -64,8 +64,8 @@
         <Column field="cliente" header="Cliente" />
         <Column header="IMEIs">
           <template #body="{ data }">
-            <div v-if="data.imeis && data.imeis.length" class="imeis-cell">
-              <div v-for="(imei, idx) in data.imeis" :key="idx">{{ imei }}</div>
+            <div v-if="getImeisUnicos(data).length" class="imeis-cell">
+              <div v-for="(imei, idx) in getImeisUnicos(data)" :key="idx">{{ imei }}</div>
             </div>
             <span v-else style="color:#999;">—</span>
           </template>
@@ -129,8 +129,8 @@
         <Column field="cliente" header="Cliente" />
         <Column header="IMEIs">
           <template #body="{ data }">
-            <div v-if="data.imeis && data.imeis.length" class="imeis-cell">
-              <div v-for="(imei, idx) in data.imeis" :key="idx">{{ imei }}</div>
+            <div v-if="getImeisUnicos(data).length" class="imeis-cell">
+              <div v-for="(imei, idx) in getImeisUnicos(data)" :key="idx">{{ imei }}</div>
             </div>
             <span v-else style="color:#999;">—</span>
           </template>
@@ -216,6 +216,29 @@ const filtroImei = ref('');
 const filtroInstalador = ref('');
 const filtroVendedor = ref('');
 
+function parseImeis(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  const raw = value.trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return raw.includes(',') ? raw.split(',') : [];
+  }
+}
+
+function getImeisUnicos(row) {
+  const arr = parseImeis(row?.imeis)
+    .map(v => String(v).trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(arr));
+}
+
 function filtrarRegistros(rows) {
   let result = rows;
   const cl = filtroCliente.value.trim().toLowerCase();
@@ -230,7 +253,7 @@ function filtrarRegistros(rows) {
     result = result.filter(r => (r.ordenes || []).some(o => String(o).toLowerCase().includes(ord)));
   }
   if (imei6) {
-    result = result.filter(r => (r.imeis || []).some(im => String(im).endsWith(imei6)));
+    result = result.filter(r => getImeisUnicos(r).some(im => String(im).endsWith(imei6)));
   }
   if (inst) {
     result = result.filter(r => (r.instalador || '').toLowerCase().includes(inst));
@@ -309,7 +332,7 @@ async function descargarPDF(tipo, data) {
     // esos campos vienen del listado (data). Se fusionan tomando el listado como fuente.
     const pdfData = {
       ...detalle,
-      imeis:      data.imeis?.length      ? data.imeis      : (detalle.imeis      || []),
+      imeis:      getImeisUnicos(data).length ? getImeisUnicos(data) : getImeisUnicos(detalle),
       instalador: data.instalador         || detalle.instalador || '',
       vendedor:   data.vendedor           || detalle.vendedor   || '',
     };

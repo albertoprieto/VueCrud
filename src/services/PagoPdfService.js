@@ -32,6 +32,37 @@ function isPdfFile(pathOrUrl) {
   return /\.pdf(\?|$)/i.test(pathOrUrl || '');
 }
 
+function parseImeis(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  const raw = value.trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return raw.includes(',') ? raw.split(',') : [];
+  }
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set(values.map(v => String(v).trim()).filter(Boolean)));
+}
+
+function dedupeBy(items, getKey) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const key = getKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -123,14 +154,10 @@ export async function generarPagoPDF(tipo, pago) {
 
   // ── Tabla de servicios (artículos) ────────────────────────────────────────
   // Una fila por IMEI (igual que bot-engine), asociando info de la orden por índice.
-  let _imeisRaw = pago.imeis;
-  if (typeof _imeisRaw === 'string') {
-    try { _imeisRaw = JSON.parse(_imeisRaw); } catch { _imeisRaw = []; }
-  }
-  const imeis = Array.isArray(_imeisRaw) ? _imeisRaw.filter(Boolean) : [];
+  const imeis = uniqueStrings(parseImeis(pago.imeis));
   const useImeiRows = imeis.length > 0;
 
-  const tableRows = useImeiRows
+  const rawServiceRows = useImeiRows
     ? imeis.map((imei, i) => {
         // Buscar la orden correspondiente por índice; si hay más IMEIs que órdenes, reusar la última
         const o    = ordenes[i] ?? ordenes[ordenes.length - 1] ?? {};
@@ -139,25 +166,38 @@ export async function generarPagoPDF(tipo, pago) {
         const totalFila = (imeis.length === ordenes.length && o.total != null)
           ? `$${Number(o.total).toFixed(2)}`
           : '-';
-        return [
-          { text: i + 1,                    alignment: 'center'                     },
-          { text: o.folio || folioPago                                               },
-          { text: o.tipo_servicio || '-'                                             },
-          { text: imei            || '-',   fontSize: 7                             },
-          { text: o.usuario       || '-'                                             },
-          { text: o.plataforma    || '-'                                             },
-          { text: totalFila,                alignment: 'right'                      },
-        ];
+        return {
+          orden: o.folio || folioPago || '-',
+          tipo: o.tipo_servicio || '-',
+          imei: imei || '-',
+          usuario: o.usuario || '-',
+          plataforma: o.plataforma || '-',
+          total: totalFila,
+        };
       })
-    : ordenes.map((o, i) => [
-        { text: i + 1,                                                          alignment: 'center' },
-        { text: o.folio         || '-'                                                              },
-        { text: o.tipo_servicio || '-'                                                              },
-        { text: o.imei          || '-',                                         fontSize: 7         },
-        { text: o.usuario       || '-'                                                              },
-        { text: o.plataforma    || '-'                                                              },
-        { text: o.total != null ? `$${Number(o.total).toFixed(2)}` : '-',       alignment: 'right'  },
-      ]);
+    : ordenes.map((o) => ({
+        orden: o.folio || '-',
+        tipo: o.tipo_servicio || '-',
+        imei: o.imei || '-',
+        usuario: o.usuario || '-',
+        plataforma: o.plataforma || '-',
+        total: o.total != null ? `$${Number(o.total).toFixed(2)}` : '-',
+      }));
+
+  const serviceRows = dedupeBy(
+    rawServiceRows,
+    r => `${r.orden}|${r.tipo}|${r.imei}|${r.usuario}|${r.plataforma}|${r.total}`,
+  );
+
+  const tableRows = serviceRows.map((r, i) => [
+    { text: i + 1,               alignment: 'center' },
+    { text: r.orden || '-'                           },
+    { text: r.tipo || '-'                            },
+    { text: r.imei || '-',      fontSize: 7          },
+    { text: r.usuario || '-'                         },
+    { text: r.plataforma || '-'                      },
+    { text: r.total || '-',     alignment: 'right'   },
+  ]);
 
   const tableBody = [
     [
@@ -252,7 +292,7 @@ export async function generarPagoPDF(tipo, pago) {
                 text: `$${total.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
                 style: 'totalValue',
               },
-              { text: `${imeis.length || ordenes.length} dispositivo${(imeis.length || ordenes.length) !== 1 ? 's' : ''}`, style: 'totalSub' },
+              { text: `${serviceRows.length} dispositivo${serviceRows.length !== 1 ? 's' : ''}`, style: 'totalSub' },
               ...(esFactura
                 ? [{ text: `Subtotal: $${subtotal.toFixed(2)}   IVA (16%): $${iva.toFixed(2)}`, style: 'totalSub' }]
                 : []),
