@@ -27,7 +27,6 @@
             class="p-button-outlined p-button-success"
             @click="abrirAgregarDialog"
           />
-          <Button icon="pi pi-file-pdf" label="Descargar PDF" class="p-button-outlined p-button-danger" @click="descargarPDF" />
         </div>
       </div>
 
@@ -134,11 +133,15 @@
       <!-- Detalle de órdenes incluidas -->
       <div v-if="item.detalle_ordenes && item.detalle_ordenes.length" class="ordenes-detalle">
         <h3>Órdenes incluidas</h3>
-        <DataTable :value="item.detalle_ordenes" responsiveLayout="scroll">
+        <DataTable :value="detalleOrdenesEnriquecido" responsiveLayout="scroll">
           <Column field="folio" header="Orden" />
           <Column field="tipo_servicio" header="Tipo" />
           <Column field="nombre_cliente" header="Cliente" />
-          <Column field="imei" header="IMEI" />
+          <Column header="IMEI(s)">
+            <template #body="{ data }">
+              {{ formatearImeisOrden(data) }}
+            </template>
+          </Column>
           <Column field="total" header="Total">
             <template #body="{ data }">
               {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
@@ -323,6 +326,7 @@ const guardandoObs = ref(false);
 const archivoSeleccionado = ref(null);
 const subiendo = ref(false);
 const eliminandoComprobante = ref(null);
+const detalleOrdenesMap = ref({});
 
 // Agregar servicios
 const agregarDialogVisible = ref(false);
@@ -344,6 +348,14 @@ const reportesDisponiblesFiltrados = computed(() => {
     if (tipo && !(r.tipo_servicio || '').toLowerCase().includes(tipo)) return false;
     return true;
   });
+});
+
+const detalleOrdenesEnriquecido = computed(() => {
+  const ordenes = item.value?.detalle_ordenes || [];
+  return ordenes.map(orden => ({
+    ...orden,
+    ...(detalleOrdenesMap.value[orden.id] || {})
+  }));
 });
 
 const esEditable = computed(() => {
@@ -414,6 +426,48 @@ function badgeClass(status) {
   return 'warning';
 }
 
+function formatearImeisOrden(orden) {
+  const imeis = new Set();
+
+  if (orden?.imei) imeis.add(String(orden.imei));
+
+  if (Array.isArray(orden?.imeis_articulos)) {
+    for (const articulo of orden.imeis_articulos) {
+      if (!Array.isArray(articulo?.imeis)) continue;
+      for (const imei of articulo.imeis) {
+        if (imei) imeis.add(String(imei));
+      }
+    }
+  }
+
+  return imeis.size ? Array.from(imeis).join(', ') : '-';
+}
+
+async function cargarDetalleOrdenesEnriquecido() {
+  const ordenes = item.value?.detalle_ordenes || [];
+  if (!ordenes.length) {
+    detalleOrdenesMap.value = {};
+    return;
+  }
+
+  try {
+    const detalles = await Promise.all(
+      ordenes.map(async orden => {
+        try {
+          const resp = await axios.get(`${API_URL}/reportes-servicio/${orden.id}`);
+          return [orden.id, resp.data];
+        } catch {
+          return [orden.id, null];
+        }
+      })
+    );
+
+    detalleOrdenesMap.value = Object.fromEntries(detalles.filter(([, data]) => !!data));
+  } catch {
+    detalleOrdenesMap.value = {};
+  }
+}
+
 async function cargarDetalle() {
   loading.value = true;
   try {
@@ -425,8 +479,10 @@ async function cargarDetalle() {
     nuevoStatus.value = item.value?.status || '';
     nuevoLugarPago.value = item.value?.lugar_pago || '';
     observacionesTexto.value = item.value?.observaciones || '';
+    await cargarDetalleOrdenesEnriquecido();
   } catch {
     item.value = null;
+    detalleOrdenesMap.value = {};
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el detalle.', life: 4000 });
   }
   loading.value = false;
