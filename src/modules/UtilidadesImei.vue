@@ -38,6 +38,17 @@
         </div>
 
         <div class="field">
+          <label for="simTelefono">SIM ESPAÑOL (teléfono)</label>
+          <InputText
+            id="simTelefono"
+            v-model="simTelefono"
+            placeholder="Ej. 8713056103"
+            @input="sanitizeSimTelefono"
+            inputmode="numeric"
+          />
+        </div>
+
+        <div class="field">
           <label for="plataforma">Plataforma</label>
           <Dropdown
             id="plataforma"
@@ -149,7 +160,7 @@
         </DataTable>
       </div>
 
-    <Dialog v-model:visible="showEditDialog" header="Editar Registro" :style="{ width: '520px' }" modal>
+    <Dialog v-model:visible="showEditDialog" :header="editRow.id ? 'Editar Registro' : 'Nuevo Registro Manual'" :style="{ width: '520px' }" modal>
       <div class="edit-grid">
         <div class="field">
           <label>Tipo</label>
@@ -190,7 +201,7 @@
       </div>
       <template #footer>
         <Button label="Cancelar" text @click="showEditDialog = false" />
-        <Button label="Guardar" icon="pi pi-save" @click="saveEdit" />
+        <Button :label="editRow.id ? 'Guardar' : 'Guardar nuevo'" icon="pi pi-save" @click="saveEdit" />
       </template>
     </Dialog>
   </section>
@@ -216,6 +227,7 @@ import {
 } from '@/services/utilidadesImeiService';
 
 const imei = ref('');
+const simTelefono = ref('');
 const plataforma = ref('');
 const plataformas = ref([]);
 const tipo = ref('activacion');
@@ -253,6 +265,10 @@ const filters = ref({
 
 function sanitizeImei() {
   imei.value = String(imei.value || '').replace(/\D+/g, '');
+}
+
+function sanitizeSimTelefono() {
+  simTelefono.value = String(simTelefono.value || '').replace(/\D+/g, '');
 }
 
 async function loadPlataformas() {
@@ -359,9 +375,10 @@ async function limpiarFiltros() {
 
 async function consultar() {
   sanitizeImei();
+  sanitizeSimTelefono();
 
-  if (!imei.value) {
-    message.value = 'Debes ingresar un IMEI valido.';
+  if (!imei.value && !simTelefono.value) {
+    message.value = 'Debes ingresar IMEI o SIM ESPAÑOL (telefono).';
     messageError.value = true;
     return;
   }
@@ -377,6 +394,11 @@ async function consultar() {
   messageError.value = false;
 
   try {
+    if (!imei.value && simTelefono.value) {
+      await prepararRegistroManualDesdeTelefono();
+      return;
+    }
+
     const data = await getDispositivoPorPlataforma(imei.value, plataforma.value);
     const row = await buildRowFromDispositivo(data);
     row.tipo = tipo.value;
@@ -411,6 +433,7 @@ async function consultar() {
 
 function limpiar() {
   imei.value = '';
+  simTelefono.value = '';
   message.value = '';
   messageError.value = false;
 }
@@ -422,13 +445,17 @@ function validateRow(row) {
     row.deaccount,
     row.accountName,
     row.plataforma,
-    row.imei,
     row.iccid,
-    row.deviceMobile,
     row.vigencia_sim
   ];
   if (required.some((v) => !String(v || '').trim())) {
     throw new Error('Datos incompletos; no se guardó el registro.');
+  }
+
+  const imeiVal = String(row.imei || '').trim();
+  const simVal = String(row.deviceMobile || '').trim();
+  if (!imeiVal && !simVal) {
+    throw new Error('Debes capturar IMEI o SIM ESPAÑOL.');
   }
 }
 
@@ -439,8 +466,11 @@ function openEdit(row) {
 
 async function saveEdit() {
   try {
+    editRow.value.imei = onlyDigits(editRow.value.imei);
+    editRow.value.deviceMobile = onlyDigits(editRow.value.deviceMobile);
+
     validateRow(editRow.value);
-    await updateConsultaSim(editRow.value.id, {
+    const payload = {
       tipo: editRow.value.tipo,
       activation_date: editRow.value.activation_date,
       deaccount: editRow.value.deaccount,
@@ -450,9 +480,18 @@ async function saveEdit() {
       iccid: editRow.value.iccid,
       device_mobile: editRow.value.deviceMobile,
       vigencia_sim: editRow.value.vigencia_sim
-    });
+    };
+
+    if (editRow.value.id) {
+      await updateConsultaSim(editRow.value.id, payload);
+      message.value = 'Registro actualizado.';
+    } else {
+      await saveConsultaSim(payload);
+      message.value = 'Registro guardado.';
+      currentPage.value = 1;
+    }
+
     showEditDialog.value = false;
-    message.value = 'Registro actualizado.';
     messageError.value = false;
     await cargarDesdeDB();
   } catch (error) {
@@ -517,7 +556,10 @@ async function buildRowFromDispositivo(apiResponse) {
     mobileRaw = String(brief.deviceMobile || raw.sim || raw.simNum || '');
   }
 
-  const deviceMobile = onlyDigits(mobileRaw);
+  let deviceMobile = onlyDigits(mobileRaw);
+  if (!deviceMobile) {
+    deviceMobile = onlyDigits(simTelefono.value);
+  }
   if (!deviceMobile) {
     throw new Error('No se pudo extraer deviceMobile/sim con solo números.');
   }
@@ -541,6 +583,38 @@ async function buildRowFromDispositivo(apiResponse) {
     deviceMobile,
     vigencia_sim: vigencia
   };
+}
+
+async function prepararRegistroManualDesdeTelefono() {
+  const sim = onlyDigits(simTelefono.value);
+  let simInfo = null;
+
+  if (sim) {
+    try {
+      simInfo = await getSimDetails(sim);
+    } catch {
+      simInfo = null;
+    }
+  }
+
+  const firstItem = Array.isArray(simInfo?.items) && simInfo.items.length ? simInfo.items[0] : null;
+  const activeConn = firstItem?.active_connection || {};
+
+  editRow.value = {
+    tipo: tipo.value,
+    activation_date: simInfo?.activation_date || activeConn?.activation_date || '',
+    deaccount: '',
+    accountName: '',
+    plataforma: plataforma.value || '',
+    imei: '',
+    iccid: simInfo?.iccid || firstItem?.iccid || '',
+    deviceMobile: sim,
+    vigencia_sim: simInfo?.contract_end_date || activeConn?.contract_end_date || ''
+  };
+
+  showEditDialog.value = true;
+  message.value = 'Completa los campos faltantes y guarda el nuevo registro.';
+  messageError.value = false;
 }
 
 function onlyDigits(v) {

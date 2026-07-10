@@ -5902,8 +5902,12 @@ def _get_db():
 
 
 def _consultas_sim_imei_exists(cursor, imei: str, exclude_id: int | None = None):
+    imei_clean = str(imei or "").strip()
+    if not imei_clean:
+        return None
+
     query = "SELECT id FROM consultas_sim WHERE imei=%s"
-    params = [str(imei or "").strip()]
+    params = [imei_clean]
     if exclude_id is not None:
         query += " AND id<>%s"
         params.append(exclude_id)
@@ -5991,18 +5995,21 @@ def save_consulta_sim(record: ConsultaSimRecord):
         "deaccount": record.deaccount,
         "account_name": record.account_name,
         "plataforma": record.plataforma,
-        "imei": record.imei,
         "iccid": record.iccid,
-        "device_mobile": record.device_mobile,
         "vigencia_sim": record.vigencia_sim,
     }
     missing = [k for k, v in required.items() if not str(v or "").strip()]
     if missing:
         raise HTTPException(status_code=400, detail=f"Datos incompletos: {', '.join(missing)}")
 
+    imei_clean = str(record.imei or "").strip()
+    sim_clean = str(record.device_mobile or "").strip()
+    if not imei_clean and not sim_clean:
+        raise HTTPException(status_code=400, detail="Debes proporcionar IMEI o SIM ESPAÑOL")
+
     db = _get_db()
     cursor = db.cursor()
-    if _consultas_sim_imei_exists(cursor, record.imei):
+    if _consultas_sim_imei_exists(cursor, imei_clean):
         cursor.close()
         db.close()
         raise HTTPException(status_code=409, detail="Ya existe un registro con ese IMEI")
@@ -6017,9 +6024,9 @@ def save_consulta_sim(record: ConsultaSimRecord):
             record.deaccount,
             record.account_name,
             record.plataforma,
-            record.imei,
+            imei_clean,
             record.iccid,
-            record.device_mobile,
+            sim_clean,
             record.vigencia_sim,
         )
     )
@@ -6038,18 +6045,21 @@ def update_consulta_sim(record_id: int, record: ConsultaSimRecord):
         "deaccount": record.deaccount,
         "account_name": record.account_name,
         "plataforma": record.plataforma,
-        "imei": record.imei,
         "iccid": record.iccid,
-        "device_mobile": record.device_mobile,
         "vigencia_sim": record.vigencia_sim,
     }
     missing = [k for k, v in required.items() if not str(v or "").strip()]
     if missing:
         raise HTTPException(status_code=400, detail=f"Datos incompletos: {', '.join(missing)}")
 
+    imei_clean = str(record.imei or "").strip()
+    sim_clean = str(record.device_mobile or "").strip()
+    if not imei_clean and not sim_clean:
+        raise HTTPException(status_code=400, detail="Debes proporcionar IMEI o SIM ESPAÑOL")
+
     db = _get_db()
     cursor = db.cursor()
-    if _consultas_sim_imei_exists(cursor, record.imei, exclude_id=record_id):
+    if _consultas_sim_imei_exists(cursor, imei_clean, exclude_id=record_id):
         cursor.close()
         db.close()
         raise HTTPException(status_code=409, detail="Ya existe otro registro con ese IMEI")
@@ -6064,9 +6074,9 @@ def update_consulta_sim(record_id: int, record: ConsultaSimRecord):
             record.deaccount,
             record.account_name,
             record.plataforma,
-            record.imei,
+            imei_clean,
             record.iccid,
-            record.device_mobile,
+            sim_clean,
             record.vigencia_sim,
             record_id,
         )
