@@ -165,11 +165,11 @@ const cotizacionesPendientes = ref(0);
 const reportesNuevos = ref(0);
 
 // Registrar sesión al cargar el dashboard
-onMounted(() => {
-  if (user.value?.id) {
-    registrarSesion(user.value.id);
-  }
-});
+// onMounted(() => {
+//   if (user.value?.id) {
+//     registrarSesion(user.value.id);
+//   }
+// });
 
 // Opcional: recargar cuando cambie la ruta o cada cierto tiempo
 
