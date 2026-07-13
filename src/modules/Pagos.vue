@@ -19,7 +19,17 @@
     </div>
 
     <!-- ════════ FILTROS ════════ -->
-    <div class="pagos-filtros">
+    <button
+      v-if="isMobile"
+      type="button"
+      class="filtros-toggle"
+      @click="filtrosAbiertos = !filtrosAbiertos"
+    >
+      <span><i class="pi pi-filter" /> Filtros<span v-if="filtrosActivos" class="filtros-badge">{{ filtrosActivos }}</span></span>
+      <i :class="['pi', filtrosAbiertos ? 'pi-chevron-up' : 'pi-chevron-down']" />
+    </button>
+
+    <div class="pagos-filtros" v-if="!isMobile || filtrosAbiertos">
       <div class="filtro-item">
         <label>Cliente</label>
         <InputText v-model="filtroCliente" placeholder="Buscar por cliente..." class="w-full" />
@@ -416,6 +426,12 @@ const filtroImei = ref('');
 const filtroInstalador = ref('');
 const filtroVendedor = ref('');
 const filtroLugarPago = ref('');
+const filtrosAbiertos = ref(false);
+
+const filtrosActivos = computed(() => {
+  return [filtroCliente.value, filtroOrden.value, filtroImei.value, filtroInstalador.value, filtroVendedor.value, filtroLugarPago.value]
+    .filter(v => (v || '').trim()).length;
+});
 
 const lugaresPago = [
   // 'ASP Vianey',
@@ -755,6 +771,9 @@ onBeforeUnmount(() => {
   font-size: 0.82rem;
   font-weight: 600;
 }
+.filtros-toggle {
+  display: none;
+}
 .pagos-filtros {
   display: flex;
   gap: 1rem;
@@ -905,12 +924,6 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
-@media (max-width: 768px) {
-  .banco-card {
-    flex: 1 1 140px;
-  }
-}
-
 .mobile-list-wrap {
   margin-top: 0.5rem;
 }
@@ -1015,12 +1028,71 @@ onBeforeUnmount(() => {
     flex: 1;
   }
 
+  .filtros-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-card);
+    color: var(--color-title);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .filtros-toggle span {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .filtros-badge {
+    background: var(--color-primary);
+    color: var(--color-on-primary, #fff);
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 999px;
+    min-width: 1.3rem;
+    height: 1.3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.3rem;
+  }
+
   .pagos-filtros {
     gap: 0.75rem;
+    padding: 0.9rem;
+    margin-top: -0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-bg-light);
   }
 
   .filtro-item {
     min-width: 100%;
+  }
+
+  .bancos-resumen {
+    padding: 1rem;
+  }
+
+  .bancos-grid {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 0.4rem;
+    margin: 0 -0.25rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  .banco-card {
+    flex: 0 0 155px;
+    max-width: none;
+    scroll-snap-align: start;
   }
 }
 </style>
