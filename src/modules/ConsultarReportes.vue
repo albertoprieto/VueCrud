@@ -787,16 +787,16 @@ async function cargarReportes(forceReload = false) {
     const res = await axios.get(`${API_URL}-todos`);
     
     // Solo recargar datos auxiliares si es necesario o si forceReload
-    if (forceReload || asignaciones.length === 0) {
-      asignaciones = await getAsignacionesTecnicos();
-    }
-    if (forceReload || ventasCache.length === 0) {
-      ventasCache = await getVentas();
-      window.ventasGlobal = ventasCache;
-    }
-    if (forceReload || clientesCache.length === 0) {
-      clientesCache = await getClientes();
-    }
+    // if (forceReload || asignaciones.length === 0) {
+    //   asignaciones = await getAsignacionesTecnicos();
+    // }
+    // if (forceReload || ventasCache.length === 0) {
+    //   ventasCache = await getVentas();
+    //   window.ventasGlobal = ventasCache;
+    // }
+    // if (forceReload || clientesCache.length === 0) {
+    //   clientesCache = await getClientes();
+    // }
     
     // Mapear reportes con datos cacheados
     reportes.value = mapearReportes(res.data, ventasCache, clientesCache, asignaciones);
