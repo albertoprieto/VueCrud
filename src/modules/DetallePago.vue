@@ -27,6 +27,13 @@
             class="p-button-outlined p-button-success"
             @click="abrirAgregarDialog"
           />
+          <Button
+            v-if="!esNota && item.status === 'Pendiente timbre'"
+            icon="pi pi-verified"
+            label="Timbrar"
+            class="p-button-success"
+            @click="abrirTimbrarDialog"
+          />
         </div>
       </div>
 
@@ -39,6 +46,13 @@
         <div class="detalle-row">
           <strong>Estatus actual:</strong>
           <span :class="'badge badge-' + badgeClass(item.status)" style="margin-left:0.5rem;">{{ item.status }}</span>
+        </div>
+        <div v-if="!esNota && item.cfdi_uuid" class="detalle-row">
+          <strong>UUID (CFDI):</strong> {{ item.cfdi_uuid }}
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+            <Button icon="pi pi-file" label="XML" class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_xml_path)" />
+            <Button icon="pi pi-file-pdf" label="PDF" class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_pdf_path)" />
+          </div>
         </div>
       </div>
 
@@ -271,6 +285,48 @@
         </div>
       </template>
     </Dialog>
+
+    <!-- Dialog: Timbrar factura -->
+    <Dialog
+      v-model:visible="timbrarDialogVisible"
+      header="Timbrar factura (CFDI)"
+      :modal="true"
+      :style="{ width: '480px', maxWidth: '95vw' }"
+      :draggable="false"
+    >
+      <div class="timbrar-form">
+        <div class="timbrar-field">
+          <label>RFC del cliente</label>
+          <InputText v-model="timbrarForm.rfc_cliente" placeholder="XAXX010101000" class="w-full" />
+        </div>
+        <div class="timbrar-field">
+          <label>Uso CFDI</label>
+          <InputText v-model="timbrarForm.uso_cfdi" placeholder="G03 / S01" class="w-full" />
+        </div>
+        <div class="timbrar-field">
+          <label>Forma de pago</label>
+          <InputText v-model="timbrarForm.forma_pago" placeholder="01 = Efectivo, 03 = Transferencia" class="w-full" />
+        </div>
+        <div class="timbrar-field">
+          <label>Método de pago</label>
+          <InputText v-model="timbrarForm.metodo_pago" placeholder="PUE / PPD" class="w-full" />
+        </div>
+        <small style="color:var(--color-text-muted,#888);">
+          Se generará un CFDI con los {{ item?.reporte_ids?.length || 0 }} reporte(s) de servicio/renovación de esta factura.
+        </small>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
+        <Button label="Cancelar" class="p-button-text" @click="timbrarDialogVisible = false" />
+        <Button
+          label="Timbrar"
+          icon="pi pi-verified"
+          class="p-button-success"
+          :disabled="!timbrarForm.rfc_cliente || !timbrarForm.uso_cfdi || !timbrarForm.forma_pago || !timbrarForm.metodo_pago"
+          :loading="timbrando"
+          @click="confirmarTimbrar"
+        />
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -303,6 +359,7 @@ import {
   agregarReportesFactura,
   quitarReportesNota,
   quitarReportesFactura,
+  timbrarFactura,
   getNotas,
   getFacturas
 } from '@/services/pagosService';
@@ -337,6 +394,16 @@ const agregando = ref(false);
 const filtroAgregarCliente = ref('');
 const filtroAgregarFolio = ref('');
 const filtroAgregarTipo = ref('');
+
+// Timbrar factura (CFDI)
+const timbrarDialogVisible = ref(false);
+const timbrando = ref(false);
+const timbrarForm = ref({
+  rfc_cliente: '',
+  uso_cfdi: 'G03',
+  forma_pago: '01',
+  metodo_pago: 'PUE'
+});
 
 const reportesDisponiblesFiltrados = computed(() => {
   return reportesDisponibles.value.filter(r => {
@@ -404,10 +471,6 @@ const opcionesStatusNota = [
 ];
 
 const opcionesStatusFactura = [
-  { label: 'Pendiente de pago', value: 'pendiente de pago' },
-  { label: 'Pagado', value: 'pagado' },
-  { label: 'Timbrado', value: 'Timbrado' },
-  { label: 'No timbrado', value: 'No timbrado' },
   { label: 'Pendiente timbre', value: 'Pendiente timbre' },
   { label: 'Cancelado', value: 'Cancelado' }
 ];
@@ -710,6 +773,44 @@ async function confirmarAgregar() {
   }
   agregando.value = false;
 }
+
+async function abrirTimbrarDialog() {
+  timbrarForm.value = {
+    rfc_cliente: item.value?.rfc_cliente || '',
+    uso_cfdi: item.value?.uso_cfdi || 'G03',
+    forma_pago: item.value?.forma_pago || '01',
+    metodo_pago: item.value?.metodo_pago || 'PUE'
+  };
+  // Intenta prellenar el RFC buscando al cliente por nombre
+  if (!timbrarForm.value.rfc_cliente && item.value?.cliente) {
+    try {
+      const resp = await axios.get(`${API_URL}/clientes`);
+      const match = (resp.data || []).find(c => (c.nombre || '').trim().toLowerCase() === item.value.cliente.trim().toLowerCase());
+      if (match?.rfc) timbrarForm.value.rfc_cliente = match.rfc;
+    } catch {
+      // sin bloquear el flujo si no se puede prellenar
+    }
+  }
+  timbrarDialogVisible.value = true;
+}
+
+async function confirmarTimbrar() {
+  timbrando.value = true;
+  try {
+    await timbrarFactura(id.value, { ...timbrarForm.value });
+    toast.add({ severity: 'success', summary: 'Timbrada', detail: 'CFDI generado y timbrado correctamente.', life: 4000 });
+    timbrarDialogVisible.value = false;
+    await cargarDetalle();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo timbrar la factura.', life: 5000 });
+  }
+  timbrando.value = false;
+}
+
+function abrirArchivoCfdi(path) {
+  if (!path) return;
+  window.open(urlComprobante(path), '_blank', 'noopener');
+}
 </script>
 
 <style scoped>
@@ -801,4 +902,15 @@ async function confirmarAgregar() {
 .badge-warning { background: #fff3cd; color: #856404; }
 .badge-danger  { background: #f8d7da; color: #721c24; }
 .mb-3 { margin-bottom: 1rem; }
+.timbrar-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.timbrar-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+}
 </style>

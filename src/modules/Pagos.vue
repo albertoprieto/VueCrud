@@ -40,11 +40,48 @@
         <label>Vendedor</label>
         <InputText v-model="filtroVendedor" placeholder="Buscar por vendedor..." class="w-full" />
       </div>
+      <div class="filtro-item">
+        <label>Pagado en</label>
+        <Dropdown
+          v-model="filtroLugarPago"
+          :options="lugaresPago"
+          placeholder="Todos"
+          showClear
+          class="w-full"
+        />
+      </div>
+    </div>
+
+    <!-- ════════ BANCOS — Resumen de Dinero ════════ -->
+    <div class="bancos-resumen">
+      <div class="bancos-header">
+        <h3>Bancos</h3>
+        <span class="bancos-total-general">Total: {{ formatTotal(resumenBancos.totalGeneral) }}</span>
+      </div>
+      <div class="bancos-grid">
+        <button
+          v-for="banco in resumenBancos.bancos"
+          :key="banco.nombre"
+          type="button"
+          :class="['banco-card', banco.activo ? 'banco-card-activo' : '']"
+          @click="toggleFiltroBanco(banco.nombre)"
+        >
+          <span class="banco-nombre">{{ banco.nombre }}</span>
+          <span class="banco-total">{{ formatTotal(banco.total) }}</span>
+          <span class="banco-count">{{ banco.count }} documento{{ banco.count === 1 ? '' : 's' }}</span>
+        </button>
+        <div v-if="resumenBancos.sinEspecificar.count" class="banco-card banco-card-sin">
+          <span class="banco-nombre">Sin especificar</span>
+          <span class="banco-total">{{ formatTotal(resumenBancos.sinEspecificar.total) }}</span>
+          <span class="banco-count">{{ resumenBancos.sinEspecificar.count }} documento{{ resumenBancos.sinEspecificar.count === 1 ? '' : 's' }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- ════════ NOTAS ════════ -->
     <div v-if="tab === 'notas'">
       <DataTable
+        v-if="!isMobile"
         :value="notasFiltradas"
         responsiveLayout="scroll"
         :loading="loadingNotas"
@@ -67,18 +104,18 @@
             <div v-if="getImeisUnicos(data).length" class="imeis-cell">
               <div v-for="(imei, idx) in getImeisUnicos(data)" :key="idx">{{ imei }}</div>
             </div>
-            <span v-else style="color:#999;">—</span>
+            <span v-else style="color:var(--color-border);">—</span>
           </template>
         </Column>
         <Column field="total" header="Total">
           <template #body="{ data }">
-            {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
+            {{ formatTotal(data.total) }}
           </template>
         </Column>
         <Column field="lugar_pago" header="Pagado en">
           <template #body="{ data }">
             <span v-if="data.lugar_pago" class="badge-lugar">{{ data.lugar_pago }}</span>
-            <span v-else style="color:#999;">—</span>
+            <span v-else style="color:var(--color-border);">—</span>
           </template>
         </Column>
         <Column field="instalador" header="Instalador" />
@@ -105,11 +142,77 @@
           </template>
         </Column>
       </DataTable>
+
+      <div v-else class="mobile-list-wrap">
+        <div v-if="loadingNotas" class="mobile-loader-wrap">
+          <DataTableLoader text="Cargando notas..." />
+        </div>
+        <div v-else-if="!notasFiltradas.length" class="mobile-empty">
+          No hay notas para mostrar.
+        </div>
+        <div v-else class="mobile-cards">
+          <article
+            v-for="item in notasFiltradas"
+            :key="`nota-mobile-${item.id}`"
+            class="mobile-card"
+          >
+            <header class="mobile-card-header">
+              <div>
+                <p class="mobile-card-id">Nota #{{ item.id }}</p>
+                <p class="mobile-card-cliente">{{ item.cliente || 'Sin cliente' }}</p>
+              </div>
+              <span :class="'badge badge-' + badgeClassNota(item.status)">{{ item.status }}</span>
+            </header>
+
+            <div class="mobile-card-grid">
+              <div class="mobile-field">
+                <span class="mobile-label">Total</span>
+                <span class="mobile-value">{{ formatTotal(item.total) }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Fecha</span>
+                <span class="mobile-value">{{ formatFecha(item.fecha) }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Ordenes</span>
+                <span class="mobile-value">{{ (item.ordenes || []).join(', ') || '—' }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Pagado en</span>
+                <span class="mobile-value">{{ item.lugar_pago || '—' }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Instalador</span>
+                <span class="mobile-value">{{ item.instalador || '—' }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Vendedor</span>
+                <span class="mobile-value">{{ item.vendedor || '—' }}</span>
+              </div>
+              <div class="mobile-field mobile-field-full">
+                <span class="mobile-label">IMEIs</span>
+                <span class="mobile-value">{{ getImeisUnicos(item).join(', ') || '—' }}</span>
+              </div>
+            </div>
+
+            <div class="mobile-actions">
+              <Button icon="pi pi-eye" class="p-button-sm p-button-info" label="Detalle"
+                @click="irDetalle('nota', item.id)" />
+              <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
+                :loading="descargandoId === `nota-${item.id}`"
+                @click="descargarPDF('nota', item)" />
+              <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
+                @click="confirmarEliminar('nota', item)" />
+            </div>
+          </article>
+        </div>
+      </div>
     </div>
 
     <!-- ════════ FACTURAS ════════ -->
     <div v-if="tab === 'facturas'">
       <DataTable
+        v-if="!isMobile"
         :value="facturasFiltradas"
         responsiveLayout="scroll"
         :loading="loadingFacturas"
@@ -132,18 +235,18 @@
             <div v-if="getImeisUnicos(data).length" class="imeis-cell">
               <div v-for="(imei, idx) in getImeisUnicos(data)" :key="idx">{{ imei }}</div>
             </div>
-            <span v-else style="color:#999;">—</span>
+            <span v-else style="color:var(--color-border);">—</span>
           </template>
         </Column>
         <Column field="total" header="Total">
           <template #body="{ data }">
-            {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
+            {{ formatTotal(data.total) }}
           </template>
         </Column>
         <Column field="lugar_pago" header="Pagado en">
           <template #body="{ data }">
             <span v-if="data.lugar_pago" class="badge-lugar">{{ data.lugar_pago }}</span>
-            <span v-else style="color:#999;">—</span>
+            <span v-else style="color:var(--color-border);">—</span>
           </template>
         </Column>
         <Column field="instalador" header="Instalador" />
@@ -170,6 +273,71 @@
           </template>
         </Column>
       </DataTable>
+
+      <div v-else class="mobile-list-wrap">
+        <div v-if="loadingFacturas" class="mobile-loader-wrap">
+          <DataTableLoader text="Cargando facturas..." />
+        </div>
+        <div v-else-if="!facturasFiltradas.length" class="mobile-empty">
+          No hay facturas para mostrar.
+        </div>
+        <div v-else class="mobile-cards">
+          <article
+            v-for="item in facturasFiltradas"
+            :key="`factura-mobile-${item.id}`"
+            class="mobile-card"
+          >
+            <header class="mobile-card-header">
+              <div>
+                <p class="mobile-card-id">Factura #{{ item.id }}</p>
+                <p class="mobile-card-cliente">{{ item.cliente || 'Sin cliente' }}</p>
+              </div>
+              <span :class="'badge badge-' + badgeClassFactura(item.status)">{{ item.status }}</span>
+            </header>
+
+            <div class="mobile-card-grid">
+              <div class="mobile-field">
+                <span class="mobile-label">Total</span>
+                <span class="mobile-value">{{ formatTotal(item.total) }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Fecha</span>
+                <span class="mobile-value">{{ formatFecha(item.fecha) }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Ordenes</span>
+                <span class="mobile-value">{{ (item.ordenes || []).join(', ') || '—' }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Pagado en</span>
+                <span class="mobile-value">{{ item.lugar_pago || '—' }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Instalador</span>
+                <span class="mobile-value">{{ item.instalador || '—' }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Vendedor</span>
+                <span class="mobile-value">{{ item.vendedor || '—' }}</span>
+              </div>
+              <div class="mobile-field mobile-field-full">
+                <span class="mobile-label">IMEIs</span>
+                <span class="mobile-value">{{ getImeisUnicos(item).join(', ') || '—' }}</span>
+              </div>
+            </div>
+
+            <div class="mobile-actions">
+              <Button icon="pi pi-eye" class="p-button-sm p-button-info" label="Detalle"
+                @click="irDetalle('factura', item.id)" />
+              <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
+                :loading="descargandoId === `factura-${item.id}`"
+                @click="descargarPDF('factura', item)" />
+              <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
+                @click="confirmarEliminar('factura', item)" />
+            </div>
+          </article>
+        </div>
+      </div>
     </div>
 
     <!-- Dialogo Confirmar Eliminación -->
@@ -188,13 +356,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
 import DataTableLoader from '@/components/DataTableLoader.vue';
 import { getNotas, getFacturas, getNotaById, getFacturaById, eliminarNota, eliminarFactura } from '@/services/pagosService';
 import { generarPagoPDF } from '@/services/PagoPdfService';
@@ -208,6 +377,7 @@ const notas = ref([]);
 const facturas = ref([]);
 const loadingNotas = ref(false);
 const loadingFacturas = ref(false);
+const isMobile = ref(false);
 
 // Filtros
 const filtroCliente = ref('');
@@ -215,6 +385,9 @@ const filtroOrden = ref('');
 const filtroImei = ref('');
 const filtroInstalador = ref('');
 const filtroVendedor = ref('');
+const filtroLugarPago = ref('');
+
+const lugaresPago = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago'];
 
 function parseImeis(value) {
   if (Array.isArray(value)) return value;
@@ -239,7 +412,7 @@ function getImeisUnicos(row) {
   return Array.from(new Set(arr));
 }
 
-function filtrarRegistros(rows) {
+function filtrarRegistros(rows, { aplicarLugarPago = true } = {}) {
   let result = rows;
   const cl = filtroCliente.value.trim().toLowerCase();
   const ord = filtroOrden.value.trim().toLowerCase();
@@ -261,11 +434,58 @@ function filtrarRegistros(rows) {
   if (vend) {
     result = result.filter(r => (r.vendedor || '').toLowerCase().includes(vend));
   }
+  if (aplicarLugarPago && filtroLugarPago.value) {
+    result = result.filter(r => (r.lugar_pago || '') === filtroLugarPago.value);
+  }
   return result;
 }
 
 const notasFiltradas = computed(() => filtrarRegistros(notas.value));
 const facturasFiltradas = computed(() => filtrarRegistros(facturas.value));
+
+// Resumen "Bancos": dinero por lugar de pago, combinando notas + facturas
+// (excluye canceladas — dinero que no llegó al banco), ignora el filtro de
+// "Pagado en" para mostrar siempre la distribución completa; los demás
+// filtros (cliente, orden, imei, instalador, vendedor) sí aplican.
+const resumenBancos = computed(() => {
+  const notasBase = filtrarRegistros(notas.value, { aplicarLugarPago: false })
+    .filter(r => r.status !== 'cancelado');
+  const facturasBase = filtrarRegistros(facturas.value, { aplicarLugarPago: false })
+    .filter(r => r.status !== 'Cancelado');
+  const todas = [...notasBase, ...facturasBase];
+
+  const mapa = new Map();
+  const sinEspecificar = { count: 0, total: 0 };
+  let totalGeneral = 0;
+
+  for (const row of todas) {
+    const monto = Number(row.total) || 0;
+    totalGeneral += monto;
+    const lugar = row.lugar_pago;
+    if (!lugar) {
+      sinEspecificar.count++;
+      sinEspecificar.total += monto;
+      continue;
+    }
+    if (!mapa.has(lugar)) mapa.set(lugar, { count: 0, total: 0 });
+    const entry = mapa.get(lugar);
+    entry.count++;
+    entry.total += monto;
+  }
+
+  const bancos = lugaresPago.map(nombre => ({
+    nombre,
+    count: mapa.get(nombre)?.count || 0,
+    total: mapa.get(nombre)?.total || 0,
+    activo: filtroLugarPago.value === nombre,
+  }));
+
+  return { bancos, sinEspecificar, totalGeneral };
+});
+
+function toggleFiltroBanco(nombre) {
+  filtroLugarPago.value = filtroLugarPago.value === nombre ? '' : nombre;
+}
 
 const descargandoId = ref(null);
 const showConfirmDelete = ref(false);
@@ -277,6 +497,21 @@ function formatFecha(f) {
   if (!f) return '';
   const d = new Date(f);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+const formatoMoneda = new Intl.NumberFormat('es-MX', {
+  style: 'currency',
+  currency: 'MXN',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatTotal(value) {
+  return value != null ? formatoMoneda.format(Number(value)) : '-';
+}
+
+function setViewportMode() {
+  isMobile.value = window.innerWidth <= 768;
 }
 
 function badgeClassNota(status) {
@@ -366,8 +601,14 @@ async function cargarFacturas() {
 }
 
 onMounted(() => {
+  setViewportMode();
+  window.addEventListener('resize', setViewportMode);
   cargarNotas();
   cargarFacturas();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', setViewportMode);
 });
 </script>
 
@@ -406,12 +647,12 @@ onMounted(() => {
   font-size: 0.85rem;
   font-weight: bold;
 }
-.badge-success { background: #c8e6c9; color: #256029; }
-.badge-warning { background: #fff3cd; color: #856404; }
-.badge-danger  { background: #f8d7da; color: #721c24; }
+.badge-success { background: color-mix(in srgb, var(--color-success) 22%, transparent); color: var(--color-success); }
+.badge-warning { background: color-mix(in srgb, var(--color-warning) 25%, transparent); color: var(--color-warning); }
+.badge-danger  { background: color-mix(in srgb, var(--color-error) 20%, transparent); color: var(--color-error); }
 .badge-lugar {
-  background: #e3f2fd;
-  color: #1565c0;
+  background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  color: var(--color-primary);
   padding: 0.2rem 0.6rem;
   border-radius: 0.75rem;
   font-size: 0.82rem;
@@ -438,5 +679,197 @@ onMounted(() => {
   flex-direction: column;
   gap: 2px;
   font-size: 0.85rem;
+}
+
+.bancos-resumen {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-light);
+  border-radius: 12px;
+}
+.bancos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.bancos-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--color-title);
+}
+.bancos-total-general {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--color-primary);
+}
+.bancos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.65rem;
+}
+.banco-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.banco-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.banco-card-activo {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent) inset;
+}
+.banco-card-sin {
+  cursor: default;
+  background: var(--color-bg-light);
+}
+.banco-card-sin:hover {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+.banco-nombre {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-title);
+}
+.banco-total {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--color-primary);
+}
+.banco-count {
+  font-size: 0.75rem;
+  color: var(--color-text);
+}
+
+@media (max-width: 768px) {
+  .bancos-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+}
+
+.mobile-list-wrap {
+  margin-top: 0.5rem;
+}
+
+.mobile-loader-wrap,
+.mobile-empty {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.mobile-empty {
+  text-align: center;
+  color: var(--color-text);
+}
+
+.mobile-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mobile-card {
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  border-radius: 12px;
+  padding: 0.9rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.mobile-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.mobile-card-id {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.mobile-card-cliente {
+  margin: 0.2rem 0 0;
+  font-weight: 700;
+  color: var(--color-title);
+}
+
+.mobile-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.mobile-field {
+  min-width: 0;
+}
+
+.mobile-field-full {
+  grid-column: 1 / -1;
+}
+
+.mobile-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--color-text);
+  margin-bottom: 0.15rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.mobile-value {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.mobile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .pagos-container {
+    margin: 1rem auto;
+    padding: 1rem 0.75rem;
+  }
+
+  .pagos-tabs {
+    gap: 0.5rem;
+  }
+
+  .tab-btn {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .pagos-filtros {
+    gap: 0.75rem;
+  }
+
+  .filtro-item {
+    min-width: 100%;
+  }
 }
 </style>

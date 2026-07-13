@@ -90,91 +90,203 @@ class FacturaRequest(BaseModel):
     metodo_pago: str
     forma_pago: str
     total: float
+    serie: Optional[str] = "A"
+    folio: Optional[str] = None
+    domicilio_fiscal_receptor: Optional[str] = None
+    regimen_fiscal_receptor: Optional[str] = None
+
+# RFC genérico que el SAT reserva para ventas a público en general
+RFC_PUBLICO_GENERAL = "XAXX010101000"
+
+
+def _sw_base_url(pac_env: str) -> str:
+    return "https://services.test.sw.com.mx" if pac_env.upper() == "TEST" else "https://services.sw.com.mx"
+
+
+def _construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
+                               productos, serie="A", folio=None,
+                               domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None):
+    """Arma el CFDI 4.0 en JSON y lo timbra con el servicio 'Emision Timbrado JSON' de SW Sapien.
+    SW sella el comprobante server-side usando el CSD que el usuario haya cargado en su cuenta SW
+    (portal ADT), por lo que Sello/Certificado/NoCertificado van vacios. Devuelve uuid + rutas de
+    xml/pdf guardados."""
+    import requests
+    from satcfdi.cfdi import CFDI
+    from satcfdi.render import pdf_write
+
+    RFC = os.getenv("CSD_RFC", "RAQÑ7701212M3")
+    RAZON_SOCIAL = os.getenv("CSD_RAZON_SOCIAL", "Empresa de Pruebas")
+    REGIMEN_FISCAL_EMISOR = os.getenv("CSD_REGIMEN_FISCAL", "601")
+    LUGAR_EXPEDICION = os.getenv("CSD_LUGAR_EXPEDICION", "64000")
+
+    PAC_USER = os.getenv("PAC_USER")
+    PAC_PASS = os.getenv("PAC_PASS")
+    PAC_ENV = os.getenv("PAC_ENV", "TEST")
+    sw_base = _sw_base_url(PAC_ENV)
+
+    if not (PAC_USER and PAC_PASS):
+        raise HTTPException(status_code=500, detail="PAC no configurado (PAC_USER/PAC_PASS)")
+
+    # El SAT exige datos fijos cuando se factura al RFC genérico de público en general
+    if rfc_cliente == RFC_PUBLICO_GENERAL:
+        uso_cfdi = "S01"
+        domicilio_receptor = "00000"
+        regimen_receptor = "616"
+    else:
+        domicilio_receptor = domicilio_fiscal_receptor or LUGAR_EXPEDICION
+        regimen_receptor = regimen_fiscal_receptor or REGIMEN_FISCAL_EMISOR
+
+    conceptos_json = []
+    subtotal = Decimal("0")
+    total_iva = Decimal("0")
+    for p in productos:
+        cantidad = Decimal(str(p.Cantidad))
+        valor_unitario = Decimal(str(p.ValorUnitario))
+        importe = (cantidad * valor_unitario).quantize(Decimal("0.01"))
+        iva = (importe * Decimal("0.16")).quantize(Decimal("0.01"))
+        subtotal += importe
+        total_iva += iva
+        conceptos_json.append({
+            "ClaveProdServ": p.ClaveProdServ,
+            "Cantidad": str(cantidad),
+            "ClaveUnidad": p.ClaveUnidad,
+            "Unidad": p.Unidad,
+            "Descripcion": p.Descripcion,
+            "ValorUnitario": str(valor_unitario),
+            "Importe": str(importe),
+            "Descuento": "0.00",
+            "ObjetoImp": "02",
+            "Impuestos": {
+                "Traslados": [{
+                    "Base": str(importe),
+                    "Importe": str(iva),
+                    "Impuesto": "002",
+                    "TasaOCuota": "0.160000",
+                    "TipoFactor": "Tasa"
+                }]
+            }
+        })
+
+    total = subtotal + total_iva
+
+    comprobante_json = {
+        "Version": "4.0",
+        "FormaPago": forma_pago,
+        "Serie": serie or "A",
+        "Folio": folio or str(int(datetime.utcnow().timestamp())),
+        "Fecha": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "Sello": "",
+        "NoCertificado": "",
+        "Certificado": "",
+        "SubTotal": str(subtotal),
+        "Descuento": "0.00",
+        "Moneda": "MXN",
+        "TipoCambio": "1",
+        "Total": str(total),
+        "TipoDeComprobante": "I",
+        "Exportacion": "01",
+        "MetodoPago": metodo_pago,
+        "LugarExpedicion": LUGAR_EXPEDICION,
+        "Emisor": {
+            "Rfc": RFC,
+            "Nombre": RAZON_SOCIAL,
+            "RegimenFiscal": REGIMEN_FISCAL_EMISOR
+        },
+        "Receptor": {
+            "Rfc": rfc_cliente,
+            "Nombre": nombre_cliente,
+            "DomicilioFiscalReceptor": domicilio_receptor,
+            "RegimenFiscalReceptor": regimen_receptor,
+            "UsoCFDI": uso_cfdi
+        },
+        "Conceptos": conceptos_json,
+        "Impuestos": {
+            "TotalImpuestosTrasladados": str(total_iva),
+            "Traslados": [{
+                "Base": str(subtotal),
+                "Importe": str(total_iva),
+                "Impuesto": "002",
+                "TasaOCuota": "0.160000",
+                "TipoFactor": "Tasa"
+            }]
+        }
+    }
+
+    try:
+        auth_resp = requests.post(
+            f"{sw_base}/v2/security/authenticate",
+            json={"user": PAC_USER, "password": PAC_PASS},
+            headers={"Content-Type": "application/json"},
+            timeout=20,
+        )
+        auth_data = auth_resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con SW (auth): {e}")
+    if auth_data.get("status") != "success":
+        raise HTTPException(status_code=502, detail=f"Error al autenticar con SW: {auth_data.get('message') or auth_data}")
+    token = auth_data["data"]["token"]
+
+    try:
+        stamp_resp = requests.post(
+            f"{sw_base}/v3/cfdi33/issue/json/v4",
+            data=json.dumps(comprobante_json),
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/jsontoxml",
+            },
+            timeout=30,
+        )
+        stamp_data = stamp_resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con SW (timbrado): {e}")
+    if stamp_data.get("status") != "success":
+        raise HTTPException(status_code=502, detail=f"Error al timbrar con SW: {stamp_data.get('message') or stamp_data.get('messageDetail') or stamp_data}")
+
+    data = stamp_data["data"]
+    uuid_ = data["uuid"]
+    xml_bytes = data["cfdi"].encode("utf-8")
+    stamped_cfdi = CFDI.from_string(xml_bytes)
+
+    folder = os.path.join("uploads", "facturas")
+    os.makedirs(folder, exist_ok=True)
+    xml_path = os.path.join(folder, f"{uuid_}.xml")
+    with open(xml_path, "wb") as f:
+        f.write(xml_bytes)
+
+    pdf_path = os.path.join(folder, f"{uuid_}.pdf")
+    pdf_write([stamped_cfdi], pdf_path)
+    with open(pdf_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    return {
+        "uuid": uuid_,
+        "xml_bytes": xml_bytes,
+        "pdf_bytes": pdf_bytes,
+        "xml_path": xml_path,
+        "pdf_path": pdf_path,
+    }
 
 
 @app.post("/api/facturar")
 def facturar(data: FacturaRequest):
-    from satcfdi import render
-    from satcfdi.render import BODY_TEMPLATE
-    CERT_PATH = os.getenv("CSD_CERT_PATH")
-    KEY_PATH = os.getenv("CSD_KEY_PATH")
-    KEY_PASS = os.getenv("CSD_KEY_PASS")
-    RFC = os.getenv("CSD_RFC", "RAQÑ7701212M3")
-
-    # Crear conceptos
-    conceptos = [
-        Concepto(
-            clave_prod_serv=p.ClaveProdServ,
-            cantidad=p.Cantidad,
-            clave_unidad=p.ClaveUnidad,
-            unidad=p.Unidad,
-            descripcion=p.Descripcion,
-            valor_unitario=p.ValorUnitario
-        ) for p in data.productos
-    ]
-
-
-    # Crear comprobante CFDI
-    comprobante = cfdi40.Comprobante(
-        emisor=cfdi40.Emisor(
-            rfc=RFC,
-            nombre="Empresa de Pruebas",
-            regimen_fiscal=RegimenFiscal.GENERAL_DE_LEY_PERSONAS_MORALES
-        ),
-        lugar_expedicion="64000",
-        receptor=cfdi40.Receptor(
-            rfc=data.rfc_cliente,
-            nombre=data.nombre_cliente,
-            uso_cfdi=UsoCFDI.GASTOS_EN_GENERAL,
-            domicilio_fiscal_receptor="64000",
-            regimen_fiscal_receptor=RegimenFiscal.GENERAL_DE_LEY_PERSONAS_MORALES
-        ),
-        metodo_pago=MetodoPago.PAGO_EN_PARCIALIDADES_O_DIFERIDO,
-        serie="A",
-        folio="1",
-        conceptos=[
-            cfdi40.Concepto(
-                clave_prod_serv=p.ClaveProdServ,
-                cantidad=Decimal(str(p.Cantidad)),
-                clave_unidad=p.ClaveUnidad,
-                descripcion=p.Descripcion,
-                valor_unitario=Decimal(str(p.ValorUnitario)),
-                impuestos=cfdi40.Impuestos(
-                    traslados=cfdi40.Traslado(
-                        impuesto=Impuesto.IVA,
-                        tipo_factor=TipoFactor.TASA,
-                        tasa_o_cuota=Decimal("0.160000"),
-                    )
-                ),
-                _traslados_incluidos=False
-            ) for p in data.productos
-        ]
+    resultado = _construir_y_timbrar_cfdi(
+        nombre_cliente=data.nombre_cliente,
+        rfc_cliente=data.rfc_cliente,
+        uso_cfdi=data.uso_cfdi,
+        metodo_pago=data.metodo_pago,
+        forma_pago=data.forma_pago,
+        productos=data.productos,
+        serie=data.serie,
+        folio=data.folio,
+        domicilio_fiscal_receptor=data.domicilio_fiscal_receptor,
+        regimen_fiscal_receptor=data.regimen_fiscal_receptor,
     )
-
-    # Generar XML
-    signer = Signer.load(
-        certificate=open(CERT_PATH, "rb").read(),
-        key=open(KEY_PATH, "rb").read(),
-        password=KEY_PASS
-    )
-    comprobante.sign(signer)
-    comprobante = comprobante.process()
-    # Generar XML en archivo y en string
-    xml_path = "factura.xml"
-    comprobante.xml_write(xml_path)
-    with open(xml_path, "r", encoding="utf-8") as f:
-        xml_content = f.read()
-    # Generar PDF en archivo y en base64
-    pdf_path = "factura.pdf"
-    from satcfdi.render import pdf_write
-    pdf_write([comprobante], pdf_path)
-    with open(pdf_path, "rb") as f:
-        pdf_bytes = f.read()
-    import base64
-    pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
     return {
-        "cfdi_xml": xml_content,
-        "cfdi_pdf": pdf_base64
+        "uuid": resultado["uuid"],
+        "cfdi_xml": resultado["xml_bytes"].decode("utf-8"),
+        "cfdi_pdf": base64.b64encode(resultado["pdf_bytes"]).decode("utf-8"),
+        "xml_url": build_public_url(resultado["xml_path"]),
+        "pdf_url": build_public_url(resultado["pdf_path"])
     }
 
 
@@ -4755,11 +4867,130 @@ def crear_factura_pago(data: FacturaPagoCreate):
     db.close()
     return {"message": "Factura creada exitosamente", "id": new_id}
 
+
+class TimbrarFacturaPagoRequest(BaseModel):
+    rfc_cliente: str
+    uso_cfdi: str
+    forma_pago: str
+    metodo_pago: str
+    domicilio_fiscal_receptor: Optional[str] = None
+    regimen_fiscal_receptor: Optional[str] = None
+
+
+@app.post("/facturas-pago/{factura_id}/timbrar")
+def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    for _col_sql in (
+        "ALTER TABLE facturas_pago ADD COLUMN rfc_cliente VARCHAR(20) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN uso_cfdi VARCHAR(5) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN forma_pago VARCHAR(5) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN metodo_pago VARCHAR(5) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_uuid VARCHAR(36) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_xml_path VARCHAR(255) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_pdf_path VARCHAR(255) NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+
+    cursor.execute("SELECT * FROM facturas_pago WHERE id=%s", (factura_id,))
+    factura = cursor.fetchone()
+    if not factura:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.get('status') == 'Timbrado':
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=400, detail="La factura ya está timbrada")
+
+    reporte_ids = factura.get('reporte_ids')
+    if isinstance(reporte_ids, str):
+        try:
+            reporte_ids = json.loads(reporte_ids)
+        except Exception:
+            reporte_ids = []
+    reporte_ids = reporte_ids or []
+    if not reporte_ids:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=400, detail="La factura no tiene reportes de servicio asociados")
+
+    placeholders = ','.join(['%s'] * len(reporte_ids))
+    cursor.execute(f"SELECT id, tipo_servicio, total, folio FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
+    reportes = cursor.fetchall()
+    cursor.close()
+    db.close()
+
+    if not reportes:
+        raise HTTPException(status_code=400, detail="No se encontraron los reportes de servicio asociados a esta factura")
+
+    productos = [
+        Producto(
+            ClaveProdServ="81112100",
+            ClaveUnidad="E48",
+            Unidad="Servicio",
+            Descripcion=r.get('tipo_servicio') or f"Servicio {r.get('folio') or r['id']}",
+            ValorUnitario=float(r.get('total') or 0),
+            Importe=float(r.get('total') or 0),
+            Cantidad=1
+        ) for r in reportes
+    ]
+
+    resultado = _construir_y_timbrar_cfdi(
+        nombre_cliente=factura['cliente'],
+        rfc_cliente=data.rfc_cliente,
+        uso_cfdi=data.uso_cfdi,
+        metodo_pago=data.metodo_pago,
+        forma_pago=data.forma_pago,
+        productos=productos,
+        serie="F",
+        folio=str(factura_id),
+        domicilio_fiscal_receptor=data.domicilio_fiscal_receptor,
+        regimen_fiscal_receptor=data.regimen_fiscal_receptor,
+    )
+
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        """UPDATE facturas_pago
+           SET status='Timbrado', rfc_cliente=%s, uso_cfdi=%s, forma_pago=%s, metodo_pago=%s,
+               cfdi_uuid=%s, cfdi_xml_path=%s, cfdi_pdf_path=%s
+           WHERE id=%s""",
+        (data.rfc_cliente, data.uso_cfdi, data.forma_pago, data.metodo_pago,
+         resultado['uuid'], resultado['xml_path'], resultado['pdf_path'], factura_id)
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return {
+        "message": "Factura timbrada correctamente",
+        "id": factura_id,
+        "status": "Timbrado",
+        "uuid": resultado['uuid'],
+        "xml_url": build_public_url(resultado['xml_path']),
+        "pdf_url": build_public_url(resultado['pdf_path'])
+    }
+
+
 @app.put("/facturas-pago/{factura_id}/status")
 def actualizar_status_factura_pago(factura_id: int, data: dict = Body(...)):
     new_status = data.get('status', '').strip()
-    if new_status not in ('Timbrado', 'Pendiente timbre', 'Cancelado'):
-        raise HTTPException(status_code=400, detail="Status inválido. Valores: Timbrado, Pendiente timbre, Cancelado")
+    if new_status not in ('Pendiente timbre', 'Cancelado'):
+        raise HTTPException(status_code=400, detail="Status inválido. Usa POST /facturas-pago/{id}/timbrar para timbrar. Valores manuales: Pendiente timbre, Cancelado")
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -5801,6 +6032,117 @@ def utilidades_sims_details(identifiers: str = Query(..., min_length=6)):
         raise HTTPException(status_code=500, detail=f"No se pudo consultar SIM details: {e}")
 
 
+def _simpro_creds() -> tuple[str, dict]:
+    sim_api_client = os.getenv("SIMPRO_API_CLIENT", "").strip()
+    sim_api_key = os.getenv("SIMPRO_API_KEY", "").strip()
+    sim_base = os.getenv("SIMPRO_BASE_URL", "https://simpro4.wirelesslogic.com").strip().rstrip("/")
+    if not sim_api_client or not sim_api_key:
+        raise HTTPException(status_code=400, detail="Faltan credenciales SIMPRO_API_CLIENT y SIMPRO_API_KEY en el entorno")
+    return sim_base, {"x-api-client": sim_api_client, "x-api-key": sim_api_key}
+
+
+def _simpro_get(path: str, params: dict):
+    sim_base, headers = _simpro_creds()
+    resp = _requests.get(f"{sim_base}{path}", params=params, headers=headers, timeout=30)
+    if not resp.ok:
+        raise HTTPException(status_code=resp.status_code, detail=f"SIMPRO {path} HTTP {resp.status_code}")
+    return resp.json()
+
+
+def _chunked(seq: list, size: int):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
+
+@app.post("/api/utilidades/sims/importar")
+def importar_sims_simpro():
+    """Carga inicial: trae TODOS los SIMs de SIMPRO y los inserta como borrador en
+    consultas_sim (campos que SIMPRO no conoce, como plataforma IOP/Tracksolid,
+    quedan vacios a proposito para que el usuario los complete). Es re-ejecutable:
+    lo que ya existe (por device_mobile o iccid) se omite, no duplica."""
+    todos = []
+    page = 1
+    limit = 2000
+    while True:
+        data = _simpro_get("/api/v3/sims", {"page": page, "limit": limit})
+        items = data.get("sims") if isinstance(data, dict) else None
+        items = items if isinstance(items, list) else []
+        todos.extend(items)
+        if len(items) < limit or page > 50:
+            break
+        page += 1
+
+    identificadores = []
+    vistos = set()
+    for item in todos:
+        if not isinstance(item, dict):
+            continue
+        ident = str(item.get("iccid") or "").strip() or _extract_digits(item.get("msisdn") or "")
+        if ident and ident not in vistos:
+            vistos.add(ident)
+            identificadores.append(ident)
+
+    if not identificadores:
+        return {"importados": 0, "omitidos": 0, "total_simpro": len(todos)}
+
+    detalles = []
+    for lote in _chunked(identificadores, 30):
+        data = _simpro_get("/api/v3/sims/details", {"identifiers": ",".join(lote)})
+        if isinstance(data, list):
+            detalles.extend(data)
+
+    db = _get_db()
+    cursor = db.cursor()
+
+    importados = 0
+    omitidos = 0
+
+    for det in detalles:
+        if not isinstance(det, dict):
+            continue
+
+        iccid = str(det.get("iccid") or "").strip()
+        imei = _extract_digits(det.get("imei") or "")
+        active_conn = det.get("active_connection") if isinstance(det.get("active_connection"), dict) else {}
+        device_mobile = _extract_digits(active_conn.get("msisdn") or "")
+        if not device_mobile:
+            origen = next((m for m in todos if str(m.get("iccid") or "") == iccid), None)
+            device_mobile = _extract_digits((origen or {}).get("msisdn") or "")
+
+        if not device_mobile and not iccid:
+            continue
+
+        cursor.execute(
+            "SELECT id FROM consultas_sim WHERE (device_mobile=%s AND device_mobile<>'') OR (iccid=%s AND iccid<>'') LIMIT 1",
+            (device_mobile, iccid)
+        )
+        if cursor.fetchone():
+            omitidos += 1
+            continue
+
+        billing_account = det.get("billing_account") if isinstance(det.get("billing_account"), dict) else {}
+        deaccount = str(det.get("custom_field1") or "").strip()
+        account_name = str(billing_account.get("name") or "").strip()
+        activation_date = str(active_conn.get("activation_date") or "")
+        vigencia_sim = str(active_conn.get("contract_end_date") or "")
+
+        cursor.execute(
+            """INSERT INTO consultas_sim
+               (tipo, activation_date, deaccount, account_name, plataforma,
+                imei, iccid, device_mobile, vigencia_sim)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            ("activacion", activation_date, deaccount, account_name, "",
+             imei, iccid, device_mobile, vigencia_sim)
+        )
+        importados += 1
+
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return {"importados": importados, "omitidos": omitidos, "total_simpro": len(todos)}
+
+
 @app.post("/api/utilidades/consulta-imei")
 def utilidades_consulta_imei(payload: UtilidadesConsultaRequest):
     imei = _extract_digits(payload.imei)
@@ -5947,9 +6289,11 @@ def list_consultas_sim(
 
     def add_vigencia_sim_range(value: str | None):
         cleaned = str(value or "").strip()
-        if cleaned != "ultimos_7_dias":
+        if cleaned != "vencidos_7_dias":
             return False
-        conditions.append("LEFT(vigencia_sim, 10) BETWEEN DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '%Y-%m-%d') AND DATE_FORMAT(CURDATE(), '%Y-%m-%d')")
+        limite = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        conditions.append("vigencia_sim <> '' AND LEFT(vigencia_sim, 10) <= %s")
+        values.append(limite)
         return True
 
     if tipo:

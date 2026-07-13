@@ -52,6 +52,11 @@ export async function deleteConsultaSim(id) {
   return response.data;
 }
 
+export async function importarSimsSimpro() {
+  const response = await axios.post(`${API_URL}/api/utilidades/sims/importar`);
+  return response.data;
+}
+
 export default {
   getUtilidadesPlataformas,
   getDispositivoPorPlataforma,
@@ -60,5 +65,6 @@ export default {
   getConsultasSim,
   saveConsultaSim,
   updateConsultaSim,
-  deleteConsultaSim
+  deleteConsultaSim,
+  importarSimsSimpro
 };

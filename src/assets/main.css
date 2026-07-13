@@ -20,6 +20,7 @@
   --color-error: #d32f2f;
   --color-on-error: #ffffff;
   --color-success: #2e7d32;
+  --color-warning: #f9a825;
 
   /* Utilitarios */
   --color-muted-bg: #bdbdbd;
@@ -39,6 +40,7 @@
   --color-error: #d32f2f;
   --color-on-error: #ffffff;
   --color-success: #2e7d32;
+  --color-warning: #f9a825;
 
   --color-muted-bg: #61666e; /* gris medio para chips/etiquetas */
   --color-on-muted: var(--color-text);
