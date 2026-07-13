@@ -69,6 +69,33 @@ app.add_middleware(
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+@app.on_event("startup")
+def crear_tabla_retiros_banco():
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS retiros_banco (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            banco VARCHAR(100) NOT NULL,
+            monto DECIMAL(12,2) NOT NULL,
+            motivo VARCHAR(255) NULL,
+            comprobante_path VARCHAR(500) NULL,
+            estatus VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+            creado_por VARCHAR(100) NULL,
+            creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            aprobado_por VARCHAR(100) NULL,
+            aprobado_fecha DATETIME NULL
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
 
 
 load_dotenv()
@@ -5240,6 +5267,175 @@ def quitar_reportes_factura(factura_id: int, data: dict = Body(...)):
     db.commit()
     cursor2.close(); cursor.close(); db.close()
     return {"message": "Reportes quitados", "id": factura_id, "reporte_ids": combined_ids}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ══════════════════════════ RETIROS DE BANCO ═════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.get("/retiros-banco")
+def get_retiros_banco(banco: str = None, request: Request = None):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    if banco:
+        cursor.execute("SELECT * FROM retiros_banco WHERE banco=%s ORDER BY id DESC", (banco,))
+    else:
+        cursor.execute("SELECT * FROM retiros_banco ORDER BY id DESC")
+    rows = cursor.fetchall()
+    for r in rows:
+        for campo in ("creado_fecha", "aprobado_fecha"):
+            if r.get(campo) and hasattr(r[campo], "isoformat"):
+                r[campo] = r[campo].isoformat()
+        r["comprobante_url"] = build_public_url(r.get("comprobante_path"), request)
+        if r.get("monto") is not None:
+            r["monto"] = float(r["monto"])
+    cursor.close()
+    db.close()
+    return rows
+
+@app.post("/retiros-banco")
+def crear_retiro_banco(
+    banco: str = Form(...),
+    monto: float = Form(...),
+    motivo: str = Form(None),
+    archivo: UploadFile = File(...),
+    current=Depends(get_current_user),
+    request: Request = None
+):
+    import shutil
+    if monto <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
+
+    safe_banco = ''.join(c for c in banco if c.isalnum() or c in ('-', '_', ' ')).strip() or "SinBanco"
+    base_dir = os.path.join("uploads", "retiros", safe_banco)
+    os.makedirs(base_dir, exist_ok=True)
+    filename = archivo.filename or "comprobante"
+    filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
+    dest_path = os.path.join(base_dir, filename)
+    base_name, ext = os.path.splitext(filename)
+    counter = 1
+    while os.path.exists(dest_path):
+        dest_path = os.path.join(base_dir, f"{base_name}_{counter}{ext}")
+        counter += 1
+    with open(dest_path, "wb") as out:
+        shutil.copyfileobj(archivo.file, out)
+    rel_path = dest_path.replace("\\", "/")
+
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        """INSERT INTO retiros_banco (banco, monto, motivo, comprobante_path, estatus, creado_por, creado_fecha)
+           VALUES (%s, %s, %s, %s, 'pendiente', %s, NOW())""",
+        (banco, monto, motivo or None, rel_path, current.get("username"))
+    )
+    db.commit()
+    new_id = cursor.lastrowid
+    cursor.close()
+    db.close()
+    return {
+        "message": "Retiro registrado",
+        "id": new_id,
+        "comprobante_path": rel_path,
+        "comprobante_url": build_public_url(rel_path, request),
+        "estatus": "pendiente"
+    }
+
+@app.put("/retiros-banco/{retiro_id}/aprobar")
+def aprobar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    user = cursor.fetchone()
+    if not user or user.get("perfil") != "Admin":
+        cursor.close(); db.close()
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    cursor.execute("SELECT id, estatus FROM retiros_banco WHERE id=%s", (retiro_id,))
+    retiro = cursor.fetchone()
+    if not retiro:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Retiro no encontrado")
+
+    cursor2 = db.cursor()
+    cursor2.execute(
+        "UPDATE retiros_banco SET estatus='aprobado', aprobado_por=%s, aprobado_fecha=NOW() WHERE id=%s",
+        (user.get("username"), retiro_id)
+    )
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+    return {"message": "Retiro aprobado"}
+
+@app.put("/retiros-banco/{retiro_id}/rechazar")
+def rechazar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    user = cursor.fetchone()
+    if not user or user.get("perfil") != "Admin":
+        cursor.close(); db.close()
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    cursor.execute("SELECT id FROM retiros_banco WHERE id=%s", (retiro_id,))
+    if not cursor.fetchone():
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Retiro no encontrado")
+
+    cursor2 = db.cursor()
+    cursor2.execute(
+        "UPDATE retiros_banco SET estatus='rechazado', aprobado_por=%s, aprobado_fecha=NOW() WHERE id=%s",
+        (user.get("username"), retiro_id)
+    )
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+    return {"message": "Retiro rechazado"}
+
+@app.delete("/retiros-banco/{retiro_id}")
+def eliminar_retiro_banco(retiro_id: int):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, estatus, comprobante_path FROM retiros_banco WHERE id=%s", (retiro_id,))
+    retiro = cursor.fetchone()
+    if not retiro:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Retiro no encontrado")
+    if retiro.get("estatus") != "pendiente":
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Solo se puede eliminar un retiro pendiente")
+
+    cursor2 = db.cursor()
+    cursor2.execute("DELETE FROM retiros_banco WHERE id=%s", (retiro_id,))
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+
+    path = retiro.get("comprobante_path")
+    if path and os.path.exists(path):
+        os.remove(path)
+    return {"message": "Retiro eliminado"}
 
 
 # ═══════════════════════════════════════════════════════════════════════

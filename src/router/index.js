@@ -38,6 +38,8 @@ import NuevoReporteRenovacion from '@/modules/NuevoReporteRenovacion.vue';
 import Pagos from '@/modules/Pagos.vue';
 import DetallePago from '@/modules/DetallePago.vue';
 import UtilidadesImei from '@/modules/UtilidadesImei.vue';
+import Bancos from '@/modules/Bancos.vue';
+import DetalleBanco from '@/modules/DetalleBanco.vue';
 
 const routes = [
   { path: '/nuevo-reporte-servicio', name: 'nuevo-reporte-servicio', component: NuevoReporteDeServicio },
@@ -81,6 +83,8 @@ const routes = [
   ,{ path: '/pagos', name: 'pagos', component: Pagos }
   ,{ path: '/pagos/:tipo/:id', name: 'detalle-pago', component: DetallePago, props: true }
   ,{ path: '/utilidades-imei', name: 'utilidades-imei', component: UtilidadesImei }
+  ,{ path: '/bancos', name: 'bancos', component: Bancos }
+  ,{ path: '/bancos/:nombre', name: 'detalle-banco', component: DetalleBanco, props: true }
 ];
 
 const router = createRouter({
