@@ -18,10 +18,12 @@
           :key="banco.nombre"
           type="button"
           class="banco-card"
+          :style="{ '--serie-color': bancoColor(banco.nombre) }"
           @click="router.push({ name: 'detalle-banco', params: { nombre: banco.nombre } })"
         >
-          <span class="banco-nombre">{{ banco.nombre }}</span>
+          <span class="banco-nombre"><span class="banco-dot"></span>{{ banco.nombre }}</span>
           <span class="banco-saldo">{{ formatTotal(banco.saldo) }}</span>
+          <span class="banco-pct">{{ pctBanco(banco.saldo) }}</span>
           <span class="banco-sub">{{ banco.movimientos }} movimiento{{ banco.movimientos === 1 ? '' : 's' }}</span>
           <span v-if="banco.pendiente" class="banco-pendiente">En revisión: -{{ formatTotal(banco.pendiente) }}</span>
         </button>
@@ -38,7 +40,22 @@ import { getRetiros } from '@/services/bancosService';
 
 const router = useRouter();
 
-const lugaresPago = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago'];
+const lugaresPago = ['ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago'];
+
+// Paleta categórica (identidad fija por banco, no ciclada) — misma que Pagos.vue
+const BANCO_COLORES = {
+  'ASP Vianey': '#2a78d6',
+  'ASP Renovaciones': '#1baf7a',
+  'Comercializadora': '#eda100',
+  'BBVA PAU': '#008300',
+  'Tecnico': '#4a3aa7',
+  'Oficina': '#e34948',
+  'Mercadopago': '#e87ba4',
+};
+
+function bancoColor(nombre) {
+  return BANCO_COLORES[nombre] || '#898781';
+}
 
 const loading = ref(true);
 const notas = ref([]);
@@ -81,6 +98,11 @@ const bancos = computed(() => {
 
 const totalGeneral = computed(() => bancos.value.reduce((acc, b) => acc + b.saldo, 0));
 
+function pctBanco(saldo) {
+  if (!totalGeneral.value) return '0%';
+  return `${((Number(saldo) || 0) / totalGeneral.value * 100).toFixed(1)}%`;
+}
+
 async function cargar() {
   loading.value = true;
   try {
@@ -121,55 +143,116 @@ onMounted(cargar);
   border-radius: 14px;
   background: var(--color-card);
   border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-1, 0 1px 4px rgba(0, 0, 0, 0.05));
 }
 .bancos-total-label {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--color-text);
+  opacity: 0.7;
 }
 .bancos-total-valor {
   font-size: 2.2rem;
   font-weight: 800;
-  color: var(--color-primary);
+  color: var(--color-title);
 }
 .bancos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 1rem;
 }
 .banco-card {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 0.3rem;
+  flex: 1 1 200px;
+  max-width: 240px;
   padding: 1.25rem;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid var(--color-border);
+  border-top: 3px solid color-mix(in srgb, var(--serie-color, var(--color-border)) 65%, transparent);
   background: var(--color-card);
   cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  text-align: center;
+  box-shadow: var(--shadow-1, 0 1px 3px rgba(0, 0, 0, 0.05));
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
 .banco-card:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  border-top-color: var(--serie-color, var(--color-primary));
+  box-shadow: var(--shadow-2, 0 8px 20px rgba(0, 0, 0, 0.09));
   transform: translateY(-3px);
 }
 .banco-nombre {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   font-weight: 700;
-  font-size: 1rem;
-  color: var(--color-title);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+  opacity: 0.75;
+}
+.banco-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--serie-color, var(--color-border));
+  flex-shrink: 0;
 }
 .banco-saldo {
   font-weight: 800;
-  font-size: 1.5rem;
-  color: var(--color-primary);
+  font-size: 1.55rem;
+  color: var(--color-title);
+}
+.banco-pct {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--serie-color, var(--color-text)) 16%, transparent);
+  color: var(--serie-color, var(--color-text));
 }
 .banco-sub {
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   color: var(--color-text);
+  opacity: 0.6;
 }
 .banco-pendiente {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
   color: var(--color-warning);
+}
+
+@media (max-width: 768px) {
+  .bancos-container {
+    margin: 1rem auto;
+    padding: 1rem 0.75rem;
+  }
+
+  .bancos-total-card {
+    padding: 1.1rem;
+  }
+
+  .bancos-grid {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 0.4rem;
+    margin: 0 -0.25rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  .banco-card {
+    flex: 0 0 165px;
+    max-width: none;
+    scroll-snap-align: start;
+  }
 }
 </style>

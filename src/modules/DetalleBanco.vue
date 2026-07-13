@@ -2,6 +2,11 @@
   <div class="detalle-banco-container">
     <Button icon="pi pi-arrow-left" label="Volver a Bancos" class="p-button-text mb-3" @click="router.push('/bancos')" />
 
+    <div class="dev-banner">
+      <i class="pi pi-wrench" />
+      <span>Sección en desarrollo — datos y funciones aún en pruebas, pueden cambiar.</span>
+    </div>
+
     <div v-if="loading" style="text-align:center;padding:3rem;">
       <i class="pi pi-spin pi-spinner" style="font-size:2rem;"></i>
     </div>
@@ -319,6 +324,22 @@ onMounted(cargar);
 }
 .mb-3 { margin-bottom: 1rem; }
 .mt-3 { margin-top: 1rem; }
+.dev-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  color: var(--color-warning);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.dev-banner i {
+  font-size: 1.1rem;
+}
 .saldo-card {
   display: flex;
   flex-direction: column;
