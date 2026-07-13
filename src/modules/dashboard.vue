@@ -251,6 +251,11 @@ const items = computed(() => {
       route: '/pagos'
     },
     {
+      label: 'Bancos',
+      icon: 'pi pi-fw pi-building-columns',
+      route: '/bancos'
+    },
+    {
       label: 'Usuarios',
       icon: 'pi pi-fw pi-users',
       route: '/usuarios'
