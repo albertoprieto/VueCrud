@@ -69,6 +69,24 @@
       </div>
     </div>
 
+    <!-- <div class="util-card">
+      <div class="section-head">
+        <div>
+          <h2>Carga inicial SIMPRO</h2>
+          <p>Trae todos los números registrados en la plataforma y los agrega como borrador para que completes IMEI, plataforma, etc. Se puede correr varias veces: lo que ya existe no se duplica.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <Button
+          :label="importando ? 'Importando...' : 'Cargar todos los números (SIMPRO)'"
+          icon="pi pi-cloud-download"
+          :loading="importando"
+          :disabled="importando"
+          @click="importarSimpro()"
+        />
+      </div>
+    </div> -->
+
       <p v-if="message" :class="['status', messageError ? 'is-error' : 'is-ok']">{{ message }}</p>
 
       <div class="result">
@@ -147,7 +165,16 @@
             <template #body="{ data }">{{ data.deviceMobile || '-' }}</template>
           </Column>
           <Column field="vigencia_sim" header="VIGENCIA SIM">
-            <template #body="{ data }">{{ data.vigencia_sim || '-' }}</template>
+            <template #body="{ data }">
+              <span>{{ data.vigencia_sim || '-' }}</span>
+              <Tag v-if="esVencido(data.vigencia_sim)" value="Vencido" severity="danger" style="margin-left: 6px;" />
+            </template>
+          </Column>
+          <Column header="ESTADO" style="min-width: 120px">
+            <template #body="{ data }">
+              <Tag v-if="isIncompleto(data)" value="Sin datos" severity="danger" />
+              <Tag v-else value="Completo" severity="success" />
+            </template>
           </Column>
           <Column header="ACCIONES" style="min-width: 140px">
             <template #body="{ data }">
@@ -222,6 +249,7 @@ import {
   getDispositivoPorPlataforma,
   getSimDetails,
   getUtilidadesPlataformas,
+  importarSimsSimpro,
   saveConsultaSim,
   updateConsultaSim
 } from '@/services/utilidadesImeiService';
@@ -242,7 +270,7 @@ const filterTipoOptions = [
   { label: 'Cancelado', value: 'cancelado' }
 ];
 const vigenciaSimOptions = [
-  { label: 'Últimos 7 días', value: 'ultimos_7_dias' }
+  { label: 'Vencidos (7+ días)', value: 'vencidos_7_dias' }
 ];
 const rows = ref([]);
 const loading = ref(false);
@@ -255,6 +283,7 @@ const pageSize = ref(10);
 const currentPage = ref(1);
 const showEditDialog = ref(false);
 const editRow = ref({});
+const importando = ref(false);
 const filters = ref({
   tipo: '',
   deaccount: '',
@@ -619,6 +648,41 @@ async function prepararRegistroManualDesdeTelefono() {
 
 function onlyDigits(v) {
   return String(v || '').replace(/\D+/g, '');
+}
+
+function isIncompleto(row) {
+  const required = [row.tipo, row.activation_date, row.deaccount, row.accountName, row.plataforma, row.iccid, row.vigencia_sim];
+  return required.some((v) => !String(v || '').trim());
+}
+
+function esVencido(vigenciaSim) {
+  const raw = String(vigenciaSim || '').slice(0, 10);
+  const fecha = Date.parse(raw);
+  if (Number.isNaN(fecha)) return false;
+
+  const hoyUtc = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+  const diasVencido = (hoyUtc - fecha) / (1000 * 60 * 60 * 24);
+  return diasVencido >= 7;
+}
+
+async function importarSimpro() {
+  importando.value = true;
+  message.value = '';
+  try {
+    const result = await importarSimsSimpro();
+    message.value = `SIMPRO: ${result.importados} nuevo(s) importado(s), ${result.omitidos} ya exist${result.omitidos === 1 ? 'ía' : 'ían'} (de ${result.total_simpro} en la plataforma).`;
+    messageError.value = false;
+
+    if (result.importados > 0) {
+      currentPage.value = 1;
+      await cargarDesdeDB();
+    }
+  } catch (error) {
+    message.value = error?.response?.data?.detail || error?.message || 'No se pudo importar desde SIMPRO.';
+    messageError.value = true;
+  } finally {
+    importando.value = false;
+  }
 }
 
 function exportarExcel() {

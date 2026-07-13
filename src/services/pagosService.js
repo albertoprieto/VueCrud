@@ -125,3 +125,8 @@ export async function quitarReportesFactura(id, reporte_ids) {
   const res = await axios.put(`${API_URL}/facturas-pago/${id}/quitar-reportes`, { reporte_ids });
   return res.data;
 }
+
+export async function timbrarFactura(id, payload) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${id}/timbrar`, payload);
+  return res.data;
+}

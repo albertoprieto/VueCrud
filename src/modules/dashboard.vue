@@ -185,14 +185,6 @@ const items = computed(() => {
         ]
       },
       {
-        label: 'Tickets',
-        icon: 'pi pi-fw pi-ticket',
-        items: [
-          { label: 'Tickets', route: '/tickets', icon: 'pi pi-fw pi-list' },
-          { label: 'Nuevo Ticket', route: '/tickets/new', icon: 'pi pi-fw pi-plus-circle' }
-        ]
-      },
-      {
         label: 'Utilidades',
         icon: 'pi pi-fw pi-wrench',
         items: [
@@ -226,6 +218,7 @@ const items = computed(() => {
         },
         { label: 'Buscar IMEI', route: '/buscar-imei', icon: 'pi pi-fw pi-search' },
         { label: 'Ubicaciones', route: '/ubicaciones', icon: 'pi pi-fw pi-map-marker' },
+        { label: 'SIM Español', route: '/utilidades-imei', icon: 'pi pi-fw pi-search' }
       ]
     },
     {
@@ -239,14 +232,14 @@ const items = computed(() => {
         // { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
       ]
     },
-    {
-      label: 'Tickets',
-      icon: 'pi pi-fw pi-ticket',
-      items: [
-        { label: 'Tickets', route: '/tickets', icon: 'pi pi-fw pi-list' },
-        { label: 'Nuevo Ticket', route: '/tickets/new', icon: 'pi pi-fw pi-plus-circle' }
-      ]
-    },
+    // {
+    //   label: 'Tickets',
+    //   icon: 'pi pi-fw pi-ticket',
+    //   items: [
+    //     { label: 'Tickets', route: '/tickets', icon: 'pi pi-fw pi-list' },
+    //     { label: 'Nuevo Ticket', route: '/tickets/new', icon: 'pi pi-fw pi-plus-circle' }
+    //   ]
+    // },
     // {
     //   label: 'Dinero',
     //   icon: 'pi pi-fw pi-wallet',
@@ -270,13 +263,6 @@ const items = computed(() => {
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
         ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
         ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
-      ]
-    },
-    {
-      label: 'Utilidades',
-      icon: 'pi pi-fw pi-wrench',
-      items: [
-        { label: 'Consulta IMEI', route: '/utilidades-imei', icon: 'pi pi-fw pi-search' }
       ]
     },
     {
