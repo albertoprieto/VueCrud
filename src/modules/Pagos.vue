@@ -64,15 +64,18 @@
           :key="banco.nombre"
           type="button"
           :class="['banco-card', banco.activo ? 'banco-card-activo' : '']"
+          :style="{ '--serie-color': bancoColor(banco.nombre) }"
           @click="toggleFiltroBanco(banco.nombre)"
         >
-          <span class="banco-nombre">{{ banco.nombre }}</span>
+          <span class="banco-nombre"><span class="banco-dot"></span>{{ banco.nombre }}</span>
           <span class="banco-total">{{ formatTotal(banco.total) }}</span>
+          <span class="banco-pct">{{ pctBanco(banco.total) }}</span>
           <span class="banco-count">{{ banco.count }} documento{{ banco.count === 1 ? '' : 's' }}</span>
         </button>
-        <div v-if="resumenBancos.sinEspecificar.count" class="banco-card banco-card-sin">
-          <span class="banco-nombre">Sin especificar</span>
+        <div v-if="resumenBancos.sinEspecificar.count" class="banco-card banco-card-sin" :style="{ '--serie-color': bancoColor(null) }">
+          <span class="banco-nombre"><span class="banco-dot"></span>Sin especificar</span>
           <span class="banco-total">{{ formatTotal(resumenBancos.sinEspecificar.total) }}</span>
+          <span class="banco-pct">{{ pctBanco(resumenBancos.sinEspecificar.total) }}</span>
           <span class="banco-count">{{ resumenBancos.sinEspecificar.count }} documento{{ resumenBancos.sinEspecificar.count === 1 ? '' : 's' }}</span>
         </div>
       </div>
@@ -136,6 +139,9 @@
               <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
                 :loading="descargandoId === `nota-${data.id}`"
                 @click="descargarPDF('nota', data)" />
+              <Button icon="pi pi-file" class="p-button-sm p-button-info p-button-outlined" label="Comprobante"
+                :disabled="!parseComprobantes(data).length"
+                @click="verComprobante(data)" />
               <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
                 @click="confirmarEliminar('nota', data)" />
             </div>
@@ -201,6 +207,9 @@
               <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
                 :loading="descargandoId === `nota-${item.id}`"
                 @click="descargarPDF('nota', item)" />
+              <Button icon="pi pi-file" class="p-button-sm p-button-info p-button-outlined" label="Comprobante"
+                :disabled="!parseComprobantes(item).length"
+                @click="verComprobante(item)" />
               <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
                 @click="confirmarEliminar('nota', item)" />
             </div>
@@ -267,6 +276,9 @@
               <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
                 :loading="descargandoId === `factura-${data.id}`"
                 @click="descargarPDF('factura', data)" />
+              <Button icon="pi pi-file" class="p-button-sm p-button-info p-button-outlined" label="Comprobante"
+                :disabled="!parseComprobantes(data).length"
+                @click="verComprobante(data)" />
               <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
                 @click="confirmarEliminar('factura', data)" />
             </div>
@@ -332,6 +344,9 @@
               <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
                 :loading="descargandoId === `factura-${item.id}`"
                 @click="descargarPDF('factura', item)" />
+              <Button icon="pi pi-file" class="p-button-sm p-button-info p-button-outlined" label="Comprobante"
+                :disabled="!parseComprobantes(item).length"
+                @click="verComprobante(item)" />
               <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
                 @click="confirmarEliminar('factura', item)" />
             </div>
@@ -350,6 +365,21 @@
       <div style="display:flex;gap:1rem;justify-content:center;padding-bottom:1rem;">
         <Button label="Eliminar" icon="pi pi-trash" class="p-button-danger" @click="ejecutarEliminar" :loading="eliminando" />
         <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showConfirmDelete = false" />
+      </div>
+    </Dialog>
+
+    <!-- Dialogo Comprobantes -->
+    <Dialog v-model:visible="showComprobantes" header="Comprobantes de pago" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }" :draggable="false">
+      <div v-if="!comprobantesActivos.length" style="text-align:center;color:var(--color-border);padding:1rem;">
+        Sin comprobantes cargados.
+      </div>
+      <div v-else class="comprobantes-lista">
+        <div v-for="(comp, idx) in comprobantesActivos" :key="idx" class="comprobante-item">
+          <i class="pi pi-file" style="color:var(--color-primary);margin-right:0.5rem;"></i>
+          <a :href="urlComprobante(comp)" target="_blank" rel="noopener noreferrer" class="comprobante-link">
+            {{ nombreArchivoComprobante(comp) }}
+          </a>
+        </div>
       </div>
     </Dialog>
   </div>
@@ -387,7 +417,15 @@ const filtroInstalador = ref('');
 const filtroVendedor = ref('');
 const filtroLugarPago = ref('');
 
-const lugaresPago = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago'];
+const lugaresPago = [
+  // 'ASP Vianey',
+ 'ASP Renovaciones', 
+ 'Comercializadora', 
+ 'BBVA PAU', 
+//  'Tecnico', 
+//  'Oficina', 
+ 'Mercadopago'
+];
 
 function parseImeis(value) {
   if (Array.isArray(value)) return value;
@@ -483,6 +521,27 @@ const resumenBancos = computed(() => {
   return { bancos, sinEspecificar, totalGeneral };
 });
 
+// Paleta categórica (identidad fija por banco, no ciclada)
+const BANCO_COLORES = {
+  'ASP Vianey': '#2a78d6',
+  'ASP Renovaciones': '#1baf7a',
+  'Comercializadora': '#eda100',
+  'BBVA PAU': '#008300',
+  'Tecnico': '#4a3aa7',
+  'Oficina': '#e34948',
+  'Mercadopago': '#e87ba4',
+};
+
+function bancoColor(nombre) {
+  return BANCO_COLORES[nombre] || '#898781';
+}
+
+function pctBanco(total) {
+  const totalGeneral = resumenBancos.value.totalGeneral;
+  if (!totalGeneral) return '0%';
+  return `${((Number(total) || 0) / totalGeneral * 100).toFixed(1)}%`;
+}
+
 function toggleFiltroBanco(nombre) {
   filtroLugarPago.value = filtroLugarPago.value === nombre ? '' : nombre;
 }
@@ -492,6 +551,44 @@ const showConfirmDelete = ref(false);
 const eliminarTipo = ref('nota');
 const eliminarItem = ref(null);
 const eliminando = ref(false);
+
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const showComprobantes = ref(false);
+const comprobantesActivos = ref([]);
+
+function parseComprobantes(row) {
+  const raw = row?.comprobantes;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function urlComprobante(path) {
+  if (!path) return '';
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${API_URL}${p}`;
+}
+
+function nombreArchivoComprobante(path) {
+  if (!path) return 'comprobante';
+  return path.split('/').pop();
+}
+
+function verComprobante(row) {
+  const comps = parseComprobantes(row);
+  if (!comps.length) return;
+  if (comps.length === 1) {
+    window.open(urlComprobante(comps[0]), '_blank', 'noopener');
+    return;
+  }
+  comprobantesActivos.value = comps;
+  showComprobantes.value = true;
+}
 
 function formatFecha(f) {
   if (!f) return '';
@@ -674,6 +771,25 @@ onBeforeUnmount(() => {
   margin-bottom: 0.3rem;
   font-size: 0.85rem;
 }
+.comprobantes-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.comprobante-item {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.comprobante-item:last-child {
+  border-bottom: none;
+}
+.comprobante-link {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
 .imeis-cell {
   display: flex;
   flex-direction: column;
@@ -683,80 +799,115 @@ onBeforeUnmount(() => {
 
 .bancos-resumen {
   margin-bottom: 1.5rem;
-  padding: 1rem 1.25rem;
+  padding: 1.25rem 1.5rem;
   border: 1px solid var(--color-border);
   background: var(--color-bg-light);
-  border-radius: 12px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-1, 0 1px 4px rgba(0, 0, 0, 0.05));
 }
 .bancos-header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-bottom: 0.85rem;
+  margin-bottom: 1.1rem;
 }
 .bancos-header h3 {
   margin: 0;
-  font-size: 1rem;
-  color: var(--color-title);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text);
+  opacity: 0.7;
 }
 .bancos-total-general {
-  font-weight: 700;
-  font-size: 1.1rem;
-  color: var(--color-primary);
+  font-weight: 800;
+  font-size: 1.3rem;
+  color: var(--color-title);
 }
 .bancos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 0.65rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
 }
 .banco-card {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.65rem 0.8rem;
-  border-radius: 10px;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 1 1 200px;
+  max-width: 240px;
+  padding: 1.1rem 1.25rem;
+  border-radius: 12px;
   border: 1px solid var(--color-border);
+  border-top: 3px solid color-mix(in srgb, var(--serie-color, var(--color-border)) 65%, transparent);
   background: var(--color-card);
   cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  text-align: center;
+  box-shadow: var(--shadow-1, 0 1px 3px rgba(0, 0, 0, 0.05));
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
 .banco-card:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-top-color: var(--serie-color, var(--color-primary));
+  box-shadow: var(--shadow-2, 0 8px 20px rgba(0, 0, 0, 0.09));
+  transform: translateY(-3px);
 }
 .banco-card-activo {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent) inset;
+  border-top-color: var(--serie-color, var(--color-primary));
+  background: color-mix(in srgb, var(--serie-color, var(--color-primary)) 7%, var(--color-card));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--serie-color, var(--color-primary)) 30%, transparent), var(--shadow-2, 0 8px 20px rgba(0, 0, 0, 0.09));
 }
 .banco-card-sin {
   cursor: default;
   background: var(--color-bg-light);
 }
 .banco-card-sin:hover {
-  border-color: var(--color-border);
-  box-shadow: none;
+  transform: none;
+  box-shadow: var(--shadow-1, 0 1px 3px rgba(0, 0, 0, 0.05));
 }
 .banco-nombre {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--color-title);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+  opacity: 0.75;
+}
+.banco-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--serie-color, var(--color-border));
+  flex-shrink: 0;
 }
 .banco-total {
+  font-weight: 800;
+  font-size: 1.55rem;
+  color: var(--color-title);
+}
+.banco-pct {
+  font-size: 0.78rem;
   font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--color-primary);
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--serie-color, var(--color-text)) 16%, transparent);
+  color: var(--serie-color, var(--color-text));
 }
 .banco-count {
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   color: var(--color-text);
+  opacity: 0.6;
 }
 
 @media (max-width: 768px) {
-  .bancos-grid {
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  .banco-card {
+    flex: 1 1 140px;
   }
 }
 
