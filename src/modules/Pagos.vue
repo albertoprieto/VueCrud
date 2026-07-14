@@ -289,7 +289,13 @@
               <Button icon="pi pi-file" class="p-button-sm p-button-info p-button-outlined" label="Comprobante"
                 :disabled="!parseComprobantes(data).length"
                 @click="verComprobante(data)" />
-              <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
+              <Button icon="pi pi-code" class="p-button-sm p-button-help p-button"
+                :disabled="!data.cfdi_xml_path"
+                @click="abrirArchivoCfdi(data.cfdi_xml_path)" />
+              <Button icon="pi pi-file-pdf" class="p-button-sm p-button-help p-button"
+                :disabled="!data.cfdi_pdf_path"
+                @click="abrirArchivoCfdi(data.cfdi_pdf_path)" />
+              <Button icon="pi pi-trash" class="p-button-sm p-button-danger"
                 @click="confirmarEliminar('factura', data)" />
             </div>
           </template>
@@ -354,9 +360,15 @@
               <Button icon="pi pi-download" class="p-button-sm p-button-success" label="PDF"
                 :loading="descargandoId === `factura-${item.id}`"
                 @click="descargarPDF('factura', item)" />
-              <Button icon="pi pi-file" class="p-button-sm p-button-info p-button-outlined" label="Comprobante"
+              <Button icon="pi pi-file" class="p-button-sm p-button-info p-button" label="Comprobante"
                 :disabled="!parseComprobantes(item).length"
                 @click="verComprobante(item)" />
+              <Button icon="pi pi-code" class="p-button-sm p-button-help p-button" label="XML"
+                :disabled="!item.cfdi_xml_path"
+                @click="abrirArchivoCfdi(item.cfdi_xml_path)" />
+              <Button icon="pi pi-file-pdf" class="p-button-sm p-button-help p-button" label="PDF Timbre"
+                :disabled="!item.cfdi_pdf_path"
+                @click="abrirArchivoCfdi(item.cfdi_pdf_path)" />
               <Button icon="pi pi-trash" class="p-button-sm p-button-danger" label="Eliminar"
                 @click="confirmarEliminar('factura', item)" />
             </div>
@@ -438,8 +450,8 @@ const lugaresPago = [
  'ASP Renovaciones', 
  'Comercializadora', 
  'BBVA PAU', 
-//  'Tecnico', 
-//  'Oficina', 
+ 'Tecnico', 
+ 'Oficina', 
  'Mercadopago'
 ];
 
@@ -593,6 +605,11 @@ function urlComprobante(path) {
 function nombreArchivoComprobante(path) {
   if (!path) return 'comprobante';
   return path.split('/').pop();
+}
+
+function abrirArchivoCfdi(path) {
+  if (!path) return;
+  window.open(urlComprobante(path), '_blank', 'noopener');
 }
 
 function verComprobante(row) {

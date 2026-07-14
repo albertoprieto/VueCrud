@@ -141,6 +141,31 @@
             <InputText id="rfc" v-model="form.rfc" class="w-full" placeholder="RFC del cliente" />
           </div>
           <div class="field col-12 md:col-6">
+            <label for="calle_numero"><i class="pi pi-map icon-inline"></i>Calle y número:</label>
+            <InputText id="calle_numero" v-model="form.calle_numero" class="w-full" placeholder="Ej: Jesus del Monte 4" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="colonia"><i class="pi pi-map icon-inline"></i>Colonia:</label>
+            <InputText id="colonia" v-model="form.colonia" class="w-full" placeholder="Ej: Hacienda de las Palmas" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="codigo_postal"><i class="pi pi-map-marker icon-inline"></i>Código postal:</label>
+            <InputText id="codigo_postal" v-model="form.codigo_postal" class="w-full" maxlength="5" placeholder="Ej: 52763" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="regimen_fiscal"><i class="pi pi-id-card icon-inline"></i>Régimen fiscal:</label>
+            <Dropdown
+              id="regimen_fiscal"
+              v-model="form.regimen_fiscal"
+              :options="regimenesFiscales"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Selecciona régimen fiscal"
+              class="w-full"
+              showClear
+            />
+          </div>
+          <div class="field col-12 md:col-6">
             <label for="constancia"><i class="pi pi-file-pdf icon-inline"></i>Constancia Fiscal:</label>
             <input type="file" id="constancia" @change="onConstanciaFileChange" accept=".pdf,.png,.jpg,.jpeg" class="w-full" />
             <small v-if="archivoConstancia" class="file-selected">Archivo seleccionado: {{ archivoConstancia.name }}</small>
@@ -226,8 +251,25 @@ const form = ref({
   atendidoPor: '',
   usuarioSesion: '',
   rfc: 'XAXX010101000',
-  constancia_path: null
+  constancia_path: null,
+  calle_numero: '',
+  colonia: '',
+  codigo_postal: '',
+  regimen_fiscal: null
 });
+
+const regimenesFiscales = [
+  { label: '601 - General de Ley Personas Morales', value: '601' },
+  { label: '603 - Personas Morales con Fines no Lucrativos', value: '603' },
+  { label: '605 - Sueldos y Salarios e Ingresos Asimilados a Salarios', value: '605' },
+  { label: '606 - Arrendamiento', value: '606' },
+  { label: '608 - Demás ingresos', value: '608' },
+  { label: '610 - Residentes en el Extranjero sin Establecimiento Permanente en México', value: '610' },
+  { label: '612 - Personas Físicas con Actividades Empresariales y Profesionales', value: '612' },
+  { label: '616 - Sin obligaciones fiscales', value: '616' },
+  { label: '621 - Incorporación Fiscal', value: '621' },
+  { label: '626 - Régimen Simplificado de Confianza', value: '626' },
+];
 
 const filtroNombre = ref('');
 const filtroUsuario = ref(null);
@@ -348,7 +390,11 @@ const openModal = () => {
     atendidoPor: atendidoPor.value,
     usuarioSesion: usuarioSesion.value,
     rfc: 'XAXX010101000',
-    constancia_path: null
+    constancia_path: null,
+    calle_numero: '',
+    colonia: '',
+    codigo_postal: '',
+    regimen_fiscal: null
   };
   archivoConstancia.value = null;
   showModal.value = true;
@@ -418,7 +464,11 @@ const oldEditCliente = (cliente) => {
     atendidoPor: cliente.atendidoPor || atendidoPor.value,
     usuarioSesion: cliente.usuarioSesion || usuarioSesion.value,
     rfc: cliente.rfc || 'XAXX010101000',
-    constancia_path: cliente.constancia_path || null
+    constancia_path: cliente.constancia_path || null,
+    calle_numero: cliente.calle_numero || '',
+    colonia: cliente.colonia || '',
+    codigo_postal: cliente.codigo_postal || '',
+    regimen_fiscal: cliente.regimen_fiscal || null
   };
   usuarioSesion.value = form.value.usuarioSesion;
   atendidoPor.value = form.value.atendidoPor;

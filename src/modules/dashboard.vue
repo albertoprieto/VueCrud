@@ -139,6 +139,7 @@ import { useLoginStore } from '@/stores/loginStore';
 import Loader from '@/components/Loader.vue';
 import { getCotizacionesPendientes } from '@/services/quotationService';
 import { getReportesNuevos } from '@/services/reportesService';
+import { getCasos } from '@/services/whatsappCasosService';
 import { registrarSesion } from '@/services/userService';
 
 const emit = defineEmits(['logout']);
@@ -163,6 +164,16 @@ const handleLogout = () => {
 // Datos reactivos para los badges
 const cotizacionesPendientes = ref(0);
 const reportesNuevos = ref(0);
+const casosWhatsappAbiertos = ref(0);
+
+async function cargarCasosAbiertos() {
+  try {
+    const casos = await getCasos();
+    casosWhatsappAbiertos.value = casos.filter(c => c.estado !== 'cerrado' && c.estado !== 'resuelto').length;
+  } catch {
+    casosWhatsappAbiertos.value = 0;
+  }
+}
 
 // Registrar sesión al cargar el dashboard
 // onMounted(() => {
@@ -170,6 +181,10 @@ const reportesNuevos = ref(0);
 //     registrarSesion(user.value.id);
 //   }
 // });
+
+onMounted(() => {
+  cargarCasosAbiertos();
+});
 
 // Opcional: recargar cuando cambie la ruta o cada cierto tiempo
 
@@ -254,6 +269,12 @@ const items = computed(() => {
       label: 'Bancos',
       icon: 'pi pi-fw pi-building-columns',
       route: '/bancos'
+    },
+    {
+      label: 'Casos WhatsApp',
+      icon: 'pi pi-fw pi-whatsapp',
+      route: '/casos-whatsapp',
+      badge: casosWhatsappAbiertos.value || undefined
     },
     {
       label: 'Usuarios',

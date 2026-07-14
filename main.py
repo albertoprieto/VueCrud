@@ -20,6 +20,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import json
 import smtplib
 from email.mime.text import MIMEText
@@ -130,6 +131,23 @@ def _sw_base_url(pac_env: str) -> str:
     return "https://services.test.sw.com.mx" if pac_env.upper() == "TEST" else "https://services.sw.com.mx"
 
 
+def _sw_authenticate(sw_base: str, pac_user: str, pac_pass: str) -> str:
+    import requests
+    try:
+        auth_resp = requests.post(
+            f"{sw_base}/v2/security/authenticate",
+            json={"user": pac_user, "password": pac_pass},
+            headers={"Content-Type": "application/json"},
+            timeout=20,
+        )
+        auth_data = auth_resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con SW (auth): {e}")
+    if auth_data.get("status") != "success":
+        raise HTTPException(status_code=502, detail=f"Error al autenticar con SW: {auth_data.get('message') or auth_data}")
+    return auth_data["data"]["token"]
+
+
 def _construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
                                productos, serie="A", folio=None,
                                domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None):
@@ -154,10 +172,11 @@ def _construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago
     if not (PAC_USER and PAC_PASS):
         raise HTTPException(status_code=500, detail="PAC no configurado (PAC_USER/PAC_PASS)")
 
-    # El SAT exige datos fijos cuando se factura al RFC genérico de público en general
+    # El SAT exige datos fijos cuando se factura al RFC genérico de público en general.
+    # DomicilioFiscalReceptor debe ser igual a LugarExpedicion (regla CFDI40149).
     if rfc_cliente == RFC_PUBLICO_GENERAL:
         uso_cfdi = "S01"
-        domicilio_receptor = "00000"
+        domicilio_receptor = LUGAR_EXPEDICION
         regimen_receptor = "616"
     else:
         domicilio_receptor = domicilio_fiscal_receptor or LUGAR_EXPEDICION
@@ -201,7 +220,7 @@ def _construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago
         "FormaPago": forma_pago,
         "Serie": serie or "A",
         "Folio": folio or str(int(datetime.utcnow().timestamp())),
-        "Fecha": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "Fecha": datetime.now(ZoneInfo("America/Mexico_City")).strftime("%Y-%m-%dT%H:%M:%S"),
         "Sello": "",
         "NoCertificado": "",
         "Certificado": "",
@@ -239,19 +258,7 @@ def _construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago
         }
     }
 
-    try:
-        auth_resp = requests.post(
-            f"{sw_base}/v2/security/authenticate",
-            json={"user": PAC_USER, "password": PAC_PASS},
-            headers={"Content-Type": "application/json"},
-            timeout=20,
-        )
-        auth_data = auth_resp.json()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error conectando con SW (auth): {e}")
-    if auth_data.get("status") != "success":
-        raise HTTPException(status_code=502, detail=f"Error al autenticar con SW: {auth_data.get('message') or auth_data}")
-    token = auth_data["data"]["token"]
+    token = _sw_authenticate(sw_base, PAC_USER, PAC_PASS)
 
     try:
         stamp_resp = requests.post(
@@ -285,12 +292,30 @@ def _construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago
     with open(pdf_path, "rb") as f:
         pdf_bytes = f.read()
 
+    # Datos del Timbre Fiscal Digital, para el PDF con branding propio (no el de satcfdi)
+    fecha_certificacion = None
+    no_certificado_sat = None
+    rfc_pac = None
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(xml_bytes)
+        tfd = root.find('.//{http://www.sat.gob.mx/TimbreFiscalDigital}TimbreFiscalDigital')
+        if tfd is not None:
+            fecha_certificacion = tfd.get('FechaTimbrado')
+            no_certificado_sat = tfd.get('NoCertificadoSAT')
+            rfc_pac = tfd.get('RfcProvCertif')
+    except Exception:
+        pass
+
     return {
         "uuid": uuid_,
         "xml_bytes": xml_bytes,
         "pdf_bytes": pdf_bytes,
         "xml_path": xml_path,
         "pdf_path": pdf_path,
+        "fecha_certificacion": fecha_certificacion,
+        "no_certificado_sat": no_certificado_sat,
+        "rfc_pac": rfc_pac,
     }
 
 
@@ -1059,6 +1084,10 @@ class Cliente(BaseModel):
     usuarioSesion: Optional[str] = ""
     rfc: Optional[str] = None
     constancia_path: Optional[str] = None
+    calle_numero: Optional[str] = None
+    colonia: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    regimen_fiscal: Optional[str] = None
 
 @app.get("/clientes")
 def get_clientes():
@@ -1098,24 +1127,44 @@ def add_cliente(cliente: Cliente):
     )
     cursor = db.cursor()
     try:
-        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS atendidoPor VARCHAR(255) NULL")
+        cursor.execute("ALTER TABLE clientes ADD COLUMN atendidoPor VARCHAR(255) NULL")
     except Exception:
         pass
     try:
-        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS usuarioSesion VARCHAR(255) NULL")
+        cursor.execute("ALTER TABLE clientes ADD COLUMN usuarioSesion VARCHAR(255) NULL")
     except Exception:
         pass
     try:
-        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS rfc VARCHAR(20) NULL")
+        cursor.execute("ALTER TABLE clientes ADD COLUMN rfc VARCHAR(20) NULL")
     except Exception:
         pass
     try:
-        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
+        cursor.execute("ALTER TABLE clientes ADD COLUMN constancia_path VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN calle_numero VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN colonia VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN codigo_postal VARCHAR(5) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN regimen_fiscal VARCHAR(3) NULL")
     except Exception:
         pass
     cursor.execute(
-        "INSERT INTO clientes (nombre, correo, direccion, atendidoPor, usuarioSesion, rfc, constancia_path) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-        (cliente.nombre, cliente.correo, cliente.direccion, cliente.atendidoPor, cliente.usuarioSesion, cliente.rfc, cliente.constancia_path)
+        """INSERT INTO clientes
+           (nombre, correo, direccion, atendidoPor, usuarioSesion, rfc, constancia_path,
+            calle_numero, colonia, codigo_postal, regimen_fiscal)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (cliente.nombre, cliente.correo, cliente.direccion, cliente.atendidoPor, cliente.usuarioSesion, cliente.rfc, cliente.constancia_path,
+         cliente.calle_numero, cliente.colonia, cliente.codigo_postal, cliente.regimen_fiscal)
     )
     cliente_id = cursor.lastrowid
     for tel in cliente.telefonos or []:
@@ -1139,24 +1188,44 @@ def update_cliente(cliente_id: int, cliente: Cliente):
     )
     cursor = db.cursor()
     try:
-        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS atendidoPor VARCHAR(255) NULL")
+        cursor.execute("ALTER TABLE clientes ADD COLUMN atendidoPor VARCHAR(255) NULL")
     except Exception:
         pass
     try:
-        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS usuarioSesion VARCHAR(255) NULL")
+        cursor.execute("ALTER TABLE clientes ADD COLUMN usuarioSesion VARCHAR(255) NULL")
     except Exception:
         pass
     try:
-        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS rfc VARCHAR(20) NULL")
+        cursor.execute("ALTER TABLE clientes ADD COLUMN rfc VARCHAR(20) NULL")
     except Exception:
         pass
     try:
-        cursor.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
+        cursor.execute("ALTER TABLE clientes ADD COLUMN constancia_path VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN calle_numero VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN colonia VARCHAR(255) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN codigo_postal VARCHAR(5) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN regimen_fiscal VARCHAR(3) NULL")
     except Exception:
         pass
     cursor.execute(
-        "UPDATE clientes SET nombre=%s, correo=%s, direccion=%s, atendidoPor=%s, usuarioSesion=%s, rfc=%s, constancia_path=%s WHERE id=%s",
-        (cliente.nombre, cliente.correo, cliente.direccion, cliente.atendidoPor, cliente.usuarioSesion, cliente.rfc, cliente.constancia_path, cliente_id)
+        """UPDATE clientes
+           SET nombre=%s, correo=%s, direccion=%s, atendidoPor=%s, usuarioSesion=%s, rfc=%s, constancia_path=%s,
+               calle_numero=%s, colonia=%s, codigo_postal=%s, regimen_fiscal=%s
+           WHERE id=%s""",
+        (cliente.nombre, cliente.correo, cliente.direccion, cliente.atendidoPor, cliente.usuarioSesion, cliente.rfc, cliente.constancia_path,
+         cliente.calle_numero, cliente.colonia, cliente.codigo_postal, cliente.regimen_fiscal, cliente_id)
     )
     cursor.execute("DELETE FROM telefonos_cliente WHERE cliente_id=%s", (cliente_id,))
     for tel in cliente.telefonos or []:
@@ -3118,11 +3187,11 @@ async def subir_constancia_fiscal(venta_id: int, archivo: UploadFile = File(...)
     cursor2 = db.cursor()
     try:
         try:
-            cursor2.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS constancia_path VARCHAR(255) NULL")
+            cursor2.execute("ALTER TABLE ventas ADD COLUMN constancia_path VARCHAR(255) NULL")
         except Exception:
             pass
         try:
-            cursor2.execute("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS rfc VARCHAR(20) NULL")
+            cursor2.execute("ALTER TABLE ventas ADD COLUMN rfc VARCHAR(20) NULL")
         except Exception:
             pass
         cursor2.execute("UPDATE ventas SET constancia_path=%s, rfc=COALESCE(%s, rfc) WHERE id=%s", (rel_path, rfc, venta_id))
@@ -4552,6 +4621,36 @@ def actualizar_observaciones_nota(nota_id: int, data: dict = Body(...)):
         raise HTTPException(status_code=404, detail="Nota no encontrada")
     return {"message": "Observaciones actualizadas", "id": nota_id}
 
+@app.put("/notas-pago/{nota_id}/datos-pago")
+def actualizar_datos_pago_nota(nota_id: int, data: dict = Body(...)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    for _col_sql in (
+        "ALTER TABLE notas_pago ADD COLUMN metodo_pago VARCHAR(5) NULL",
+        "ALTER TABLE notas_pago ADD COLUMN forma_pago VARCHAR(5) NULL",
+        "ALTER TABLE notas_pago ADD COLUMN notas_extra TEXT NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+    cursor.execute(
+        "UPDATE notas_pago SET metodo_pago=%s, forma_pago=%s, notas_extra=%s WHERE id=%s",
+        (data.get('metodo_pago') or None, data.get('forma_pago') or None, data.get('notas_extra') or None, nota_id)
+    )
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    return {"message": "Datos de pago actualizados", "id": nota_id}
+
 @app.delete("/notas-pago/{nota_id}")
 def eliminar_nota_pago(nota_id: int):
     db = mysql.connector.connect(
@@ -4898,7 +4997,7 @@ def crear_factura_pago(data: FacturaPagoCreate):
 class TimbrarFacturaPagoRequest(BaseModel):
     rfc_cliente: str
     uso_cfdi: str
-    forma_pago: str
+    forma_pago: str = "03"
     metodo_pago: str
     domicilio_fiscal_receptor: Optional[str] = None
     regimen_fiscal_receptor: Optional[str] = None
@@ -4921,6 +5020,10 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_uuid VARCHAR(36) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_xml_path VARCHAR(255) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_pdf_path VARCHAR(255) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_fecha_certificacion VARCHAR(25) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_no_certificado_sat VARCHAR(25) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_rfc_pac VARCHAR(20) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN regimen_fiscal_receptor VARCHAR(3) NULL",
     ):
         try:
             cursor.execute(_col_sql)
@@ -4959,14 +5062,16 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
     if not reportes:
         raise HTTPException(status_code=400, detail="No se encontraron los reportes de servicio asociados a esta factura")
 
+    # r['total'] ya incluye IVA (16%); SW vuelve a calcular el IVA sobre el
+    # importe que le mandemos, así que aquí se manda la base sin IVA.
     productos = [
         Producto(
             ClaveProdServ="81112100",
             ClaveUnidad="E48",
             Unidad="Servicio",
             Descripcion=r.get('tipo_servicio') or f"Servicio {r.get('folio') or r['id']}",
-            ValorUnitario=float(r.get('total') or 0),
-            Importe=float(r.get('total') or 0),
+            ValorUnitario=round(float(r.get('total') or 0) / 1.16, 2),
+            Importe=round(float(r.get('total') or 0) / 1.16, 2),
             Cantidad=1
         ) for r in reportes
     ]
@@ -4994,10 +5099,14 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
     cursor.execute(
         """UPDATE facturas_pago
            SET status='Timbrado', rfc_cliente=%s, uso_cfdi=%s, forma_pago=%s, metodo_pago=%s,
-               cfdi_uuid=%s, cfdi_xml_path=%s, cfdi_pdf_path=%s
+               cfdi_uuid=%s, cfdi_xml_path=%s, cfdi_pdf_path=%s,
+               cfdi_fecha_certificacion=%s, cfdi_no_certificado_sat=%s, cfdi_rfc_pac=%s,
+               regimen_fiscal_receptor=%s
            WHERE id=%s""",
         (data.rfc_cliente, data.uso_cfdi, data.forma_pago, data.metodo_pago,
-         resultado['uuid'], resultado['xml_path'], resultado['pdf_path'], factura_id)
+         resultado['uuid'], resultado['xml_path'], resultado['pdf_path'],
+         resultado['fecha_certificacion'], resultado['no_certificado_sat'], resultado['rfc_pac'],
+         data.regimen_fiscal_receptor, factura_id)
     )
     db.commit()
     cursor.close()
@@ -5010,6 +5119,114 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
         "uuid": resultado['uuid'],
         "xml_url": build_public_url(resultado['xml_path']),
         "pdf_url": build_public_url(resultado['pdf_path'])
+    }
+
+
+class CancelarFacturaPagoRequest(BaseModel):
+    motivo: str
+    folio_sustitucion: Optional[str] = None
+
+
+@app.post("/facturas-pago/{factura_id}/cancelar")
+def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, current=Depends(get_current_user)):
+    """Cancela un CFDI ya timbrado ante el SAT vía SW Sapien (método CSD, certificado en su cuenta)."""
+    if data.motivo not in ("01", "02", "03", "04"):
+        raise HTTPException(status_code=400, detail="Motivo inválido. Valores: 01, 02, 03, 04")
+    if data.motivo == "01" and not data.folio_sustitucion:
+        raise HTTPException(status_code=400, detail="El motivo 01 requiere 'folio_sustitucion' (UUID de la factura que sustituye)")
+
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+
+    cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    user = cursor.fetchone()
+    if not user or user.get("perfil") != "Admin":
+        cursor.close(); db.close()
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    for _col_sql in (
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_motivo VARCHAR(2) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_estatus VARCHAR(10) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_fecha DATETIME NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+
+    cursor.execute("SELECT id, status, cfdi_uuid FROM facturas_pago WHERE id=%s", (factura_id,))
+    factura = cursor.fetchone()
+    if not factura:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.get("status") != "Timbrado":
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Solo se puede cancelar una factura con status 'Timbrado'")
+    if not factura.get("cfdi_uuid"):
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="La factura no tiene UUID de CFDI")
+    cursor.close()
+    db.close()
+
+    RFC = os.getenv("CSD_RFC", "RAQÑ7701212M3")
+    PAC_USER = os.getenv("PAC_USER")
+    PAC_PASS = os.getenv("PAC_PASS")
+    PAC_ENV = os.getenv("PAC_ENV", "TEST")
+    sw_base = _sw_base_url(PAC_ENV)
+
+    if not (PAC_USER and PAC_PASS):
+        raise HTTPException(status_code=500, detail="PAC no configurado (PAC_USER/PAC_PASS)")
+
+    token = _sw_authenticate(sw_base, PAC_USER, PAC_PASS)
+
+    uuid_ = factura["cfdi_uuid"]
+    cancel_url = f"{sw_base}/cfdi33/cancel/{RFC}/{uuid_}/{data.motivo}"
+    if data.motivo == "01":
+        cancel_url += f"/{data.folio_sustitucion}"
+
+    import requests
+    try:
+        cancel_resp = requests.post(
+            cancel_url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        cancel_data = cancel_resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con SW (cancelación): {e}")
+    if cancel_data.get("status") != "success":
+        raise HTTPException(status_code=502, detail=f"Error al cancelar con SW: {cancel_data.get('message') or cancel_data.get('messageDetail') or cancel_data}")
+
+    estatus_uuid = (cancel_data.get("data", {}).get("uuid", {}) or {}).get(uuid_.upper()) \
+        or (cancel_data.get("data", {}).get("uuid", {}) or {}).get(uuid_)
+
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        """UPDATE facturas_pago
+           SET status='Cancelado', cfdi_cancelacion_motivo=%s, cfdi_cancelacion_estatus=%s, cfdi_cancelacion_fecha=NOW()
+           WHERE id=%s""",
+        (data.motivo, estatus_uuid, factura_id)
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return {
+        "message": "Factura cancelada correctamente",
+        "id": factura_id,
+        "status": "Cancelado",
+        "estatus_uuid": estatus_uuid,
     }
 
 
@@ -5077,6 +5294,36 @@ def actualizar_observaciones_factura(factura_id: int, data: dict = Body(...)):
     if affected == 0:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
     return {"message": "Observaciones actualizadas", "id": factura_id}
+
+@app.put("/facturas-pago/{factura_id}/datos-pago")
+def actualizar_datos_pago_factura(factura_id: int, data: dict = Body(...)):
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    for _col_sql in (
+        "ALTER TABLE facturas_pago ADD COLUMN metodo_pago VARCHAR(5) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN forma_pago VARCHAR(5) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN notas_extra TEXT NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+    cursor.execute(
+        "UPDATE facturas_pago SET metodo_pago=%s, forma_pago=%s, notas_extra=%s WHERE id=%s",
+        (data.get('metodo_pago') or None, data.get('forma_pago') or None, data.get('notas_extra') or None, factura_id)
+    )
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return {"message": "Datos de pago actualizados", "id": factura_id}
 
 @app.delete("/facturas-pago/{factura_id}")
 def eliminar_factura_pago(factura_id: int):
@@ -6148,6 +6395,30 @@ def _extract_sim_and_account(dispositivo: dict, plataforma: str) -> tuple[str, s
     return cuenta, cliente, sim
 
 
+@app.get("/api/plataformas/dispositivo-resumen/{imei_val}")
+def resumen_dispositivo_plataforma(imei_val: str, plataforma: str = Query(...)):
+    """Busca el dispositivo (mismo método que /api/plataformas/buscar) y regresa
+    sim/cuenta/cliente ya extraídos y normalizados entre IOP y Tracksolid,
+    para consumo del bot."""
+    plat = _normalize_plataforma_utilidades(plataforma)
+    if plat == "iop":
+        if not os.getenv("IOPGPS_APPID"):
+            raise HTTPException(status_code=400, detail="Credenciales IOP no configuradas en .env")
+        devices = IOPGPSClient().search_devices(imei_val)
+    elif plat == "tracksolid":
+        if not os.getenv("TRACKSOLID_APP_KEY"):
+            raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
+        devices = _get_tracksolid_client().search_devices(imei_val)
+    else:
+        raise HTTPException(status_code=400, detail="Plataforma no soportada. Usa 'iop' o 'tracksolid'")
+
+    if not devices:
+        raise HTTPException(status_code=404, detail="Dispositivo no encontrado")
+
+    cuenta, cliente, sim = _extract_sim_and_account(devices[0], plat)
+    return {"plataforma": plat, "sim": sim, "cuenta": cuenta, "cliente": cliente}
+
+
 def _extract_campos_utilidades(dispositivo: dict, plataforma: str) -> dict:
     if plataforma == "tracksolid":
         account_val = str(dispositivo.get("account") or "")
@@ -6642,3 +6913,220 @@ def delete_consulta_sim(record_id: int):
     if changed == 0:
         raise HTTPException(status_code=404, detail="Registro no encontrado")
     return {"id": record_id, "message": "Eliminado"}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ══════════════ CASOS DE WHATSAPP (seguimiento del bot) ══════════════
+# ═══════════════════════════════════════════════════════════════════════
+
+CATEGORIAS_CASO = ('tramite', 'soporte_equipo_app', 'soporte_dudas', 'soporte_accesos', 'otro')
+ESTADOS_CASO = ('abierto', 'en_progreso', 'esperando_cliente', 'resuelto', 'cerrado')
+
+
+@app.on_event("startup")
+def crear_tablas_whatsapp_casos():
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_casos (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            telefono VARCHAR(20) NOT NULL,
+            nombre_contacto VARCHAR(255) NULL,
+            categoria VARCHAR(30) NOT NULL DEFAULT 'otro',
+            estado VARCHAR(30) NOT NULL DEFAULT 'abierto',
+            resumen VARCHAR(500) NULL,
+            flow_id VARCHAR(100) NULL,
+            referencia_tipo VARCHAR(20) NULL,
+            referencia_id INT NULL,
+            atendido_por VARCHAR(100) NULL,
+            creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ultima_actividad DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_mensajes (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            caso_id INT NOT NULL,
+            direccion VARCHAR(10) NOT NULL,
+            texto TEXT NULL,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (caso_id) REFERENCES whatsapp_casos(id) ON DELETE CASCADE
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
+
+class WhatsappMensajeIn(BaseModel):
+    telefono: str
+    nombre_contacto: Optional[str] = None
+    direccion: str  # 'in' | 'out'
+    texto: Optional[str] = None
+    categoria: Optional[str] = None
+    estado: Optional[str] = None
+    flow_id: Optional[str] = None
+    referencia_tipo: Optional[str] = None
+    referencia_id: Optional[int] = None
+
+
+@app.post("/whatsapp-casos/mensaje")
+def registrar_mensaje_whatsapp(data: WhatsappMensajeIn):
+    """El bot llama esto por cada mensaje (entrante o saliente). Crea el caso
+    si no hay uno abierto para ese teléfono, o actualiza el existente."""
+    if data.direccion not in ('in', 'out'):
+        raise HTTPException(status_code=400, detail="direccion debe ser 'in' u 'out'")
+    if data.categoria and data.categoria not in CATEGORIAS_CASO:
+        raise HTTPException(status_code=400, detail=f"categoria inválida. Valores: {', '.join(CATEGORIAS_CASO)}")
+    if data.estado and data.estado not in ESTADOS_CASO:
+        raise HTTPException(status_code=400, detail=f"estado inválido. Valores: {', '.join(ESTADOS_CASO)}")
+
+    telefono = data.telefono.strip()
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id FROM whatsapp_casos WHERE telefono=%s AND estado != 'cerrado' ORDER BY id DESC LIMIT 1",
+        (telefono,)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        caso_id = row['id']
+        campos = ["ultima_actividad=NOW()"]
+        valores = []
+        if data.nombre_contacto:
+            campos.append("nombre_contacto=%s"); valores.append(data.nombre_contacto)
+        if data.categoria:
+            campos.append("categoria=%s"); valores.append(data.categoria)
+        if data.estado:
+            campos.append("estado=%s"); valores.append(data.estado)
+        if data.flow_id:
+            campos.append("flow_id=%s"); valores.append(data.flow_id)
+        if data.referencia_tipo:
+            campos.append("referencia_tipo=%s"); valores.append(data.referencia_tipo)
+        if data.referencia_id is not None:
+            campos.append("referencia_id=%s"); valores.append(data.referencia_id)
+        if data.texto:
+            campos.append("resumen=%s"); valores.append(data.texto[:500])
+        valores.append(caso_id)
+        cursor2 = db.cursor()
+        cursor2.execute(f"UPDATE whatsapp_casos SET {', '.join(campos)} WHERE id=%s", tuple(valores))
+        cursor2.close()
+    else:
+        cursor2 = db.cursor()
+        cursor2.execute(
+            """INSERT INTO whatsapp_casos
+               (telefono, nombre_contacto, categoria, estado, resumen, flow_id, referencia_tipo, referencia_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (telefono, data.nombre_contacto, data.categoria or 'otro', data.estado or 'abierto',
+             (data.texto or '')[:500] or None, data.flow_id, data.referencia_tipo, data.referencia_id)
+        )
+        caso_id = cursor2.lastrowid
+        cursor2.close()
+
+    if data.texto:
+        cursor3 = db.cursor()
+        cursor3.execute(
+            "INSERT INTO whatsapp_mensajes (caso_id, direccion, texto) VALUES (%s, %s, %s)",
+            (caso_id, data.direccion, data.texto)
+        )
+        cursor3.close()
+
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"caso_id": caso_id, "message": "Registrado"}
+
+
+@app.get("/whatsapp-casos")
+def listar_casos_whatsapp(estado: str = None, categoria: str = None):
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    query = "SELECT * FROM whatsapp_casos WHERE 1=1"
+    params = []
+    if estado:
+        query += " AND estado=%s"; params.append(estado)
+    if categoria:
+        query += " AND categoria=%s"; params.append(categoria)
+    query += " ORDER BY ultima_actividad DESC"
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    for r in rows:
+        for campo in ("creado_fecha", "ultima_actividad"):
+            if r.get(campo) and hasattr(r[campo], "isoformat"):
+                r[campo] = r[campo].isoformat()
+    cursor.close()
+    db.close()
+    return rows
+
+
+@app.get("/whatsapp-casos/{caso_id}")
+def detalle_caso_whatsapp(caso_id: int):
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM whatsapp_casos WHERE id=%s", (caso_id,))
+    caso = cursor.fetchone()
+    if not caso:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    for campo in ("creado_fecha", "ultima_actividad"):
+        if caso.get(campo) and hasattr(caso[campo], "isoformat"):
+            caso[campo] = caso[campo].isoformat()
+    cursor.execute("SELECT * FROM whatsapp_mensajes WHERE caso_id=%s ORDER BY fecha ASC", (caso_id,))
+    mensajes = cursor.fetchall()
+    for m in mensajes:
+        if m.get('fecha') and hasattr(m['fecha'], 'isoformat'):
+            m['fecha'] = m['fecha'].isoformat()
+    caso['mensajes'] = mensajes
+    cursor.close()
+    db.close()
+    return caso
+
+
+@app.put("/whatsapp-casos/{caso_id}/estado")
+def actualizar_estado_caso_whatsapp(caso_id: int, data: dict = Body(...)):
+    estado = data.get('estado', '').strip()
+    if estado not in ESTADOS_CASO:
+        raise HTTPException(status_code=400, detail=f"estado inválido. Valores: {', '.join(ESTADOS_CASO)}")
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE whatsapp_casos SET estado=%s WHERE id=%s", (estado, caso_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    return {"message": "Estado actualizado", "id": caso_id, "estado": estado}
+
+
+@app.put("/whatsapp-casos/{caso_id}/categoria")
+def actualizar_categoria_caso_whatsapp(caso_id: int, data: dict = Body(...)):
+    categoria = data.get('categoria', '').strip()
+    if categoria not in CATEGORIAS_CASO:
+        raise HTTPException(status_code=400, detail=f"categoria inválida. Valores: {', '.join(CATEGORIAS_CASO)}")
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE whatsapp_casos SET categoria=%s WHERE id=%s", (categoria, caso_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    return {"message": "Categoría actualizada", "id": caso_id, "categoria": categoria}
+
+
+@app.put("/whatsapp-casos/{caso_id}/asignar")
+def asignar_caso_whatsapp(caso_id: int, data: dict = Body(...)):
+    atendido_por = data.get('atendido_por', '').strip()
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE whatsapp_casos SET atendido_por=%s WHERE id=%s", (atendido_por or None, caso_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    return {"message": "Caso asignado", "id": caso_id, "atendido_por": atendido_por or None}

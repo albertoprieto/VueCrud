@@ -81,6 +81,12 @@ const groupedItems = computed(() => {
       ]
     },
     {
+      title: 'WhatsApp',
+      items: [
+        { label: 'Casos de WhatsApp', route: '/casos-whatsapp', icon: 'pi pi-fw pi-whatsapp', desc: 'Seguimiento de conversaciones del bot' }
+      ]
+    },
+    {
       title: 'Usuarios',
       items: [
         { label: 'Usuarios', route: '/usuarios', icon: 'pi pi-fw pi-users', desc: 'Gestión de usuarios' }

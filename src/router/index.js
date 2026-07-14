@@ -40,6 +40,7 @@ import DetallePago from '@/modules/DetallePago.vue';
 import UtilidadesImei from '@/modules/UtilidadesImei.vue';
 import Bancos from '@/modules/Bancos.vue';
 import DetalleBanco from '@/modules/DetalleBanco.vue';
+import CasosWhatsapp from '@/modules/CasosWhatsapp.vue';
 
 const routes = [
   { path: '/nuevo-reporte-servicio', name: 'nuevo-reporte-servicio', component: NuevoReporteDeServicio },
@@ -85,6 +86,7 @@ const routes = [
   ,{ path: '/utilidades-imei', name: 'utilidades-imei', component: UtilidadesImei }
   ,{ path: '/bancos', name: 'bancos', component: Bancos }
   ,{ path: '/bancos/:nombre', name: 'detalle-banco', component: DetalleBanco, props: true }
+  ,{ path: '/casos-whatsapp', name: 'casos-whatsapp', component: CasosWhatsapp }
 ];
 
 const router = createRouter({
