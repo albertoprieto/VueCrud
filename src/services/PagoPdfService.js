@@ -1,4 +1,5 @@
-﻿import pdfMake from "pdfmake/build/pdfmake";
+﻿import axios from "axios";
+import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker?url";
@@ -19,6 +20,15 @@ function formatFechaPDF(f) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
+function formatFechaHoraPDF(f) {
+  if (!f) return '-';
+  const d = new Date(f);
+  if (Number.isNaN(d.getTime())) return f;
+  const fecha = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  const hora = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  return `${fecha} ${hora}`;
+}
+
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 function buildComprobanteUrl(pathOrUrl) {
@@ -30,6 +40,33 @@ function buildComprobanteUrl(pathOrUrl) {
 
 function isPdfFile(pathOrUrl) {
   return /\.pdf(\?|$)/i.test(pathOrUrl || '');
+}
+
+const METODOS_PAGO = {
+  PUE: 'PUE - Pago en una sola exhibición',
+  PPD: 'PPD - Pago en parcialidades o diferido',
+};
+
+const FORMAS_PAGO = {
+  '01': '01 - Efectivo',
+  '02': '02 - Cheque nominativo',
+  '03': '03 - Transferencia electrónica de fondos',
+  '04': '04 - Tarjeta de crédito',
+  '28': '28 - Tarjeta de débito',
+  '99': '99 - Por definir',
+};
+
+async function buscarClienteFiscal(nombreCliente) {
+  if (!nombreCliente) return null;
+  try {
+    const res = await axios.get(`${API_URL}/clientes`);
+    const match = (res.data || []).find(
+      c => (c.nombre || '').trim().toLowerCase() === nombreCliente.trim().toLowerCase()
+    );
+    return match || null;
+  } catch {
+    return null;
+  }
 }
 
 function parseImeis(value) {
@@ -221,11 +258,23 @@ export async function generarPagoPDF(tipo, pago) {
   const total      = esFactura ? subtotal + iva : _totalPago;
 
   // ── Bloque de información lado izquierdo ─────────────────────────────────
+  const clienteFiscal = await buscarClienteFiscal(pago.cliente);
+  const domicilioFiscal = clienteFiscal
+    ? [clienteFiscal.calle_numero, clienteFiscal.colonia, clienteFiscal.codigo_postal].filter(Boolean).join(', ')
+    : '';
+
   const infoRows = [
     ['Cliente',    pago.cliente    || '-'],
     ['Instalador', pago.instalador || '-'],
     ['Vendedor',   pago.vendedor   || '-'],
     ['Cobrado en', pago.lugar_pago || '-'],
+    ...(clienteFiscal?.rfc ? [['RFC cliente', clienteFiscal.rfc]] : []),
+    ...(domicilioFiscal ? [['Domicilio fiscal', domicilioFiscal]] : []),
+    ...((pago.regimen_fiscal_receptor || clienteFiscal?.regimen_fiscal)
+      ? [['Régimen fiscal', pago.regimen_fiscal_receptor || clienteFiscal.regimen_fiscal]]
+      : []),
+    ...(pago.metodo_pago ? [['Método de pago', METODOS_PAGO[pago.metodo_pago] || pago.metodo_pago]] : []),
+    ...(pago.forma_pago ? [['Forma de pago', FORMAS_PAGO[pago.forma_pago] || pago.forma_pago]] : []),
   ];
 
   // ── Logo (mismo que en bot-engine) ────────────────────────────────────────
@@ -329,14 +378,42 @@ export async function generarPagoPDF(tipo, pago) {
       },
       { text: 'Condiciones', style: 'sectionTitle', margin: [0, 0, 0, 4] },
       {
-        ul: [
-          'Si requiere factura, el pago sería más IVA.',
-          'Si adquiriste el GPS con recarga mensual, recarga 50 RECARGA SALDO TELCEL — no paquete.',
-          'Los equipos GPS tienen un año de garantía contra defectos de fábrica.',
-          'Dispositivos manipulados pierden garantía.',
-        ],
+        ul: (pago.notas_extra || '').trim()
+          ? pago.notas_extra.split('\n').map(l => l.trim()).filter(Boolean)
+          : [
+              'Si requiere factura, el pago sería más IVA.',
+              'Si adquiriste el GPS con recarga mensual, recarga 50 RECARGA SALDO TELCEL — no paquete.',
+              'Los equipos GPS tienen un año de garantía contra defectos de fábrica.',
+              'Dispositivos manipulados pierden garantía.',
+            ],
         style: 'nota',
       },
+
+      // ── Timbre Fiscal Digital (solamente si el CFDI ya está timbrado) ─────
+      ...(pago.cfdi_uuid
+        ? [
+            {
+              canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#cbd5e1' }],
+              margin: [0, 10, 0, 6],
+            },
+            { text: 'Timbre Fiscal Digital', style: 'sectionTitle', margin: [0, 0, 0, 4] },
+            {
+              table: {
+                widths: [130, '*'],
+                body: [
+                  ['Folio Fiscal (UUID)', pago.cfdi_uuid],
+                  ['Fecha de certificación', formatFechaHoraPDF(pago.cfdi_fecha_certificacion)],
+                  ['No. Certificado SAT', pago.cfdi_no_certificado_sat || '-'],
+                  ['RFC del PAC', pago.cfdi_rfc_pac || '-'],
+                ].map(([k, v]) => [
+                  { text: k, style: 'infoKey' },
+                  { text: v, style: 'infoVal' },
+                ]),
+              },
+              layout: 'noBorders',
+            },
+          ]
+        : []),
 
       // ── Comprobante de pago (solamente para notas) ────────────────────────
       ...(tipo === 'nota'

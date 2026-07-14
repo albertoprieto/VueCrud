@@ -34,6 +34,13 @@
             class="p-button-success"
             @click="abrirTimbrarDialog"
           />
+          <Button
+            v-if="!esNota && item.status === 'Timbrado' && esAdmin"
+            icon="pi pi-ban"
+            label="Cancelar factura"
+            class="p-button-danger p-button-outlined"
+            @click="abrirCancelarDialog"
+          />
         </div>
       </div>
 
@@ -122,6 +129,59 @@
             @click="subirComprobante"
           />
         </div>
+      </div>
+
+      <!-- Datos de pago y fiscales (para el PDF) -->
+      <div class="datos-pago-section">
+        <h3>Datos de pago y fiscales</h3>
+        <div v-if="clienteFiscal" class="cliente-fiscal-info">
+          <div><strong>RFC:</strong> {{ clienteFiscal.rfc || '-' }}</div>
+          <div><strong>Domicilio:</strong> {{ [clienteFiscal.calle_numero, clienteFiscal.colonia, clienteFiscal.codigo_postal].filter(Boolean).join(', ') || '-' }}</div>
+          <div><strong>Régimen fiscal:</strong> {{ clienteFiscal.regimen_fiscal || '-' }}</div>
+          <small style="color:var(--color-text-muted,#888);">Estos datos se editan en Clientes.</small>
+        </div>
+        <div v-else style="color:#999;margin-bottom:0.5rem;">
+          No se encontró un cliente registrado con este nombre — sin datos fiscales para el PDF.
+        </div>
+        <div class="datos-pago-form">
+          <div class="datos-pago-field">
+            <label>Método de pago</label>
+            <Dropdown
+              v-model="datosPagoForm.metodo_pago"
+              :options="[{ label: 'PUE - Pago en una sola exhibición', value: 'PUE' }, { label: 'PPD - Pago en parcialidades o diferido', value: 'PPD' }]"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Selecciona método de pago"
+              class="w-full"
+            />
+          </div>
+          <div class="datos-pago-field">
+            <label>Forma de pago</label>
+            <Dropdown
+              v-model="datosPagoForm.forma_pago"
+              :options="formasPago"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Selecciona forma de pago"
+              class="w-full"
+            />
+          </div>
+        </div>
+        <label style="display:block;margin-top:0.75rem;font-weight:600;">Notas / términos y condiciones</label>
+        <Textarea
+          v-model="datosPagoForm.notas_extra"
+          rows="3"
+          placeholder="Ej: Los equipos GPS tienen un año de garantía..."
+          class="w-full"
+          style="width:100%;resize:vertical;"
+        />
+        <Button
+          label="Guardar datos de pago"
+          icon="pi pi-save"
+          class="p-button-secondary mt-2"
+          :loading="guardandoDatosPago"
+          @click="guardarDatosPago"
+        />
       </div>
 
       <!-- Observaciones -->
@@ -327,6 +387,47 @@
         />
       </div>
     </Dialog>
+
+    <!-- Dialog: Cancelar factura (CFDI) -->
+    <Dialog
+      v-model:visible="cancelarDialogVisible"
+      header="Cancelar factura (CFDI)"
+      :modal="true"
+      :style="{ width: '480px', maxWidth: '95vw' }"
+      :draggable="false"
+    >
+      <div class="timbrar-form">
+        <div class="timbrar-field">
+          <label>Motivo de cancelación</label>
+          <Dropdown
+            v-model="cancelarForm.motivo"
+            :options="motivosCancelacion"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Selecciona un motivo"
+            class="w-full"
+          />
+        </div>
+        <div class="timbrar-field" v-if="cancelarForm.motivo === '01'">
+          <label>UUID de la factura que sustituye</label>
+          <InputText v-model="cancelarForm.folio_sustitucion" placeholder="UUID de la factura sustituta" class="w-full" />
+        </div>
+        <small style="color:var(--color-text-muted,#888);">
+          Esto cancela el CFDI ante el SAT vía SW. No se puede deshacer.
+        </small>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
+        <Button label="Cerrar" class="p-button-text" @click="cancelarDialogVisible = false" />
+        <Button
+          label="Cancelar factura"
+          icon="pi pi-ban"
+          class="p-button-danger"
+          :disabled="!cancelarForm.motivo || (cancelarForm.motivo === '01' && !cancelarForm.folio_sustitucion)"
+          :loading="cancelando"
+          @click="confirmarCancelar"
+        />
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -342,6 +443,7 @@ import Dropdown from 'primevue/dropdown';
 import Textarea from 'primevue/textarea';
 import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
+import { useLoginStore } from '@/stores/loginStore';
 import {
   getNotaById,
   getFacturaById,
@@ -351,6 +453,8 @@ import {
   actualizarLugarPagoFactura,
   actualizarObservacionesNota,
   actualizarObservacionesFactura,
+  actualizarDatosPagoNota,
+  actualizarDatosPagoFactura,
   subirComprobanteNota,
   subirComprobanteFactura,
   eliminarComprobanteNota,
@@ -360,6 +464,7 @@ import {
   quitarReportesNota,
   quitarReportesFactura,
   timbrarFactura,
+  cancelarFactura,
   getNotas,
   getFacturas
 } from '@/services/pagosService';
@@ -368,10 +473,12 @@ import { generarPagoPDF } from '@/services/PagoPdfService.js';
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const loginStore = useLoginStore();
 
 const tipo = computed(() => route.params.tipo);   // 'nota' | 'factura'
 const id = computed(() => route.params.id);
 const esNota = computed(() => tipo.value === 'nota');
+const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
 
 const item = ref(null);
 const loading = ref(false);
@@ -380,6 +487,18 @@ const nuevoStatus = ref('');
 const nuevoLugarPago = ref('');
 const observacionesTexto = ref('');
 const guardandoObs = ref(false);
+const datosPagoForm = ref({ metodo_pago: 'PUE', forma_pago: '03', notas_extra: '' });
+const guardandoDatosPago = ref(false);
+const clienteFiscal = ref(null);
+
+const formasPago = [
+  { label: '01 - Efectivo', value: '01' },
+  { label: '02 - Cheque nominativo', value: '02' },
+  { label: '03 - Transferencia electrónica de fondos', value: '03' },
+  { label: '04 - Tarjeta de crédito', value: '04' },
+  { label: '28 - Tarjeta de débito', value: '28' },
+  { label: '99 - Por definir', value: '99' },
+];
 const archivoSeleccionado = ref(null);
 const subiendo = ref(false);
 const eliminandoComprobante = ref(null);
@@ -401,9 +520,20 @@ const timbrando = ref(false);
 const timbrarForm = ref({
   rfc_cliente: '',
   uso_cfdi: 'G03',
-  forma_pago: '01',
+  forma_pago: '03',
   metodo_pago: 'PUE'
 });
+
+// Cancelar factura (CFDI)
+const cancelarDialogVisible = ref(false);
+const cancelando = ref(false);
+const cancelarForm = ref({ motivo: '', folio_sustitucion: '' });
+const motivosCancelacion = [
+  { label: '01 - Comprobante emitido con errores con relación', value: '01' },
+  { label: '02 - Comprobante emitido con errores sin relación', value: '02' },
+  { label: '03 - No se llevó a cabo la operación', value: '03' },
+  { label: '04 - Operación nominativa en factura global', value: '04' },
+];
 
 const reportesDisponiblesFiltrados = computed(() => {
   return reportesDisponibles.value.filter(r => {
@@ -542,13 +672,49 @@ async function cargarDetalle() {
     nuevoStatus.value = item.value?.status || '';
     nuevoLugarPago.value = item.value?.lugar_pago || '';
     observacionesTexto.value = item.value?.observaciones || '';
+    datosPagoForm.value = {
+      metodo_pago: item.value?.metodo_pago || 'PUE',
+      forma_pago: item.value?.forma_pago || '03',
+      notas_extra: item.value?.notas_extra || '',
+    };
     await cargarDetalleOrdenesEnriquecido();
+    await cargarClienteFiscal();
   } catch {
     item.value = null;
     detalleOrdenesMap.value = {};
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el detalle.', life: 4000 });
   }
   loading.value = false;
+}
+
+async function cargarClienteFiscal() {
+  clienteFiscal.value = null;
+  if (!item.value?.cliente) return;
+  try {
+    const resp = await axios.get(`${API_URL}/clientes`);
+    const match = (resp.data || []).find(
+      c => (c.nombre || '').trim().toLowerCase() === item.value.cliente.trim().toLowerCase()
+    );
+    clienteFiscal.value = match || null;
+  } catch {
+    clienteFiscal.value = null;
+  }
+}
+
+async function guardarDatosPago() {
+  guardandoDatosPago.value = true;
+  try {
+    if (esNota.value) {
+      await actualizarDatosPagoNota(id.value, { ...datosPagoForm.value });
+    } else {
+      await actualizarDatosPagoFactura(id.value, { ...datosPagoForm.value });
+    }
+    Object.assign(item.value, datosPagoForm.value);
+    toast.add({ severity: 'success', summary: 'Guardado', detail: 'Datos de pago guardados correctamente.', life: 3000 });
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron guardar los datos de pago.', life: 4000 });
+  }
+  guardandoDatosPago.value = false;
 }
 
 async function cambiarStatusYLugar() {
@@ -778,7 +944,7 @@ async function abrirTimbrarDialog() {
   timbrarForm.value = {
     rfc_cliente: item.value?.rfc_cliente || '',
     uso_cfdi: item.value?.uso_cfdi || 'G03',
-    forma_pago: item.value?.forma_pago || '01',
+    forma_pago: item.value?.forma_pago || '03',
     metodo_pago: item.value?.metodo_pago || 'PUE'
   };
   // Intenta prellenar el RFC buscando al cliente por nombre
@@ -810,6 +976,24 @@ async function confirmarTimbrar() {
 function abrirArchivoCfdi(path) {
   if (!path) return;
   window.open(urlComprobante(path), '_blank', 'noopener');
+}
+
+function abrirCancelarDialog() {
+  cancelarForm.value = { motivo: '', folio_sustitucion: '' };
+  cancelarDialogVisible.value = true;
+}
+
+async function confirmarCancelar() {
+  cancelando.value = true;
+  try {
+    await cancelarFactura(id.value, { ...cancelarForm.value });
+    toast.add({ severity: 'success', summary: 'Cancelada', detail: 'CFDI cancelado ante el SAT correctamente.', life: 4000 });
+    cancelarDialogVisible.value = false;
+    await cargarDetalle();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo cancelar la factura.', life: 5000 });
+  }
+  cancelando.value = false;
 }
 </script>
 
@@ -863,6 +1047,38 @@ function abrirArchivoCfdi(path) {
 .observaciones-section h3 {
   margin-bottom: 0.75rem;
   color: var(--color-title);
+}
+.datos-pago-section {
+  margin-bottom: 2rem;
+}
+.datos-pago-section h3 {
+  margin-bottom: 0.75rem;
+  color: var(--color-title);
+}
+.cliente-fiscal-info {
+  background: var(--color-bg-light, #f5f5f5);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.datos-pago-form {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.datos-pago-field {
+  flex: 1;
+  min-width: 220px;
+}
+.datos-pago-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
 }
 .comprobante-section {
   margin-bottom: 2rem;

@@ -33,6 +33,11 @@ export async function actualizarObservacionesNota(id, observaciones) {
   return res.data;
 }
 
+export async function actualizarDatosPagoNota(id, payload) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/datos-pago`, payload);
+  return res.data;
+}
+
 export async function eliminarNota(id) {
   const res = await axios.delete(`${API_URL}/notas-pago/${id}`);
   return res.data;
@@ -95,6 +100,11 @@ export async function actualizarObservacionesFactura(id, observaciones) {
   return res.data;
 }
 
+export async function actualizarDatosPagoFactura(id, payload) {
+  const res = await axios.put(`${API_URL}/facturas-pago/${id}/datos-pago`, payload);
+  return res.data;
+}
+
 export async function eliminarFactura(id) {
   const res = await axios.delete(`${API_URL}/facturas-pago/${id}`);
   return res.data;
@@ -128,5 +138,10 @@ export async function quitarReportesFactura(id, reporte_ids) {
 
 export async function timbrarFactura(id, payload) {
   const res = await axios.post(`${API_URL}/facturas-pago/${id}/timbrar`, payload);
+  return res.data;
+}
+
+export async function cancelarFactura(id, payload) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${id}/cancelar`, payload);
   return res.data;
 }
