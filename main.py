@@ -6943,6 +6943,10 @@ def crear_tablas_whatsapp_casos():
             conversation_id VARCHAR(100) NULL,
             account_id VARCHAR(100) NULL,
             intervencion_humana TINYINT(1) NOT NULL DEFAULT 0,
+            plataforma VARCHAR(20) NULL,
+            imei VARCHAR(20) NULL,
+            sim VARCHAR(20) NULL,
+            cuenta_plataforma VARCHAR(100) NULL,
             creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             ultima_actividad DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -6965,6 +6969,10 @@ def crear_tablas_whatsapp_casos():
         "ALTER TABLE whatsapp_casos ADD COLUMN conversation_id VARCHAR(100) NULL",
         "ALTER TABLE whatsapp_casos ADD COLUMN account_id VARCHAR(100) NULL",
         "ALTER TABLE whatsapp_casos ADD COLUMN intervencion_humana TINYINT(1) NOT NULL DEFAULT 0",
+        "ALTER TABLE whatsapp_casos ADD COLUMN plataforma VARCHAR(20) NULL",
+        "ALTER TABLE whatsapp_casos ADD COLUMN imei VARCHAR(20) NULL",
+        "ALTER TABLE whatsapp_casos ADD COLUMN sim VARCHAR(20) NULL",
+        "ALTER TABLE whatsapp_casos ADD COLUMN cuenta_plataforma VARCHAR(100) NULL",
         "ALTER TABLE whatsapp_mensajes ADD COLUMN media_url VARCHAR(500) NULL",
         "ALTER TABLE whatsapp_mensajes ADD COLUMN autor VARCHAR(10) NOT NULL DEFAULT 'bot'",
     ):
@@ -6991,6 +6999,10 @@ class WhatsappMensajeIn(BaseModel):
     referencia_id: Optional[int] = None
     conversation_id: Optional[str] = None
     account_id: Optional[str] = None
+    plataforma: Optional[str] = None
+    imei: Optional[str] = None
+    sim: Optional[str] = None
+    cuenta_plataforma: Optional[str] = None
 
 
 @app.post("/whatsapp-casos/imagen")
@@ -7056,6 +7068,14 @@ def registrar_mensaje_whatsapp(data: WhatsappMensajeIn):
             campos.append("conversation_id=%s"); valores.append(data.conversation_id)
         if data.account_id:
             campos.append("account_id=%s"); valores.append(data.account_id)
+        if data.plataforma:
+            campos.append("plataforma=%s"); valores.append(data.plataforma)
+        if data.imei:
+            campos.append("imei=%s"); valores.append(data.imei)
+        if data.sim:
+            campos.append("sim=%s"); valores.append(data.sim)
+        if data.cuenta_plataforma:
+            campos.append("cuenta_plataforma=%s"); valores.append(data.cuenta_plataforma)
         valores.append(caso_id)
         cursor2 = db.cursor()
         cursor2.execute(f"UPDATE whatsapp_casos SET {', '.join(campos)} WHERE id=%s", tuple(valores))
@@ -7065,11 +7085,11 @@ def registrar_mensaje_whatsapp(data: WhatsappMensajeIn):
         cursor2.execute(
             """INSERT INTO whatsapp_casos
                (telefono, nombre_contacto, categoria, estado, resumen, diagnostico, flow_id, referencia_tipo, referencia_id,
-                conversation_id, account_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                conversation_id, account_id, plataforma, imei, sim, cuenta_plataforma)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (telefono, data.nombre_contacto, data.categoria or 'otro', data.estado or 'abierto',
              (data.texto or '')[:500] or None, data.diagnostico, data.flow_id, data.referencia_tipo, data.referencia_id,
-             data.conversation_id, data.account_id)
+             data.conversation_id, data.account_id, data.plataforma, data.imei, data.sim, data.cuenta_plataforma)
         )
         caso_id = cursor2.lastrowid
         cursor2.close()

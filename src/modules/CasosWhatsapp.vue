@@ -1,19 +1,7 @@
 <template>
   <div class="wa-shell">
-    <!-- ═══════ Rail de iconos, como WhatsApp Web ═══════ -->
-    <aside v-if="!isMobile" class="wa-icon-rail">
-      <span class="wa-rail-icon activo"><i class="pi pi-comments" /></span>
-      <span class="wa-rail-spacer"></span>
-      <span class="wa-rail-icon"><i class="pi pi-user" /></span>
-    </aside>
-
     <!-- ═══════ Sidebar: lista de chats ═══════ -->
     <aside class="wa-sidebar" :class="{ 'wa-sidebar-oculto': isMobile && casoActivo }">
-      <header class="wa-sidebar-header">
-        <h1 class="wa-wordmark">Soporte IA</h1>
-        <span class="wa-sidebar-count">{{ casosFiltrados.length }} de {{ casos.length }} casos</span>
-      </header>
-
       <div class="wa-search">
         <i class="pi pi-search" />
         <input v-model="filtroTexto" type="text" placeholder="Buscar por nombre o teléfono..." />
@@ -69,7 +57,12 @@
             <div class="wa-chat-info">
               <div class="wa-chat-row1">
                 <span class="wa-chat-nombre">{{ contacto.nombre_contacto || contacto.telefono }}</span>
-                <span class="wa-chat-tiempo">{{ tiempoRelativo(contacto.vigente.ultima_actividad) }}</span>
+                <span class="wa-chat-row1-right">
+                  <span class="wa-chat-tiempo">{{ tiempoRelativo(contacto.vigente.ultima_actividad) }}</span>
+                  <button type="button" class="wa-chat-menu-btn" title="Editar contacto" @click.stop="abrirMenuCaso($event, contacto.vigente)">
+                    <i class="pi pi-angle-down" />
+                  </button>
+                </span>
               </div>
               <div class="wa-chat-row2">
                 <span class="wa-chat-preview">{{ contacto.vigente.resumen || 'Sin mensajes registrados aún.' }}</span>
@@ -140,6 +133,25 @@
           <i class="pi pi-exclamation-triangle" /> Este caso fue escalado y todavía no tiene a nadie asignado.
         </div>
 
+        <div v-if="casoActivo.plataforma || casoActivo.imei || casoActivo.sim || casoActivo.cuenta_plataforma" class="wa-resumen-ejecutivo">
+          <div class="wa-resumen-item" v-if="casoActivo.plataforma">
+            <span class="wa-resumen-label">Plataforma</span>
+            <span class="wa-resumen-valor">{{ casoActivo.plataforma === 'iop' ? 'IOP' : 'Tracksolid' }}</span>
+          </div>
+          <div class="wa-resumen-item" v-if="casoActivo.imei">
+            <span class="wa-resumen-label">IMEI</span>
+            <span class="wa-resumen-valor">{{ casoActivo.imei }}</span>
+          </div>
+          <div class="wa-resumen-item" v-if="casoActivo.sim">
+            <span class="wa-resumen-label">SIM</span>
+            <span class="wa-resumen-valor">{{ casoActivo.sim }}</span>
+          </div>
+          <div class="wa-resumen-item" v-if="casoActivo.cuenta_plataforma">
+            <span class="wa-resumen-label">Cuenta</span>
+            <span class="wa-resumen-valor">{{ casoActivo.cuenta_plataforma }}</span>
+          </div>
+        </div>
+
         <div v-if="casoActivo.diagnostico" class="wa-diagnostico">
           <div class="wa-diagnostico-titulo"><i class="pi pi-clipboard" /> Diagnóstico del bot</div>
           <pre class="wa-diagnostico-texto">{{ casoActivo.diagnostico }}</pre>
@@ -179,7 +191,7 @@
           </div>
         </div>
 
-        <div class="wa-panel-messages">
+        <div class="wa-panel-messages" ref="panelMessagesEl">
           <div v-if="loadingDetalle" class="wa-list-loading"><i class="pi pi-spin pi-spinner" /></div>
           <div v-else-if="!casoActivo.mensajes || !casoActivo.mensajes.length" class="wa-list-empty">
             Sin mensajes registrados para este caso.
@@ -207,14 +219,46 @@
         </div>
       </template>
     </section>
+
+    <OverlayPanel ref="menuPanelRef" class="wa-chat-menu-panel" @hide="cerrarMenuCaso">
+      <template v-if="casoMenuAbierto">
+        <div class="wa-menu-field">
+          <label>Nombre del contacto</label>
+          <div class="wa-asignado-row">
+            <InputText v-model="menuNombreContactoInput" class="w-full" placeholder="Nombre para identificar este número" />
+            <Button icon="pi pi-save" class="p-button-sm" @click="guardarNombreContactoMenu" />
+          </div>
+        </div>
+        <div class="wa-menu-field">
+          <label>Número</label>
+          <InputText :model-value="casoMenuAbierto.telefono" class="w-full" disabled />
+        </div>
+        <div class="wa-menu-field">
+          <label>Estado</label>
+          <Dropdown v-model="casoMenuAbierto.estado" :options="ESTADOS" optionLabel="label" optionValue="value" class="w-full" @change="actualizarEstadoDe(casoMenuAbierto)" />
+        </div>
+        <div class="wa-menu-field">
+          <label>Categoría</label>
+          <Dropdown v-model="casoMenuAbierto.categoria" :options="CATEGORIAS" optionLabel="label" optionValue="value" class="w-full" @change="actualizarCategoriaDe(casoMenuAbierto)" />
+        </div>
+        <div class="wa-menu-field">
+          <label>Atendido por</label>
+          <div class="wa-asignado-row">
+            <InputText v-model="menuAtendidoPorInput" class="w-full" placeholder="Nombre de quien da seguimiento" />
+            <Button icon="pi pi-save" class="p-button-sm" @click="guardarAsignadoMenu" />
+          </div>
+        </div>
+      </template>
+    </OverlayPanel>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
+import OverlayPanel from 'primevue/overlaypanel';
 import { useToast } from 'primevue/usetoast';
 import {
   getCasos,
@@ -231,7 +275,7 @@ import { getAvatarDataUri } from '@/services/avatarService';
 const toast = useToast();
 
 const CATEGORIAS = [
-  { value: 'tramite',            label: 'Trámite (reporte/nota/factura)', short: 'Trámite',    color: '#2a78d6' },
+  { value: 'Interno',            label: 'Interno (reporte/nota/factura)', short: 'Interno',    color: '#2a78d6' },
   { value: 'soporte_equipo_app', label: 'Soporte — Equipo y app',        short: 'Equipo/App', color: '#1baf7a' },
   { value: 'soporte_dudas',      label: 'Soporte — Dudas',                short: 'Dudas',      color: '#eda100' },
   { value: 'soporte_accesos',    label: 'Soporte — Accesos',              short: 'Accesos',    color: '#4a3aa7' },
@@ -243,9 +287,7 @@ const REFERENCIA_LABELS = { reporte: 'Reporte', nota: 'Nota', factura: 'Factura'
 const ESTADOS = [
   { value: 'abierto',            label: 'Abierto',           short: 'Abierto',   color: '#2a78d6' },
   { value: 'en_progreso',        label: 'En progreso',       short: 'Progreso',  color: '#fab219' },
-  { value: 'esperando_cliente',  label: 'Esperando cliente', short: 'Esperando', color: '#eb6834' },
   { value: 'escalado',           label: 'Escalado',          short: 'Escalado',  color: '#d03b3b' },
-  { value: 'resuelto',           label: 'Resuelto',          short: 'Resuelto',  color: '#0ca30c' },
   { value: 'cerrado',            label: 'Cerrado',           short: 'Cerrado',   color: '#898781' },
 ];
 
@@ -262,6 +304,13 @@ const mensajeManualInput = ref('');
 const enviandoManual = ref(false);
 const isMobile = ref(false);
 const infoMobileAbierta = ref(false);
+const casoMenuAbierto = ref(null);
+const menuPanelRef = ref(null);
+const panelMessagesEl = ref(null);
+const POLL_MS = 6000;
+let pollIntervalId = null;
+const menuNombreContactoInput = ref('');
+const menuAtendidoPorInput = ref('');
 
 function setViewportMode() {
   isMobile.value = window.innerWidth <= 860;
@@ -361,6 +410,12 @@ async function cargar() {
   loading.value = false;
 }
 
+function scrollAlFondo() {
+  nextTick(() => {
+    if (panelMessagesEl.value) panelMessagesEl.value.scrollTop = panelMessagesEl.value.scrollHeight;
+  });
+}
+
 async function abrirDetalle(caso) {
   loadingDetalle.value = true;
   infoMobileAbierta.value = false;
@@ -371,61 +426,106 @@ async function abrirDetalle(caso) {
     casoActivo.value = await getCasoDetalle(caso.id);
     atendidoPorInput.value = casoActivo.value.atendido_por || '';
     nombreContactoInput.value = casoActivo.value.nombre_contacto || '';
+    scrollAlFondo();
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el detalle del caso.', life: 4000 });
   }
   loadingDetalle.value = false;
 }
 
-async function guardarEstado() {
-  if (!casoActivo.value) return;
+// Polling: no hay websocket con Zernio, así que refrescamos la lista y el
+// caso abierto cada POLL_MS para que se sienta como chat en tiempo real.
+async function pollActualizar() {
   try {
-    await actualizarEstadoCaso(casoActivo.value.id, casoActivo.value.estado);
-    const local = casos.value.find(c => c.id === casoActivo.value.id);
-    if (local) local.estado = casoActivo.value.estado;
+    casos.value = await getCasos();
+  } catch {
+    // silencioso: no interrumpir con toasts en cada tick fallido
+  }
+  if (casoActivo.value?.id) {
+    const idAbierto = casoActivo.value.id;
+    const cercaDelFondo = !panelMessagesEl.value
+      || (panelMessagesEl.value.scrollHeight - panelMessagesEl.value.scrollTop - panelMessagesEl.value.clientHeight) < 150;
+    const mensajesPrevios = casoActivo.value.mensajes?.length || 0;
+    try {
+      const detalle = await getCasoDetalle(idAbierto);
+      if (casoActivo.value?.id === idAbierto) {
+        casoActivo.value = detalle;
+        if (cercaDelFondo && (detalle.mensajes?.length || 0) > mensajesPrevios) scrollAlFondo();
+      }
+    } catch {
+      // el caso pudo cerrarse/eliminarse entre ticks, ignorar
+    }
+  }
+}
+
+async function actualizarEstadoDe(caso) {
+  if (!caso) return;
+  try {
+    await actualizarEstadoCaso(caso.id, caso.estado);
+    const local = casos.value.find(c => c.id === caso.id);
+    if (local) local.estado = caso.estado;
+    if (casoActivo.value && casoActivo.value.id === caso.id) casoActivo.value.estado = caso.estado;
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Estado actualizado.', life: 2500 });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el estado.', life: 4000 });
   }
 }
+async function guardarEstado() { await actualizarEstadoDe(casoActivo.value); }
 
-async function guardarCategoria() {
-  if (!casoActivo.value) return;
+async function actualizarCategoriaDe(caso) {
+  if (!caso) return;
   try {
-    await actualizarCategoriaCaso(casoActivo.value.id, casoActivo.value.categoria);
-    const local = casos.value.find(c => c.id === casoActivo.value.id);
-    if (local) local.categoria = casoActivo.value.categoria;
+    await actualizarCategoriaCaso(caso.id, caso.categoria);
+    const local = casos.value.find(c => c.id === caso.id);
+    if (local) local.categoria = caso.categoria;
+    if (casoActivo.value && casoActivo.value.id === caso.id) casoActivo.value.categoria = caso.categoria;
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Categoría actualizada.', life: 2500 });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar la categoría.', life: 4000 });
   }
 }
+async function guardarCategoria() { await actualizarCategoriaDe(casoActivo.value); }
 
-async function guardarNombreContacto() {
-  if (!casoActivo.value) return;
+async function actualizarNombreContactoDe(caso, nombre) {
+  if (!caso) return;
   try {
-    await renombrarContacto(casoActivo.value.id, nombreContactoInput.value);
-    casoActivo.value.nombre_contacto = nombreContactoInput.value;
+    await renombrarContacto(caso.id, nombre);
     for (const c of casos.value) {
-      if (c.telefono === casoActivo.value.telefono) c.nombre_contacto = nombreContactoInput.value;
+      if (c.telefono === caso.telefono) c.nombre_contacto = nombre;
     }
+    if (casoActivo.value && casoActivo.value.telefono === caso.telefono) casoActivo.value.nombre_contacto = nombre;
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Contacto guardado.', life: 2500 });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el nombre del contacto.', life: 4000 });
   }
 }
+async function guardarNombreContacto() { await actualizarNombreContactoDe(casoActivo.value, nombreContactoInput.value); }
+async function guardarNombreContactoMenu() { await actualizarNombreContactoDe(casoMenuAbierto.value, menuNombreContactoInput.value); }
 
-async function guardarAsignado() {
-  if (!casoActivo.value) return;
+async function actualizarAsignadoDe(caso, atendidoPor) {
+  if (!caso) return;
   try {
-    await asignarCaso(casoActivo.value.id, atendidoPorInput.value);
-    casoActivo.value.atendido_por = atendidoPorInput.value;
-    const local = casos.value.find(c => c.id === casoActivo.value.id);
-    if (local) local.atendido_por = atendidoPorInput.value;
+    await asignarCaso(caso.id, atendidoPor);
+    caso.atendido_por = atendidoPor;
+    const local = casos.value.find(c => c.id === caso.id);
+    if (local) local.atendido_por = atendidoPor;
+    if (casoActivo.value && casoActivo.value.id === caso.id) casoActivo.value.atendido_por = atendidoPor;
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Caso asignado.', life: 2500 });
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo asignar el caso.', life: 4000 });
   }
+}
+async function guardarAsignado() { await actualizarAsignadoDe(casoActivo.value, atendidoPorInput.value); }
+async function guardarAsignadoMenu() { await actualizarAsignadoDe(casoMenuAbierto.value, menuAtendidoPorInput.value); }
+
+function abrirMenuCaso(event, caso) {
+  casoMenuAbierto.value = caso;
+  menuNombreContactoInput.value = caso.nombre_contacto || '';
+  menuAtendidoPorInput.value = caso.atendido_por || '';
+  menuPanelRef.value?.toggle(event);
+}
+function cerrarMenuCaso() {
+  casoMenuAbierto.value = null;
 }
 
 async function enviarMensajeManual() {
@@ -469,10 +569,12 @@ onMounted(() => {
   setViewportMode();
   window.addEventListener('resize', setViewportMode);
   cargar();
+  pollIntervalId = setInterval(pollActualizar, POLL_MS);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', setViewportMode);
+  if (pollIntervalId) clearInterval(pollIntervalId);
 });
 </script>
 
@@ -482,7 +584,7 @@ onBeforeUnmount(() => {
   --wa-accent:        #00a884;
   --wa-accent-strong: #008069;
   --wa-bg-panel:      #ffffff;
-  --wa-bg-header:     #f0f2f5;
+  --wa-bg-header:     #ffffff;
   --wa-bg-hover:      #f5f6f6;
   --wa-bg-selected:   #e9edef;
   --wa-border:        #e9edef;
@@ -493,6 +595,7 @@ onBeforeUnmount(() => {
   --wa-chat-bg:       #efeae2;
 
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 17px;
   display: flex;
   height: calc(100vh - 90px);
   min-height: 560px;
@@ -530,37 +633,9 @@ onBeforeUnmount(() => {
   --wa-chat-bg:       #0b141a;
 }
 
-/* ── Rail de iconos ── */
-.wa-icon-rail {
-  width: 60px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1rem 0;
-  background: var(--wa-bg-header);
-  border-right: 1px solid var(--wa-border);
-}
-.wa-rail-spacer { flex: 1; }
-.wa-rail-icon {
-  width: 2.4rem;
-  height: 2.4rem;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.15rem;
-  color: var(--wa-text-secondary);
-}
-.wa-rail-icon.activo {
-  background: color-mix(in srgb, var(--wa-accent) 16%, transparent);
-  color: var(--wa-accent-strong);
-}
-
 /* ── Sidebar ── */
 .wa-sidebar {
-  width: 380px;
+  width: 430px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -569,21 +644,6 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 .wa-sidebar-oculto { display: none; }
-.wa-sidebar-header {
-  padding: 1.1rem 1.25rem;
-  background: var(--wa-bg-header);
-  border-bottom: 1px solid var(--wa-border);
-}
-.wa-wordmark {
-  margin: 0;
-  font-size: 1.55rem;
-  font-weight: 600;
-  color: var(--wa-accent-strong);
-}
-.wa-sidebar-count {
-  font-size: 0.78rem;
-  color: var(--wa-text-secondary);
-}
 
 .wa-search {
   display: flex;
@@ -601,7 +661,7 @@ onBeforeUnmount(() => {
   outline: none;
   background: transparent;
   color: var(--wa-text-primary);
-  font-size: 0.88rem;
+  font-size: 1rem;
   width: 100%;
 }
 .wa-search input::placeholder { color: var(--wa-text-secondary); }
@@ -622,13 +682,13 @@ onBeforeUnmount(() => {
   border: 1px solid var(--wa-border);
   background: var(--wa-bg-panel);
   color: var(--wa-text-secondary);
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   line-height: 1.3;
 }
-.wa-filter-chip-sm { font-size: 0.71rem; padding: 0.24rem 0.6rem; opacity: 0.85; }
+.wa-filter-chip-sm { font-size: 0.76rem; padding: 0.24rem 0.6rem; opacity: 0.85; }
 .wa-filter-chip.activo {
   background: var(--chip-color, var(--wa-accent));
   border-color: var(--chip-color, var(--wa-accent));
@@ -723,6 +783,7 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
 }
 .wa-chat-nombre {
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--wa-text-primary);
   white-space: nowrap;
@@ -731,8 +792,31 @@ onBeforeUnmount(() => {
 }
 .wa-chat-tiempo {
   flex-shrink: 0;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--wa-text-secondary);
+}
+.wa-chat-row1-right {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+.wa-chat-menu-btn {
+  border: none;
+  background: none;
+  padding: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--wa-text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+}
+.wa-chat-item:hover .wa-chat-menu-btn,
+.wa-chat-item.activo .wa-chat-menu-btn {
+  opacity: 1;
+}
+.wa-chat-menu-btn:hover {
+  background: var(--wa-bg-selected);
 }
 .wa-chat-row2 {
   display: flex;
@@ -742,7 +826,7 @@ onBeforeUnmount(() => {
 .wa-chat-preview {
   flex: 1;
   min-width: 0;
-  font-size: 0.83rem;
+  font-size: 0.92rem;
   color: var(--wa-text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -928,6 +1012,34 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--wa-border);
 }
 
+.wa-resumen-ejecutivo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.4rem;
+  margin: 0.85rem 1.5rem 0;
+  padding: 0.75rem 1.1rem;
+  border-radius: 10px;
+  background: var(--wa-bg-header);
+  border: 1px solid var(--wa-border);
+}
+.wa-resumen-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.wa-resumen-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--wa-text-secondary);
+  font-weight: 600;
+}
+.wa-resumen-valor {
+  font-size: 0.86rem;
+  color: var(--wa-text-primary);
+  font-weight: 600;
+}
+
 .wa-diagnostico {
   margin: 0.85rem 1.5rem 0;
   padding: 0.9rem 1.1rem;
@@ -978,6 +1090,24 @@ onBeforeUnmount(() => {
 .wa-asignado-row {
   display: flex;
   gap: 0.5rem;
+}
+
+.wa-chat-menu-panel :deep(.p-overlaypanel-content) {
+  padding: 0.9rem;
+  width: 280px;
+}
+.wa-menu-field {
+  margin-bottom: 0.75rem;
+}
+.wa-menu-field:last-child {
+  margin-bottom: 0;
+}
+.wa-menu-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--wa-text-secondary);
 }
 
 .wa-panel-messages {
@@ -1068,15 +1198,12 @@ onBeforeUnmount(() => {
   .wa-shell { margin: 0; border-radius: 0; height: calc(100vh - 70px); border: none; }
   .wa-sidebar { width: 100%; }
 
-  /* Header de lista más como app nativa */
-  .wa-sidebar-header { padding: 0.9rem 1rem; }
-  .wa-wordmark { font-size: 1.3rem; }
-
   /* Chat list con más aire, tipo app */
   .wa-chat-item { padding: 0.75rem 1rem; gap: 0.65rem; }
   .wa-avatar { width: 3rem; height: 3rem; }
   .wa-chat-nombre { font-size: 1rem; }
   .wa-chat-preview { font-size: 0.87rem; }
+  .wa-chat-menu-btn { opacity: 1; font-size: 1rem; }
 
   /* Header de conversación: nombre tappeable abre info, como WhatsApp real */
   .wa-panel-header { padding: 0.6rem 0.85rem; gap: 0.65rem; }
