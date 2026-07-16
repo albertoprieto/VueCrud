@@ -7081,13 +7081,27 @@ def registrar_mensaje_whatsapp(data: WhatsappMensajeIn):
         cursor2.execute(f"UPDATE whatsapp_casos SET {', '.join(campos)} WHERE id=%s", tuple(valores))
         cursor2.close()
     else:
+        nombre_contacto_final = data.nombre_contacto
+        if not nombre_contacto_final:
+            # El nombre es del CONTACTO (número), no del caso — si ya se había
+            # guardado a mano en un caso anterior de este mismo teléfono (aunque
+            # esté cerrado/resuelto), lo heredamos en el caso nuevo.
+            cursor.execute(
+                "SELECT nombre_contacto FROM whatsapp_casos "
+                "WHERE telefono=%s AND nombre_contacto IS NOT NULL AND nombre_contacto<>'' "
+                "ORDER BY id DESC LIMIT 1",
+                (telefono,)
+            )
+            prev = cursor.fetchone()
+            if prev:
+                nombre_contacto_final = prev['nombre_contacto']
         cursor2 = db.cursor()
         cursor2.execute(
             """INSERT INTO whatsapp_casos
                (telefono, nombre_contacto, categoria, estado, resumen, diagnostico, flow_id, referencia_tipo, referencia_id,
                 conversation_id, account_id, plataforma, imei, sim, cuenta_plataforma)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (telefono, data.nombre_contacto, data.categoria or 'otro', data.estado or 'abierto',
+            (telefono, nombre_contacto_final, data.categoria or 'otro', data.estado or 'abierto',
              (data.texto or '')[:500] or None, data.diagnostico, data.flow_id, data.referencia_tipo, data.referencia_id,
              data.conversation_id, data.account_id, data.plataforma, data.imei, data.sim, data.cuenta_plataforma)
         )
