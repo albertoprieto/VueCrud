@@ -11,6 +11,8 @@
     "deploy-and-push": "npm run build && npm run deploy && git add . && git commit -m 'Deploy to GitHub Pages' && git push origin main"
   },
   "dependencies": {
+    "@dicebear/collection": "^9.4.2",
+    "@dicebear/core": "^9.4.3",
     "@fullcalendar/core": "^6.1.18",
     "@fullcalendar/daygrid": "^6.1.18",
     "@fullcalendar/interaction": "^6.1.18",

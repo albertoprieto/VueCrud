@@ -29,3 +29,18 @@ export async function asignarCaso(id, atendido_por) {
   const res = await axios.put(`${API_URL}/whatsapp-casos/${id}/asignar`, { atendido_por });
   return res.data;
 }
+
+export async function renombrarContacto(id, nombre_contacto) {
+  const res = await axios.put(`${API_URL}/whatsapp-casos/${id}/nombre-contacto`, { nombre_contacto });
+  return res.data;
+}
+
+export async function responderComoHumano(id, texto) {
+  const res = await axios.post(`${API_URL}/whatsapp-casos/${id}/responder`, { texto });
+  return res.data;
+}
+
+export async function reactivarIA(id) {
+  const res = await axios.put(`${API_URL}/whatsapp-casos/${id}/reactivar-ia`);
+  return res.data;
+}

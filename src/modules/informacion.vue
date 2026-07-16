@@ -83,7 +83,7 @@ const groupedItems = computed(() => {
     {
       title: 'WhatsApp',
       items: [
-        { label: 'Casos de WhatsApp', route: '/casos-whatsapp', icon: 'pi pi-fw pi-whatsapp', desc: 'Seguimiento de conversaciones del bot' }
+        { label: 'Soporte IA', route: '/casos-whatsapp', icon: 'pi pi-fw pi-whatsapp', desc: 'Seguimiento de conversaciones del bot' }
       ]
     },
     {

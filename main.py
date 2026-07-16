@@ -6920,7 +6920,7 @@ def delete_consulta_sim(record_id: int):
 # ═══════════════════════════════════════════════════════════════════════
 
 CATEGORIAS_CASO = ('tramite', 'soporte_equipo_app', 'soporte_dudas', 'soporte_accesos', 'otro')
-ESTADOS_CASO = ('abierto', 'en_progreso', 'esperando_cliente', 'resuelto', 'cerrado')
+ESTADOS_CASO = ('abierto', 'en_progreso', 'esperando_cliente', 'escalado', 'resuelto', 'cerrado')
 
 
 @app.on_event("startup")
@@ -6935,10 +6935,14 @@ def crear_tablas_whatsapp_casos():
             categoria VARCHAR(30) NOT NULL DEFAULT 'otro',
             estado VARCHAR(30) NOT NULL DEFAULT 'abierto',
             resumen VARCHAR(500) NULL,
+            diagnostico TEXT NULL,
             flow_id VARCHAR(100) NULL,
             referencia_tipo VARCHAR(20) NULL,
             referencia_id INT NULL,
             atendido_por VARCHAR(100) NULL,
+            conversation_id VARCHAR(100) NULL,
+            account_id VARCHAR(100) NULL,
+            intervencion_humana TINYINT(1) NOT NULL DEFAULT 0,
             creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             ultima_actividad DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -6948,11 +6952,26 @@ def crear_tablas_whatsapp_casos():
             id INT AUTO_INCREMENT PRIMARY KEY,
             caso_id INT NOT NULL,
             direccion VARCHAR(10) NOT NULL,
+            autor VARCHAR(10) NOT NULL DEFAULT 'bot',
             texto TEXT NULL,
+            media_url VARCHAR(500) NULL,
             fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (caso_id) REFERENCES whatsapp_casos(id) ON DELETE CASCADE
         )
     """)
+    # Migraciones para instalaciones que ya tenían estas tablas sin estas columnas
+    for _col_sql in (
+        "ALTER TABLE whatsapp_casos ADD COLUMN diagnostico TEXT NULL",
+        "ALTER TABLE whatsapp_casos ADD COLUMN conversation_id VARCHAR(100) NULL",
+        "ALTER TABLE whatsapp_casos ADD COLUMN account_id VARCHAR(100) NULL",
+        "ALTER TABLE whatsapp_casos ADD COLUMN intervencion_humana TINYINT(1) NOT NULL DEFAULT 0",
+        "ALTER TABLE whatsapp_mensajes ADD COLUMN media_url VARCHAR(500) NULL",
+        "ALTER TABLE whatsapp_mensajes ADD COLUMN autor VARCHAR(10) NOT NULL DEFAULT 'bot'",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
     db.commit()
     cursor.close()
     db.close()
@@ -6963,11 +6982,33 @@ class WhatsappMensajeIn(BaseModel):
     nombre_contacto: Optional[str] = None
     direccion: str  # 'in' | 'out'
     texto: Optional[str] = None
+    media_url: Optional[str] = None
+    diagnostico: Optional[str] = None
     categoria: Optional[str] = None
     estado: Optional[str] = None
     flow_id: Optional[str] = None
     referencia_tipo: Optional[str] = None
     referencia_id: Optional[int] = None
+    conversation_id: Optional[str] = None
+    account_id: Optional[str] = None
+
+
+@app.post("/whatsapp-casos/imagen")
+def subir_imagen_caso_whatsapp(archivo: UploadFile = File(...), request: Request = None):
+    """El bot descarga la imagen de Zernio (requiere su propio token) y la
+    resube aquí, para tener una URL pública que el panel Vue pueda mostrar
+    directo en un <img>."""
+    import shutil
+    base_dir = os.path.join("uploads", "whatsapp_casos")
+    os.makedirs(base_dir, exist_ok=True)
+    filename = archivo.filename or "imagen.jpg"
+    filename = ''.join(c for c in filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip()
+    ts = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+    dest_path = os.path.join(base_dir, f"{ts}_{filename}")
+    with open(dest_path, "wb") as out:
+        shutil.copyfileobj(archivo.file, out)
+    rel_path = dest_path.replace("\\", "/")
+    return {"url": build_public_url(rel_path, request)}
 
 
 @app.post("/whatsapp-casos/mensaje")
@@ -6985,7 +7026,8 @@ def registrar_mensaje_whatsapp(data: WhatsappMensajeIn):
     db = _get_db()
     cursor = db.cursor(dictionary=True)
     cursor.execute(
-        "SELECT id FROM whatsapp_casos WHERE telefono=%s AND estado != 'cerrado' ORDER BY id DESC LIMIT 1",
+        "SELECT id, atendido_por, intervencion_humana FROM whatsapp_casos "
+        "WHERE telefono=%s AND estado NOT IN ('cerrado', 'resuelto') ORDER BY id DESC LIMIT 1",
         (telefono,)
     )
     row = cursor.fetchone()
@@ -7008,6 +7050,12 @@ def registrar_mensaje_whatsapp(data: WhatsappMensajeIn):
             campos.append("referencia_id=%s"); valores.append(data.referencia_id)
         if data.texto:
             campos.append("resumen=%s"); valores.append(data.texto[:500])
+        if data.diagnostico:
+            campos.append("diagnostico=%s"); valores.append(data.diagnostico)
+        if data.conversation_id:
+            campos.append("conversation_id=%s"); valores.append(data.conversation_id)
+        if data.account_id:
+            campos.append("account_id=%s"); valores.append(data.account_id)
         valores.append(caso_id)
         cursor2 = db.cursor()
         cursor2.execute(f"UPDATE whatsapp_casos SET {', '.join(campos)} WHERE id=%s", tuple(valores))
@@ -7016,31 +7064,51 @@ def registrar_mensaje_whatsapp(data: WhatsappMensajeIn):
         cursor2 = db.cursor()
         cursor2.execute(
             """INSERT INTO whatsapp_casos
-               (telefono, nombre_contacto, categoria, estado, resumen, flow_id, referencia_tipo, referencia_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+               (telefono, nombre_contacto, categoria, estado, resumen, diagnostico, flow_id, referencia_tipo, referencia_id,
+                conversation_id, account_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (telefono, data.nombre_contacto, data.categoria or 'otro', data.estado or 'abierto',
-             (data.texto or '')[:500] or None, data.flow_id, data.referencia_tipo, data.referencia_id)
+             (data.texto or '')[:500] or None, data.diagnostico, data.flow_id, data.referencia_tipo, data.referencia_id,
+             data.conversation_id, data.account_id)
         )
         caso_id = cursor2.lastrowid
         cursor2.close()
+        row = {"atendido_por": None, "intervencion_humana": 0}
 
-    if data.texto:
+    if data.texto or data.media_url:
         cursor3 = db.cursor()
         cursor3.execute(
-            "INSERT INTO whatsapp_mensajes (caso_id, direccion, texto) VALUES (%s, %s, %s)",
-            (caso_id, data.direccion, data.texto)
+            "INSERT INTO whatsapp_mensajes (caso_id, direccion, texto, media_url) VALUES (%s, %s, %s, %s)",
+            (caso_id, data.direccion, data.texto, data.media_url)
         )
         cursor3.close()
 
     db.commit()
     cursor.close()
     db.close()
-    return {"caso_id": caso_id, "message": "Registrado"}
+    return {
+        "caso_id": caso_id,
+        "message": "Registrado",
+        "atendido_por": row.get("atendido_por"),
+        "intervencion_humana": bool(row.get("intervencion_humana")),
+    }
+
+
+def _auto_cerrar_casos_resueltos(db):
+    """Archiva solos los casos 'resuelto' que llevan 48h sin actividad."""
+    cursor = db.cursor()
+    cursor.execute(
+        "UPDATE whatsapp_casos SET estado='cerrado' "
+        "WHERE estado='resuelto' AND ultima_actividad < (NOW() - INTERVAL 48 HOUR)"
+    )
+    db.commit()
+    cursor.close()
 
 
 @app.get("/whatsapp-casos")
 def listar_casos_whatsapp(estado: str = None, categoria: str = None):
     db = _get_db()
+    _auto_cerrar_casos_resueltos(db)
     cursor = db.cursor(dictionary=True)
     query = "SELECT * FROM whatsapp_casos WHERE 1=1"
     params = []
@@ -7130,3 +7198,98 @@ def asignar_caso_whatsapp(caso_id: int, data: dict = Body(...)):
     if affected == 0:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
     return {"message": "Caso asignado", "id": caso_id, "atendido_por": atendido_por or None}
+
+
+@app.put("/whatsapp-casos/{caso_id}/nombre-contacto")
+def renombrar_contacto_whatsapp(caso_id: int, data: dict = Body(...)):
+    """Le pone/edita el nombre del contacto a mano desde el panel Vue —
+    igual que guardar un contacto nuevo en WhatsApp. El teléfono no cambia,
+    y el nombre se aplica a TODOS los casos de ese mismo número (es del
+    contacto, no de un caso en particular)."""
+    nombre_contacto = data.get('nombre_contacto', '').strip()
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT telefono FROM whatsapp_casos WHERE id=%s", (caso_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    cursor2 = db.cursor()
+    cursor2.execute(
+        "UPDATE whatsapp_casos SET nombre_contacto=%s WHERE telefono=%s",
+        (nombre_contacto or None, row['telefono'])
+    )
+    db.commit()
+    cursor2.close()
+    cursor.close()
+    db.close()
+    return {"message": "Contacto renombrado", "telefono": row['telefono'], "nombre_contacto": nombre_contacto or None}
+
+
+@app.post("/whatsapp-casos/{caso_id}/responder")
+def responder_caso_whatsapp_humano(caso_id: int, data: dict = Body(...)):
+    """Un humano contesta directo por WhatsApp desde el panel Vue, saltándose
+    a la IA. Manda el mensaje directo a Zernio (mismo API que usa el bot) y
+    marca el caso como intervenido para que el bot deje de responder solo."""
+    texto = (data.get('texto') or '').strip()
+    if not texto:
+        raise HTTPException(status_code=400, detail="Se requiere 'texto'")
+
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT telefono, conversation_id, account_id FROM whatsapp_casos WHERE id=%s", (caso_id,))
+    caso = cursor.fetchone()
+    if not caso:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    if not caso.get("conversation_id") or not caso.get("account_id"):
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Este caso todavía no tiene conversación de WhatsApp asociada (espera un mensaje nuevo del cliente)")
+
+    zernio_key = os.getenv("ZERNIO_API_KEY", "")
+    if not zernio_key:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=500, detail="ZERNIO_API_KEY no configurado en .env")
+
+    import requests as _req
+    try:
+        resp = _req.post(
+            f"https://zernio.com/api/v1/inbox/conversations/{caso['conversation_id']}/messages",
+            files={"accountId": (None, caso["account_id"]), "message": (None, texto)},
+            headers={"Authorization": f"Bearer {zernio_key}"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            raise Exception(f"Zernio respondió {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=502, detail=f"No se pudo enviar el mensaje por WhatsApp: {e}")
+
+    cursor2 = db.cursor()
+    cursor2.execute(
+        "UPDATE whatsapp_casos SET intervencion_humana=1, ultima_actividad=NOW() WHERE id=%s",
+        (caso_id,)
+    )
+    cursor2.execute(
+        "INSERT INTO whatsapp_mensajes (caso_id, direccion, autor, texto) VALUES (%s, 'out', 'humano', %s)",
+        (caso_id, texto)
+    )
+    db.commit()
+    cursor2.close()
+    cursor.close()
+    db.close()
+    return {"message": "Mensaje enviado", "id": caso_id, "intervencion_humana": True}
+
+
+@app.put("/whatsapp-casos/{caso_id}/reactivar-ia")
+def reactivar_ia_caso_whatsapp(caso_id: int):
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE whatsapp_casos SET intervencion_humana=0 WHERE id=%s", (caso_id,))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    return {"message": "IA reactivada", "id": caso_id, "intervencion_humana": False}
