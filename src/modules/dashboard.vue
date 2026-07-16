@@ -271,7 +271,7 @@ const items = computed(() => {
       route: '/bancos'
     },
     {
-      label: 'Casos WhatsApp',
+      label: 'Soporte IA',
       icon: 'pi pi-fw pi-whatsapp',
       route: '/casos-whatsapp',
       badge: casosWhatsappAbiertos.value || undefined
