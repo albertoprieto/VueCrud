@@ -4508,11 +4508,27 @@ def get_nota_pago(nota_id: int):
         row['reporte_ids'] = reporte_ids
         if reporte_ids:
             placeholders = ','.join(['%s'] * len(reporte_ids))
-            cursor.execute(f"SELECT id, folio, tipo_servicio, nombre_cliente, total, plataforma, usuario, imei FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
+            cursor.execute(
+                f"SELECT id, folio, tipo_servicio, nombre_cliente, total, plataforma, usuario, imei, "
+                f"sim_serie, monto_tecnico, imeis_articulos, sim_series FROM reportes_servicio WHERE id IN ({placeholders})",
+                tuple(reporte_ids)
+            )
             detalle_ordenes = cursor.fetchall()
             for d in detalle_ordenes:
                 if d.get('total') is not None:
                     d['total'] = float(d['total'])
+                if d.get('monto_tecnico') is not None:
+                    d['monto_tecnico'] = float(d['monto_tecnico'])
+                if isinstance(d.get('imeis_articulos'), str):
+                    try:
+                        d['imeis_articulos'] = json.loads(d['imeis_articulos']) if d['imeis_articulos'] else []
+                    except Exception:
+                        d['imeis_articulos'] = []
+                if isinstance(d.get('sim_series'), str):
+                    try:
+                        d['sim_series'] = json.loads(d['sim_series']) if d['sim_series'] else []
+                    except Exception:
+                        d['sim_series'] = []
         row['detalle_ordenes'] = detalle_ordenes
         if row.get('fecha') and hasattr(row['fecha'], 'isoformat'):
             row['fecha'] = row['fecha'].isoformat()
@@ -4945,11 +4961,27 @@ def get_factura_pago(factura_id: int):
         row['reporte_ids'] = reporte_ids
         if reporte_ids:
             placeholders = ','.join(['%s'] * len(reporte_ids))
-            cursor.execute(f"SELECT id, folio, tipo_servicio, nombre_cliente, total, plataforma, usuario, imei FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
+            cursor.execute(
+                f"SELECT id, folio, tipo_servicio, nombre_cliente, total, plataforma, usuario, imei, "
+                f"sim_serie, monto_tecnico, imeis_articulos, sim_series FROM reportes_servicio WHERE id IN ({placeholders})",
+                tuple(reporte_ids)
+            )
             detalle_ordenes = cursor.fetchall()
             for d in detalle_ordenes:
                 if d.get('total') is not None:
                     d['total'] = float(d['total'])
+                if d.get('monto_tecnico') is not None:
+                    d['monto_tecnico'] = float(d['monto_tecnico'])
+                if isinstance(d.get('imeis_articulos'), str):
+                    try:
+                        d['imeis_articulos'] = json.loads(d['imeis_articulos']) if d['imeis_articulos'] else []
+                    except Exception:
+                        d['imeis_articulos'] = []
+                if isinstance(d.get('sim_series'), str):
+                    try:
+                        d['sim_series'] = json.loads(d['sim_series']) if d['sim_series'] else []
+                    except Exception:
+                        d['sim_series'] = []
         row['detalle_ordenes'] = detalle_ordenes
         if row.get('fecha') and hasattr(row['fecha'], 'isoformat'):
             row['fecha'] = row['fecha'].isoformat()
