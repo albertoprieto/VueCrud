@@ -69,6 +69,21 @@ async function buscarClienteFiscal(nombreCliente) {
   }
 }
 
+// IMEI/SIM → articulo_nombre (vía /buscar-imei), para mostrar en la columna
+// "Tipo de Servicio" de las notas de reportes de servicio (instalación, etc.)
+// que no vienen de renovaciones.
+async function buscarArticuloNombrePorImei(digitos) {
+  if (!digitos) return null;
+  try {
+    const res = await axios.get(`${API_URL}/buscar-imei`, { params: { digitos } });
+    const lista = Array.isArray(res.data) ? res.data : [];
+    const match = lista.find(r => r.imei === digitos) || lista[0];
+    return match?.articulo_nombre || null;
+  } catch {
+    return null;
+  }
+}
+
 function parseImeis(value) {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string') return [];
@@ -98,6 +113,18 @@ function dedupeBy(items, getKey) {
     out.push(item);
   }
   return out;
+}
+
+// Tipos de servicio que corresponden al flujo de renovaciones (ver
+// tiposServicio en NuevoReporteDeServicio.vue). Cualquier otro tipo
+// (Instalación, Revisión, Cambio de Equipo, etc.) se trata como reporte de
+// servicio real, con su propio armado de filas más abajo.
+const TIPOS_RENOVACION = [
+  'Migracion 1 Año', 'Migracion 10 año', 'Renovacion 1año',
+  'Renovacion 10 años', 'Renovacion Sim Telcel', 'Renovacion Sim Español',
+];
+function esOrdenRenovacion(o) {
+  return TIPOS_RENOVACION.includes((o?.tipo_servicio || '').trim());
 }
 
 function blobToDataUrl(blob) {
@@ -190,36 +217,70 @@ export async function generarPagoPDF(tipo, pago) {
   }
 
   // ── Tabla de servicios (artículos) ────────────────────────────────────────
-  // Una fila por IMEI (igual que bot-engine), asociando info de la orden por índice.
-  const imeis = uniqueStrings(parseImeis(pago.imeis));
-  const useImeiRows = imeis.length > 0;
+  // Notas de renovación: comportamiento intacto, una fila por IMEI (igual que
+  // siempre). Notas de reporte de servicio real (instalación, etc.): además
+  // de cada IMEI, se listan los SIM y el propio servicio (con su monto
+  // técnico) como artículos — para eso necesitamos sim_serie/imeis_articulos/
+  // sim_series/monto_tecnico por orden, que ya vienen en detalle_ordenes.
+  const esNotaRenovacion = ordenes.length === 0 || ordenes.every(esOrdenRenovacion);
 
-  const rawServiceRows = useImeiRows
-    ? imeis.map((imei, i) => {
-        // Buscar la orden correspondiente por índice; si hay más IMEIs que órdenes, reusar la última
-        const o    = ordenes[i] ?? ordenes[ordenes.length - 1] ?? {};
-        const folioPago = Array.isArray(pago.ordenes) ? (pago.ordenes[i] ?? pago.ordenes[0] ?? '-') : '-';
-        // Solo mostrar total por fila cuando hay correspondencia 1:1 con órdenes
-        const totalFila = (imeis.length === ordenes.length && o.total != null)
-          ? `$${Number(o.total).toFixed(2)}`
-          : '-';
-        return {
-          orden: o.folio || folioPago || '-',
+  let rawServiceRows;
+  if (esNotaRenovacion) {
+    // Una fila por IMEI (igual que bot-engine), asociando info de la orden por índice.
+    const imeis = uniqueStrings(parseImeis(pago.imeis));
+    const useImeiRows = imeis.length > 0;
+
+    rawServiceRows = useImeiRows
+      ? imeis.map((imei, i) => {
+          // Buscar la orden correspondiente por índice; si hay más IMEIs que órdenes, reusar la última
+          const o    = ordenes[i] ?? ordenes[ordenes.length - 1] ?? {};
+          const folioPago = Array.isArray(pago.ordenes) ? (pago.ordenes[i] ?? pago.ordenes[0] ?? '-') : '-';
+          // Solo mostrar total por fila cuando hay correspondencia 1:1 con órdenes
+          const totalFila = (imeis.length === ordenes.length && o.total != null)
+            ? `$${Number(o.total).toFixed(2)}`
+            : '-';
+          return {
+            orden: o.folio || folioPago || '-',
+            tipo: o.tipo_servicio || '-',
+            imei: imei || '-',
+            usuario: o.usuario || '-',
+            plataforma: o.plataforma || '-',
+            total: totalFila,
+          };
+        })
+      : ordenes.map((o) => ({
+          orden: o.folio || '-',
           tipo: o.tipo_servicio || '-',
-          imei: imei || '-',
+          imei: o.imei || '-',
           usuario: o.usuario || '-',
           plataforma: o.plataforma || '-',
-          total: totalFila,
-        };
-      })
-    : ordenes.map((o) => ({
-        orden: o.folio || '-',
-        tipo: o.tipo_servicio || '-',
-        imei: o.imei || '-',
-        usuario: o.usuario || '-',
-        plataforma: o.plataforma || '-',
-        total: o.total != null ? `$${Number(o.total).toFixed(2)}` : '-',
-      }));
+          total: o.total != null ? `$${Number(o.total).toFixed(2)}` : '-',
+        }));
+  } else {
+    // Para estos reportes, la columna "Tipo de Servicio" deja de repetir el
+    // tipo general (Instalación, etc.) y en su lugar identifica cada
+    // artículo: articulo_nombre real (vía /buscar-imei) para IMEI/SIM, y
+    // "Servicio técnico" para la fila del monto técnico. La columna Total no
+    // se calcula por fila — el total general de la nota ya cubre eso.
+    rawServiceRows = [];
+    for (const o of ordenes) {
+      const base = { orden: o.folio || '-', usuario: o.usuario || '-', plataforma: o.plataforma || '-', total: '-' };
+      const montoServicio = o.monto_tecnico != null ? `$${Number(o.monto_tecnico).toFixed(2)}` : '-';
+      rawServiceRows.push({ ...base, tipo: 'Servicio técnico', imei: `Servicio (Monto técnico ${montoServicio})` });
+
+      const imeisOrden = uniqueStrings([o.imei, ...((o.imeis_articulos || []).flatMap(g => g.imeis || []))]);
+      const simsOrden = uniqueStrings([
+        o.sim_serie,
+        ...((o.imeis_articulos || []).flatMap(g => g.sims || [])),
+        ...(o.sim_series || []),
+      ]);
+
+      for (const valor of [...imeisOrden, ...simsOrden]) {
+        const articuloNombre = await buscarArticuloNombrePorImei(valor);
+        rawServiceRows.push({ ...base, tipo: articuloNombre || '-', imei: valor });
+      }
+    }
+  }
 
   const serviceRows = dedupeBy(
     rawServiceRows,
@@ -233,7 +294,6 @@ export async function generarPagoPDF(tipo, pago) {
     { text: r.imei || '-',      fontSize: 7          },
     { text: r.usuario || '-'                         },
     { text: r.plataforma || '-'                      },
-    { text: r.total || '-',     alignment: 'right'   },
   ]);
 
   const tableBody = [
@@ -244,7 +304,6 @@ export async function generarPagoPDF(tipo, pago) {
       { text: 'IMEI',             style: 'th' },
       { text: 'Usuario',          style: 'th' },
       { text: 'Plataforma',       style: 'th' },
-      { text: 'Total',            style: 'th' },
     ],
     ...tableRows,
   ];
@@ -354,11 +413,11 @@ export async function generarPagoPDF(tipo, pago) {
 
       // ── Tabla de servicios ────────────────────────────────────────────────
       { text: 'Servicios', style: 'sectionTitle', margin: [0, 0, 0, 4] },
-      (imeis.length > 0 || ordenes.length > 0)
+      (serviceRows.length > 0 || ordenes.length > 0)
         ? {
             table: {
               headerRows: 1,
-              widths: [18, 75, 85, 78, 65, 62, 52],
+              widths: [18, 90, 95, 90, 75, 72],
               body: tableBody,
             },
             layout: {
