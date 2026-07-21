@@ -260,27 +260,27 @@ const items = computed(() => {
     //   icon: 'pi pi-fw pi-wallet',
     //   route: '/dinero'
     // },
-    {
+    ...(esAdmin.value ? [{
       label: 'Pagos',
       icon: 'pi pi-fw pi-wallet',
       route: '/pagos'
-    },
-    {
+    }] : []),
+    ...(esAdmin.value ? [{
       label: 'Bancos',
       icon: 'pi pi-fw pi-building-columns',
       route: '/bancos'
-    },
+    }] : []),
     {
       label: 'Soporte IA',
       icon: 'pi pi-fw pi-whatsapp',
       route: '/casos-whatsapp',
       badge: casosWhatsappAbiertos.value || undefined
     },
-    {
+    ...(esAdmin.value ? [{
       label: 'Usuarios',
       icon: 'pi pi-fw pi-users',
       route: '/usuarios'
-    },
+    }] : []),
     {
       label: 'Técnicos',
       icon: 'pi pi-fw pi-user-cog',

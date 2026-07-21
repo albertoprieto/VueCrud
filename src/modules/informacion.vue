@@ -73,25 +73,25 @@ const groupedItems = computed(() => {
         // { label: 'Dinero', route: '/dinero', icon: 'pi pi-fw pi-wallet', desc: 'Ver movimientos y saldo de dinero' }
       ]
     },
-    {
+    ...(esAdmin.value ? [{
       title: 'Pagos',
       items: [
         { label: 'Pagos', route: '/pagos', icon: 'pi pi-fw pi-wallet', desc: 'Notas y Facturas — histórico y estatus' },
         { label: 'Bancos', route: '/bancos', icon: 'pi pi-fw pi-building-columns', desc: 'Estado de cuenta y retiros por banco' }
       ]
-    },
+    }] : []),
     {
       title: 'WhatsApp',
       items: [
         { label: 'Soporte IA', route: '/casos-whatsapp', icon: 'pi pi-fw pi-whatsapp', desc: 'Seguimiento de conversaciones del bot' }
       ]
     },
-    {
+    ...(esAdmin.value ? [{
       title: 'Usuarios',
       items: [
         { label: 'Usuarios', route: '/usuarios', icon: 'pi pi-fw pi-users', desc: 'Gestión de usuarios' }
       ]
-    },
+    }] : []),
     {
       title: 'Técnicos',
       items: [
