@@ -266,7 +266,7 @@ export async function generarPagoPDF(tipo, pago) {
     for (const o of ordenes) {
       const base = { orden: o.folio || '-', usuario: o.usuario || '-', plataforma: o.plataforma || '-', total: '-' };
       const montoServicio = o.monto_tecnico != null ? `$${Number(o.monto_tecnico).toFixed(2)}` : '-';
-      rawServiceRows.push({ ...base, tipo: 'Servicio técnico', imei: `Servicio (Monto técnico ${montoServicio})` });
+      rawServiceRows.push({ ...base, tipo: 'Servicio técnico', imei: `Servicio` });
 
       const imeisOrden = uniqueStrings([o.imei, ...((o.imeis_articulos || []).flatMap(g => g.imeis || []))]);
       const simsOrden = uniqueStrings([

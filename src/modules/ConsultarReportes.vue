@@ -9,13 +9,20 @@
         class="p-button-success"
         style="background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%); border: none; color: #222; font-weight: bold; box-shadow: 0 2px 8px #43e97b33;"
         @click="irReporteServicioGlobal"
-      />
+      />Crea 
       <Button
         label="Agregar Reporte Renovación"
         icon="pi pi-plus"
         class="p-button-info"
         style="background: linear-gradient(90deg, #43a1e9 0%, #38d7f9 100%); border: none; color: #222; font-weight: bold; box-shadow: 0 2px 8px #43a1e933;"
         @click="irReporteRenovacionGlobal"
+      />
+      <Button
+        label="Exportar sin nota"
+        icon="pi pi-file-excel"
+        class="p-button-help"
+        :loading="exportandoSinNota"
+        @click="exportarSinNota"
       />
     </div>
     <div v-if="showNuevoReporteDialog">
@@ -169,13 +176,13 @@
                   label="Ver comprobante"
                 />
               </a>
-              <!-- <Button
+              <Button
                 v-if="!slotProps.data.pagado && !slotProps.data.comprobante_path"
                 icon="pi pi-upload"
                 class="p-button-sm p-button-success"
-                label="Marcar como pagado"
+                label="Adjuntar comprobante"
                 @click="marcarComoPagado(slotProps.data)"
-              /> -->
+              />
               <Button
                 v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
                 icon="pi pi-check-circle"
@@ -436,6 +443,7 @@ import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
 import { crearNota, crearFactura, getNotas, getFacturas } from '@/services/pagosService';
 import { generarNotaServicioPDF } from '@/services/NotaServicioPdfService.js';
+import * as XLSX from 'xlsx';
 import NuevoReporteDeServicio from './NuevoReporteDeServicio.vue';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/reportes-servicio`;
@@ -458,6 +466,7 @@ const user = computed(() => loginStore.user || {});
 
 const reportes = ref([]);
 const loading = ref(false);
+const exportandoSinNota = ref(false);
 
 const showDialog = ref(false);
 const showEditDialog = ref(false);
@@ -808,6 +817,52 @@ async function cargarReportes(forceReload = false) {
     showMessageDialog.value = true;
   }
   loading.value = false;
+}
+
+// IMEIs de un reporte: puede venir en el campo imei suelto y/o repartido en
+// imeis_articulos[].imeis (reportes multi-artículo, ej. desde el bot).
+function imeisDeReporte(r) {
+  const imeis = new Set();
+  if (r.imei) imeis.add(r.imei);
+  for (const grupo of (r.imeis_articulos || [])) {
+    for (const im of (grupo.imeis || [])) imeis.add(im);
+  }
+  return [...imeis];
+}
+
+async function exportarSinNota() {
+  exportandoSinNota.value = true;
+  try {
+    const notas = await getNotas();
+    const reportesConNota = new Set();
+    for (const nota of notas) {
+      for (const id of (nota.reporte_ids || [])) reportesConNota.add(id);
+    }
+    const sinNota = reportes.value.filter(r => !reportesConNota.has(r.id));
+    if (!sinNota.length) {
+      toast.add({ severity: 'info', summary: 'Sin pendientes', detail: 'Todos los reportes ya tienen nota.', life: 3500 });
+      return;
+    }
+    const filas = sinNota.map(r => ({
+      Folio: r.folio || '',
+      Cliente: r.nombre_cliente || '',
+      'Tipo de Servicio': r.tipo_servicio || '',
+      IMEI: imeisDeReporte(r).join(', '),
+      Total: r.total ?? '',
+      Fecha: r.fecha ? String(r.fecha).slice(0, 10) : '',
+      Vendedor: r.vendedor || '',
+      Instalador: r.nombre_instalador || '',
+      Plataforma: r.plataforma || '',
+      'Estatus comprobante': r.comprobante_estado || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(filas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sin Nota');
+    XLSX.writeFile(wb, `reportes_sin_nota_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo exportar.', life: 4000 });
+  }
+  exportandoSinNota.value = false;
 }
 
 async function mostrarNota(reporte) {
