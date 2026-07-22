@@ -1,6 +1,9 @@
 <template>
   <div class="pagos-container">
-    <h2 class="pagos-title">Pagos — Histórico</h2>
+    <h2 class="pagos-title">
+      <i :class="['pi', tab === 'notas' ? 'pi-file' : 'pi-receipt']"></i>
+      {{ tab === 'notas' ? 'Notas' : 'Facturas' }} — Histórico
+    </h2>
 
     <!-- Tabs: Notas / Facturas -->
     <div class="pagos-tabs">
@@ -92,7 +95,7 @@
     </div>
 
     <!-- ════════ NOTAS ════════ -->
-    <div v-if="tab === 'notas'">
+    <div v-if="tab === 'notas'" class="tabla-seccion seccion-notas">
       <DataTable
         v-if="!isMobile"
         :value="notasFiltradas"
@@ -229,7 +232,7 @@
     </div>
 
     <!-- ════════ FACTURAS ════════ -->
-    <div v-if="tab === 'facturas'">
+    <div v-if="tab === 'facturas'" class="tabla-seccion seccion-facturas">
       <DataTable
         v-if="!isMobile"
         :value="facturasFiltradas"
@@ -751,6 +754,20 @@ onBeforeUnmount(() => {
   text-align: center;
   margin-bottom: 1.5rem;
   color: var(--color-title);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.tabla-seccion {
+  border-top: 3px solid var(--accent-seccion);
+  padding-top: 1rem;
+}
+.seccion-notas {
+  --accent-seccion: #2a78d6;
+}
+.seccion-facturas {
+  --accent-seccion: #eda100;
 }
 .pagos-tabs {
   display: flex;
