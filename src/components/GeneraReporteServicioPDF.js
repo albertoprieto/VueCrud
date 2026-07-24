@@ -1,5 +1,6 @@
 // src/components/GeneraReporteServicioPDF.js
 // Basado en el formato del Cotizador.vue, usando pdfmake
+import axios from 'axios';
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 
@@ -8,7 +9,50 @@ import pdfFonts from 'pdfmake/build/vfs_fonts';
 // Pega aquí tu string base64 del logo, por ejemplo:
 // const logoBase64 = 'data:image/png;base64,...';
 
-export function generarReporteServicioPDF({ reporte, empresaz, comprobante = null, mode = 'download' }) {
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+// Modelo GPS = SKU real del dispositivo, vía /buscar-imei (api.gpsubicacionapi.com).
+function normPlataforma(raw) {
+  const s = (raw || '').toLowerCase().replace(/\s/g, '');
+  if (s.includes('tracksolid')) return 'tracksolid';
+  if (s.includes('iop') || s.includes('wanway')) return 'iop';
+  return '';
+}
+
+// Cliente/Usuario reales del dispositivo, vía /api/plataformas/dispositivo-resumen
+// — mismo endpoint que ya separa bien "cuenta" (login/account) de "cliente"
+// (customerName/userName) del lado del servidor. Antes esto se reimplementaba
+// a mano contra /api/plataformas/buscar y en Tracksolid terminaba mapeando el
+// mismo campo (customerName) tanto a cliente como a usuario. Evita mostrar al
+// técnico/instalador en el campo "Cliente". Sin resultado, 'N/A' en vez de
+// caer de vuelta a esos campos.
+async function buscarClienteUsuarioPorImei(imei, plataformaRaw) {
+  const plataforma = normPlataforma(plataformaRaw);
+  if (!imei || (plataforma !== 'iop' && plataforma !== 'tracksolid')) {
+    return { cliente: 'N/A', usuario: 'N/A' };
+  }
+  try {
+    const res = await axios.get(`${API_URL}/api/plataformas/dispositivo-resumen/${imei}`, { params: { plataforma } });
+    const { cuenta, cliente } = res.data || {};
+    return { cliente: cliente || 'N/A', usuario: cuenta || 'N/A' };
+  } catch {
+    return { cliente: 'N/A', usuario: 'N/A' };
+  }
+}
+
+async function buscarSkuPorImei(imei) {
+  if (!imei) return null;
+  try {
+    const res = await axios.get(`${API_URL}/buscar-imei`, { params: { digitos: imei } });
+    const lista = Array.isArray(res.data) ? res.data : [];
+    const match = lista.find(r => r.imei === imei) || lista[0];
+    return match?.sku || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function generarReporteServicioPDF({ reporte, empresaz, comprobante = null, mode = 'download' }) {
 
 
 const empresa = {
@@ -26,6 +70,14 @@ const empresa = {
   const folio = reporte.folio || `SERVICIO-${String(reporte.id).padStart(5, '0')}`;
 
   const esMultiDispositivo = reporte.imeis_articulos && reporte.imeis_articulos.length > 0;
+  const modeloGps = esMultiDispositivo
+    ? (reporte.modelo_gps || '')
+    : (await buscarSkuPorImei(reporte.imei)) || reporte.modelo_gps || '';
+
+  const imeiParaLookup = reporte.imei || reporte.imeis_articulos?.[0]?.imeis?.[0];
+  const { cliente: clienteReal, usuario: usuarioReal } =
+    await buscarClienteUsuarioPorImei(imeiParaLookup, reporte.plataforma);
+
   const filasMulti = [];
   if (esMultiDispositivo) {
     filasMulti.push([
@@ -93,7 +145,7 @@ const empresa = {
             width: '33%',
             stack: [
               { text: 'Cliente', style: 'cardHeader' },
-              { text: reporte.nombre_cliente || '', style: 'cardValue' },
+              { text: clienteReal, style: 'cardValue' },
               { text: 'Técnico', style: 'cardHeader' },
               { text: reporte.nombre_instalador || '', style: 'cardValue' },
               { text: 'Vendedor', style: 'cardHeader' },
@@ -113,7 +165,7 @@ const empresa = {
               { text: 'Plataforma', style: 'cardHeader' },
               { text: reporte.plataforma || '', style: 'cardValue' },
               { text: 'Usuario', style: 'cardHeader' },
-              { text: reporte.usuario || '', style: 'cardValue' }
+              { text: usuarioReal, style: 'cardValue' }
             ],
             margin: [0,0,8,0],
             fillColor: '#fafafa',
@@ -198,7 +250,7 @@ const empresa = {
               : {
                   table: {
                     headerRows: 1,
-                    widths: [70, 70, 70],
+                    widths: [65, 85, 60],
                     body: [
                       [
                         { text: 'Modelo GPS', style: 'tableHeader' },
@@ -206,7 +258,7 @@ const empresa = {
                         { text: 'SIM Serie', style: 'tableHeader' }
                       ],
                       [
-                        reporte.modelo_gps || '',
+                        modeloGps,
                         reporte.imei || '',
                         reporte.sim_serie || ''
                       ],

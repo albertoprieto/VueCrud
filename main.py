@@ -4330,7 +4330,7 @@ def get_datos_reporte_renovacion(data: dict = Body(...)):
             if not os.getenv("IOPGPS_APPID"):
                 plataforma_error = "Credenciales IOP no configuradas en .env"
             else:
-                iop = IOPGPSClient()
+                iop = _get_iop_client()
                 resp = iop.get_device_detail(imei_input)
                 if resp.get("code") == 0 and resp.get("data"):
                     raw = resp["data"]
@@ -5727,6 +5727,15 @@ import requests as _requests
 import threading as _threading
 
 # ---------- IOP GPS Client ----------
+# Nota: esta clase se usaba antes instanciándose de nuevo (`IOPGPSClient()`) en
+# cada request de los endpoints /api/plataformas/* — eso descartaba el token
+# cacheado al terminar cada request y forzaba un POST /api/auth nuevo en CADA
+# consulta (a diferencia de Tracksolid, que sí reutiliza un cliente singleton).
+# Bajo ráfagas de requests eso dispara auths concurrentes/repetidos contra IOP
+# y produce fallos intermitentes. Ver _get_iop_client() más abajo: ahora se
+# reutiliza una sola instancia (mismo patrón que _get_tracksolid_client), con
+# lock para evitar reautenticaciones concurrentes y un reintento automático si
+# el token cacheado resulta inválido (p. ej. revocado del lado de IOP).
 class IOPGPSClient:
     TOKEN_MARGIN_SECONDS = 300
 
@@ -5736,6 +5745,7 @@ class IOPGPSClient:
         self.base_url = os.getenv("IOPGPS_BASE_URL", "https://open.iopgps.com")
         self._access_token = None
         self._token_expires_at = 0
+        self._auth_lock = _threading.Lock()
 
     def _md5(self, text: str) -> str:
         return hashlib.md5(text.encode()).hexdigest().lower()
@@ -5746,20 +5756,33 @@ class IOPGPSClient:
             and _time.time() < (self._token_expires_at - self.TOKEN_MARGIN_SECONDS)
         )
 
-    def authenticate(self):
-        timestamp = int(_time.time())
-        signature = self._md5(self._md5(self.secret_key) + str(timestamp))
-        resp = _requests.post(
-            f"{self.base_url}/api/auth",
-            json={"appid": self.appid, "time": timestamp, "signature": signature},
-            headers={"Content-Type": "application/json"},
-            timeout=15,
-        )
-        data = resp.json()
-        if data.get("code") != 0:
-            raise Exception(f"IOP auth error: {data.get('result')}")
-        self._access_token = data["accessToken"]
-        self._token_expires_at = _time.time() + data.get("expiresIn", 7200000) / 1000
+    def authenticate(self, force: bool = False):
+        with self._auth_lock:
+            # Otro hilo ya pudo haber refrescado el token mientras esperábamos el lock.
+            if not force and self._is_token_valid():
+                print(f"[IOP] authenticate() llamado pero token sigue vigente, se omite (force={force})")
+                return
+            t0 = _time.time()
+            timestamp = int(t0)
+            signature = self._md5(self._md5(self.secret_key) + str(timestamp))
+            print(f"[IOP] POST {self.base_url}/api/auth  force={force}  appid={self.appid[:6]}...")
+            try:
+                resp = _requests.post(
+                    f"{self.base_url}/api/auth",
+                    json={"appid": self.appid, "time": timestamp, "signature": signature},
+                    headers={"Content-Type": "application/json"},
+                    timeout=15,
+                )
+                data = resp.json()
+            except Exception as e:
+                print(f"[IOP] auth FALLÓ en {_time.time()-t0:.2f}s: {e}")
+                raise Exception(f"IOP auth error: no se pudo contactar {self.base_url}/api/auth ({e})")
+            if data.get("code") != 0:
+                print(f"[IOP] auth rechazado en {_time.time()-t0:.2f}s: code={data.get('code')} result={data.get('result')}")
+                raise Exception(f"IOP auth error: {data.get('result')}")
+            self._access_token = data["accessToken"]
+            self._token_expires_at = _time.time() + data.get("expiresIn", 7200000) / 1000
+            print(f"[IOP] auth OK en {_time.time()-t0:.2f}s, expira en {data.get('expiresIn', 7200000)/1000:.0f}s")
 
     def _get_token(self) -> str:
         if not self._is_token_valid():
@@ -5769,16 +5792,45 @@ class IOPGPSClient:
     def _headers(self):
         return {"accessToken": self._get_token(), "Content-Type": "application/json"}
 
+    # Ejecuta una llamada IOP. code != 0 en estos endpoints casi siempre es un
+    # resultado de negocio normal ("dispositivo no encontrado", etc.), NO un
+    # token inválido — reautenticar en cada code!=0 dispara un /api/auth extra
+    # por cada intento sin resultado (device/detail, device/detail/page,
+    # vehicle/status, device/info se prueban en cascada en search_devices) y,
+    # si IOP tarda o rechaza ese auth de más, revienta una búsqueda que en
+    # realidad solo necesitaba decir "no encontrado". Por eso el reintento
+    # solo se dispara si el propio mensaje de error de IOP menciona el token.
+    def _call(self, request_fn):
+        had_cached_token = self._is_token_valid()
+        t0 = _time.time()
+        try:
+            resp = request_fn()
+        except Exception as e:
+            print(f"[IOP] _call FALLÓ en {_time.time()-t0:.2f}s: {e}")
+            raise Exception(f"IOP request error: {e}")
+        print(f"[IOP] _call resp en {_time.time()-t0:.2f}s: code={resp.get('code') if isinstance(resp, dict) else '?'}")
+        if had_cached_token and isinstance(resp, dict) and resp.get("code") not in (0, None):
+            mensaje = str(resp.get("result") or resp.get("message") or "").lower()
+            if "token" in mensaje:
+                print(f"[IOP] code={resp.get('code')} menciona 'token' -> reauth forzado y reintento")
+                self.authenticate(force=True)
+                resp = request_fn()
+            else:
+                print(f"[IOP] code={resp.get('code')} sin mención de token -> NO se reautentica (resultado de negocio normal)")
+        return resp
+
     # --- Endpoints directos (eficientes) ---
 
     def get_device_detail(self, imei_val: str):
         """GET /api/device/detail?imei=XXX - Consulta directa por IMEI."""
-        resp = _requests.get(
-            f"{self.base_url}/api/device/detail",
-            params={"imei": imei_val},
-            headers=self._headers(), timeout=15,
-        )
-        return resp.json()
+        def _do():
+            resp = _requests.get(
+                f"{self.base_url}/api/device/detail",
+                params={"imei": imei_val},
+                headers=self._headers(), timeout=15,
+            )
+            return resp.json()
+        return self._call(_do)
 
     def get_device_detail_page(self, imeis: list = None, license_numbers: list = None, vins: list = None, account_id: str = None):
         """POST /api/device/detail/page - Búsqueda batch por IMEI, placa, VIN o cuenta."""
@@ -5791,21 +5843,25 @@ class IOPGPSClient:
             body["licenseNumber"] = license_numbers
         elif vins:
             body["vin"] = vins
-        resp = _requests.post(
-            f"{self.base_url}/api/device/detail/page",
-            json=body,
-            headers=self._headers(), timeout=15,
-        )
-        return resp.json()
+        def _do():
+            resp = _requests.post(
+                f"{self.base_url}/api/device/detail/page",
+                json=body,
+                headers=self._headers(), timeout=15,
+            )
+            return resp.json()
+        return self._call(_do)
 
     def get_vehicle_status(self, content: str):
         """GET /api/vehicle/status?content=XXX - Busca dispositivo por contenido (IMEI, placa, etc.)."""
-        resp = _requests.get(
-            f"{self.base_url}/api/vehicle/status",
-            params={"content": content},
-            headers=self._headers(), timeout=15,
-        )
-        return resp.json()
+        def _do():
+            resp = _requests.get(
+                f"{self.base_url}/api/vehicle/status",
+                params={"content": content},
+                headers=self._headers(), timeout=15,
+            )
+            return resp.json()
+        return self._call(_do)
 
     def get_device_info(self, imei_val: str = None, account: str = None):
         """GET /api/device/info - Detalle del dispositivo por IMEI o cuenta."""
@@ -5814,12 +5870,14 @@ class IOPGPSClient:
             params["imei"] = imei_val
         if account:
             params["account"] = account
-        resp = _requests.get(
-            f"{self.base_url}/api/device/info",
-            params=params,
-            headers=self._headers(), timeout=15,
-        )
-        return resp.json()
+        def _do():
+            resp = _requests.get(
+                f"{self.base_url}/api/device/info",
+                params=params,
+                headers=self._headers(), timeout=15,
+            )
+            return resp.json()
+        return self._call(_do)
 
     def search_devices(self, query: str):
         """
@@ -5830,10 +5888,12 @@ class IOPGPSClient:
         Retorna siempre una lista de resultados raw.
         """
         results = []
+        print(f"[IOP] search_devices('{query}') iniciando")
 
         # Estrategia 1: Si parece IMEI, buscar directo
         q_stripped = query.strip()
         if q_stripped.isdigit() and len(q_stripped) >= 6:
+            print(f"[IOP] estrategia 1: get_device_detail('{q_stripped}')")
             detail = self.get_device_detail(q_stripped)
             if detail.get("code") == 0 and detail.get("data"):
                 data = detail["data"]
@@ -5842,32 +5902,41 @@ class IOPGPSClient:
                 elif isinstance(data, list):
                     results = data
                 if results:
+                    print(f"[IOP] estrategia 1 encontró {len(results)} resultado(s)")
                     return results
 
             # Intentar batch search
+            print(f"[IOP] estrategia 1b: get_device_detail_page(['{q_stripped}'])")
             page_resp = self.get_device_detail_page(imeis=[q_stripped])
             if page_resp.get("code") == 0:
                 data = page_resp.get("data", {})
                 items = data.get("list", data.get("data", []))  # estructura puede variar
                 if isinstance(items, list) and items:
+                    print(f"[IOP] estrategia 1b encontró {len(items)} resultado(s)")
                     return items
 
         # Estrategia 2: Buscar por vehicle/status (acepta contenido libre)
+        print(f"[IOP] estrategia 2: get_vehicle_status('{query}')")
         vs_resp = self.get_vehicle_status(query)
         if vs_resp.get("code") == 0 and vs_resp.get("data"):
             data = vs_resp["data"]
             if isinstance(data, list) and data:
+                print(f"[IOP] estrategia 2 encontró {len(data)} resultado(s)")
                 return data
 
         # Estrategia 3: Buscar por device/info como cuenta
+        print(f"[IOP] estrategia 3: get_device_info(account='{query}')")
         info_resp = self.get_device_info(account=query)
         if info_resp.get("code") == 0 and info_resp.get("data"):
             data = info_resp["data"]
             if isinstance(data, list) and data:
+                print(f"[IOP] estrategia 3 encontró {len(data)} resultado(s)")
                 return data
             elif isinstance(data, dict):
+                print(f"[IOP] estrategia 3 encontró 1 resultado")
                 return [data]
 
+        print(f"[IOP] search_devices('{query}') sin resultados en ninguna estrategia")
         return results
 
 
@@ -6149,6 +6218,9 @@ class TrackSolidClient:
     def search_devices(self, query: str):
         """
         Búsqueda en Tracksolid:
+        0. Si el query es un IMEI puro → jimi.track.device.detail directo
+           (no necesita cuenta ni escanear sub-cuentas — instantáneo, ver
+           https://tracksolidprodocs.jimicloud.com/overview/getting-started.html).
         1. Cache de búsquedas recientes (instantáneo)
         2. Si hay caché de dispositivos, buscar ahí (instantáneo)
         3. Sin caché: buscar por cuenta en child_list, luego listar dispositivos
@@ -6156,7 +6228,24 @@ class TrackSolidClient:
         q_stripped = query.strip()
         q = query.lower().strip()
 
-        # 0. Cache de búsquedas recientes
+        # 0. Si parece IMEI, intentar consulta directa primero (mismo patrón
+        # que IOPGPSClient.search_devices con get_device_detail) — evita
+        # depender del caché de 3000 sub-cuentas para el caso común.
+        if q_stripped.isdigit() and len(q_stripped) >= 6:
+            try:
+                detail = self.fetch_device_detail(q_stripped)
+            except Exception:
+                detail = {}
+            if detail.get("code") == 0 and detail.get("result"):
+                raw = detail["result"]
+                dev = raw[0] if isinstance(raw, list) and raw else raw
+                if isinstance(dev, dict):
+                    dev.setdefault("_account", dev.get("account", ""))
+                    dev.setdefault("_accountName", dev.get("customerName", ""))
+                    self._search_cache[q] = {"result": [dev], "time": _time.time()}
+                    return [dev]
+
+        # 1. Cache de búsquedas recientes
         cached_search = self._search_cache.get(q)
         if cached_search and (_time.time() - cached_search["time"]) < self._search_cache_ttl:
             return cached_search["result"]
@@ -6225,6 +6314,15 @@ def _get_tracksolid_client():
         _tracksolid_client = TrackSolidClient()
     return _tracksolid_client
 
+
+# ---------- Singleton de IOP para reusar token (ver nota en IOPGPSClient) ----------
+_iop_client = None
+def _get_iop_client():
+    global _iop_client
+    if _iop_client is None:
+        _iop_client = IOPGPSClient()
+    return _iop_client
+
 # ---------- Endpoints de búsqueda en plataformas ----------
 
 @app.get("/api/plataformas/buscar")
@@ -6239,7 +6337,7 @@ def buscar_en_plataforma(q: str = Query(..., min_length=2), plataforma: str = Qu
         if plat == "iop":
             if not os.getenv("IOPGPS_APPID"):
                 raise HTTPException(status_code=400, detail="Credenciales IOP no configuradas en .env")
-            client = IOPGPSClient()
+            client = _get_iop_client()
             devices = client.search_devices(q)
             return {"plataforma": "iop", "total": len(devices), "resultados": devices}
         elif plat in ("tracksolid", "track"):
@@ -6363,7 +6461,7 @@ def detalle_dispositivo_plataforma(imei_val: str, plataforma: str = Query(...)):
         if plat == "iop":
             if not os.getenv("IOPGPS_APPID"):
                 raise HTTPException(status_code=400, detail="Credenciales IOP no configuradas en .env")
-            client = IOPGPSClient()
+            client = _get_iop_client()
             # Consulta directa por IMEI
             detail = client.get_device_detail(imei_val)
             if detail.get("code") == 0 and detail.get("data"):
@@ -6433,22 +6531,27 @@ def resumen_dispositivo_plataforma(imei_val: str, plataforma: str = Query(...)):
     sim/cuenta/cliente ya extraídos y normalizados entre IOP y Tracksolid,
     para consumo del bot."""
     plat = _normalize_plataforma_utilidades(plataforma)
-    if plat == "iop":
-        if not os.getenv("IOPGPS_APPID"):
-            raise HTTPException(status_code=400, detail="Credenciales IOP no configuradas en .env")
-        devices = IOPGPSClient().search_devices(imei_val)
-    elif plat == "tracksolid":
-        if not os.getenv("TRACKSOLID_APP_KEY"):
-            raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
-        devices = _get_tracksolid_client().search_devices(imei_val)
-    else:
-        raise HTTPException(status_code=400, detail="Plataforma no soportada. Usa 'iop' o 'tracksolid'")
+    try:
+        if plat == "iop":
+            if not os.getenv("IOPGPS_APPID"):
+                raise HTTPException(status_code=400, detail="Credenciales IOP no configuradas en .env")
+            devices = _get_iop_client().search_devices(imei_val)
+        elif plat == "tracksolid":
+            if not os.getenv("TRACKSOLID_APP_KEY"):
+                raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
+            devices = _get_tracksolid_client().search_devices(imei_val)
+        else:
+            raise HTTPException(status_code=400, detail="Plataforma no soportada. Usa 'iop' o 'tracksolid'")
 
-    if not devices:
-        raise HTTPException(status_code=404, detail="Dispositivo no encontrado")
+        if not devices:
+            raise HTTPException(status_code=404, detail="Dispositivo no encontrado")
 
-    cuenta, cliente, sim = _extract_sim_and_account(devices[0], plat)
-    return {"plataforma": plat, "sim": sim, "cuenta": cuenta, "cliente": cliente}
+        cuenta, cliente, sim = _extract_sim_and_account(devices[0], plat)
+        return {"plataforma": plat, "sim": sim, "cuenta": cuenta, "cliente": cliente}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _extract_campos_utilidades(dispositivo: dict, plataforma: str) -> dict:

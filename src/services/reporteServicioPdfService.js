@@ -1,5 +1,21 @@
+import axios from "axios";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
+
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+// Modelo GPS = SKU real del dispositivo, vía /buscar-imei (api.gpsubicacionapi.com).
+async function buscarSkuPorImei(imei) {
+  if (!imei) return null;
+  try {
+    const res = await axios.get(`${API_URL}/buscar-imei`, { params: { digitos: imei } });
+    const lista = Array.isArray(res.data) ? res.data : [];
+    const match = lista.find(r => r.imei === imei) || lista[0];
+    return match?.sku || null;
+  } catch {
+    return null;
+  }
+}
 
 export async function generarReporteServicioPDF({ reporte, venta, cliente, empresa }) {
   const folio = venta?.folio || venta?.id || '---';
@@ -108,6 +124,7 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
         const imei = imeis[i];
         const sim = simsLinea[i] || simSeries[simIdx] || (reporte?.sim_serie || '-');
         if (!simsLinea[i] && simSeries[simIdx]) simIdx += 1;
+        const modeloGps = (await buscarSkuPorImei(imei)) || li.modelo_gps || reporte?.modelo_gps || '-';
         instalacionesBlocks.push(
           block(`Servicio de Instalación #${contador}`,[
             ['Tipo de servicio', li.tipo_servicio || '-'],
@@ -117,7 +134,7 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
             ['Placas', li.placas || reporte?.placas || '-'],
             ['Color', li.color || reporte?.color || '-'],
             ['Número económico', li.numero_economico || reporte?.numero_economico || '-'],
-            ['Modelo GPS', li.modelo_gps || reporte?.modelo_gps || '-'],
+            ['Modelo GPS', modeloGps],
             ['IMEI', imei || '-'],
             ['Serie SIM', sim || '-'],
             ['Ubicación GPS', li.ubicacion_gps || reporte?.ubicacion_gps || '-'],
@@ -129,6 +146,7 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
     }
   } else {
     // Push as a grouped block
+    const modeloGps = (await buscarSkuPorImei(reporte?.imei)) || reporte?.modelo_gps || '-';
     instalacionesBlocks.push(
       block('Servicio de Instalación', {
         'Tipo de servicio': reporte?.tipo_servicio || '-',
@@ -138,7 +156,7 @@ export async function generarReporteServicioPDF({ reporte, venta, cliente, empre
         'Placas': reporte?.placas || '-',
         'Color': reporte?.color || '-',
         'Número económico': reporte?.numero_economico || '-',
-        'Modelo GPS': reporte?.modelo_gps || '-',
+        'Modelo GPS': modeloGps,
         'IMEI': reporte?.imei || '-',
         'Serie SIM': reporte?.sim_serie || '-',
         'Ubicación GPS': reporte?.ubicacion_gps || '-',
