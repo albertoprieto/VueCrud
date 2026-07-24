@@ -383,7 +383,8 @@ function toggleCategoria(valor) {
 
 function tiempoRelativo(fecha) {
   if (!fecha) return '-';
-  const diffMs = Date.now() - new Date(fecha).getTime();
+  const fechaUTC = fecha.endsWith('Z') ? fecha : fecha + 'Z';
+  const diffMs = Date.now() - new Date(fechaUTC).getTime();
   const min = Math.floor(diffMs / 60000);
   if (min < 1) return 'ahora';
   if (min < 60) return `${min} min`;
@@ -395,8 +396,13 @@ function tiempoRelativo(fecha) {
 
 function formatFechaHora(f) {
   if (!f) return '';
-  const d = new Date(f);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const fechaUTC = f.endsWith('Z') ? f : f + 'Z';
+  const d = new Date(fechaUTC);
+  return d.toLocaleString('es-MX', {
+    timeZone: 'America/Mexico_City',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
 async function cargar() {
