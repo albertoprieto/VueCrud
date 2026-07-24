@@ -226,36 +226,44 @@ export async function generarPagoPDF(tipo, pago) {
 
   let rawServiceRows;
   if (esNotaRenovacion) {
-    // Una fila por IMEI (igual que bot-engine), asociando info de la orden por índice.
-    const imeis = uniqueStrings(parseImeis(pago.imeis));
-    const useImeiRows = imeis.length > 0;
-
-    rawServiceRows = useImeiRows
-      ? imeis.map((imei, i) => {
-          // Buscar la orden correspondiente por índice; si hay más IMEIs que órdenes, reusar la última
-          const o    = ordenes[i] ?? ordenes[ordenes.length - 1] ?? {};
-          const folioPago = Array.isArray(pago.ordenes) ? (pago.ordenes[i] ?? pago.ordenes[0] ?? '-') : '-';
-          // Solo mostrar total por fila cuando hay correspondencia 1:1 con órdenes
-          const totalFila = (imeis.length === ordenes.length && o.total != null)
-            ? `$${Number(o.total).toFixed(2)}`
-            : '-';
-          return {
-            orden: o.folio || folioPago || '-',
+    if (ordenes.length > 0) {
+      // Una fila por (orden, imei) real — cada orden usa SUS PROPIOS
+      // dispositivos (imeis_articulos), nunca zipeado por índice contra un
+      // listado global de IMEIs. Eso rompía cuando una nota/factura junta 2+
+      // servicios sobre los mismos dispositivos (ej. Renovación + Renovación
+      // SIM del mismo grupo): los IMEIs sobrantes caían todos en la última orden.
+      rawServiceRows = [];
+      for (const o of ordenes) {
+        const imeisOrden = uniqueStrings([o.imei, ...((o.imeis_articulos || []).flatMap(g => g.imeis || []))]);
+        const filas = imeisOrden.length ? imeisOrden : ['-'];
+        // Total por fila solo cuando la orden tiene un único dispositivo —
+        // con varios, el total es de la orden completa, no por dispositivo.
+        const totalFila = (filas.length === 1 && o.total != null)
+          ? `$${Number(o.total).toFixed(2)}`
+          : '-';
+        for (const imei of filas) {
+          rawServiceRows.push({
+            orden: o.folio || '-',
             tipo: o.tipo_servicio || '-',
-            imei: imei || '-',
+            imei,
             usuario: o.usuario || '-',
             plataforma: o.plataforma || '-',
             total: totalFila,
-          };
-        })
-      : ordenes.map((o) => ({
-          orden: o.folio || '-',
-          tipo: o.tipo_servicio || '-',
-          imei: o.imei || '-',
-          usuario: o.usuario || '-',
-          plataforma: o.plataforma || '-',
-          total: o.total != null ? `$${Number(o.total).toFixed(2)}` : '-',
-        }));
+          });
+        }
+      }
+    } else {
+      // Sin detalle de órdenes (fallback): una fila por IMEI recibido, sin orden asociada.
+      const imeis = uniqueStrings(parseImeis(pago.imeis));
+      rawServiceRows = imeis.map((imei, i) => ({
+        orden: (Array.isArray(pago.ordenes) ? (pago.ordenes[i] ?? pago.ordenes[0]) : null) || '-',
+        tipo: '-',
+        imei: imei || '-',
+        usuario: '-',
+        plataforma: '-',
+        total: '-',
+      }));
+    }
   } else {
     // Para estos reportes, la columna "Tipo de Servicio" deja de repetir el
     // tipo general (Instalación, etc.) y en su lugar identifica cada
@@ -275,9 +283,12 @@ export async function generarPagoPDF(tipo, pago) {
         ...(o.sim_series || []),
       ]);
 
-      for (const valor of [...imeisOrden, ...simsOrden]) {
+      for (const valor of imeisOrden) {
         const articuloNombre = await buscarArticuloNombrePorImei(valor);
         rawServiceRows.push({ ...base, tipo: articuloNombre || '-', imei: valor });
+      }
+      for (const valor of simsOrden) {
+        rawServiceRows.push({ ...base, tipo: 'SIM', imei: valor });
       }
     }
   }
@@ -308,13 +319,14 @@ export async function generarPagoPDF(tipo, pago) {
     ...tableRows,
   ];
 
-  // Total: usar pago.total como fuente autoritativa; fallback a suma de órdenes
+  // Total: pago.total es la fuente autoritativa. Ojo: cada orden repite el
+  // mismo total de la nota/factura (no es un total por orden) — sumar
+  // ordenes.reduce aquí duplicaría el monto con 2+ órdenes. Para facturas,
+  // pago.total ya incluye IVA — se desglosa hacia atrás, no se suma encima.
   const _totalPago = Number(pago.total) || 0;
-  const subtotal   = ordenes.length > 0
-    ? ordenes.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
-    : _totalPago;
-  const iva        = esFactura ? subtotal * 0.16 : 0;
-  const total      = esFactura ? subtotal + iva : _totalPago;
+  const subtotal   = esFactura ? _totalPago / 1.16 : _totalPago;
+  const iva        = esFactura ? _totalPago - subtotal : 0;
+  const total      = _totalPago;
 
   // ── Bloque de información lado izquierdo ─────────────────────────────────
   const clienteFiscal = await buscarClienteFiscal(pago.cliente);
@@ -400,7 +412,6 @@ export async function generarPagoPDF(tipo, pago) {
                 text: `$${total.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
                 style: 'totalValue',
               },
-              { text: `${serviceRows.length} dispositivo${serviceRows.length !== 1 ? 's' : ''}`, style: 'totalSub' },
               ...(esFactura
                 ? [{ text: `Subtotal: $${subtotal.toFixed(2)}   IVA (16%): $${iva.toFixed(2)}`, style: 'totalSub' }]
                 : []),

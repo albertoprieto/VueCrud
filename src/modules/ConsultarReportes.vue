@@ -3,7 +3,7 @@
     <!-- Botón global para agregar reporte de servicio -->
 
     <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-bottom: 1.5rem;">
-      <Button
+      <!-- <Button
         label="Agregar Reporte Instalación"
         icon="pi pi-plus"
         class="p-button-success"
@@ -16,7 +16,7 @@
         class="p-button-info"
         style="background: linear-gradient(90deg, #43a1e9 0%, #38d7f9 100%); border: none; color: #222; font-weight: bold; box-shadow: 0 2px 8px #43a1e933;"
         @click="irReporteRenovacionGlobal"
-      />
+      /> -->
       <Button
         label="Exportar sin nota"
         icon="pi pi-file-excel"
