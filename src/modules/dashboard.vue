@@ -197,6 +197,7 @@ const items = computed(() => {
         items: [
           // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
           { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
+          { label: 'Mis Comprobantes', route: '/comisiones?tab=tecnico', icon: 'pi pi-fw pi-file-check' },
         ]
       },
       {
@@ -269,6 +270,14 @@ const items = computed(() => {
       label: 'Bancos',
       icon: 'pi pi-fw pi-building-columns',
       route: '/bancos'
+    }] : []),
+    ...(esAdmin.value ? [{
+      label: 'Comprobantes',
+      icon: 'pi pi-fw pi-file-check',
+      items: [
+        { label: 'Técnicos', route: '/comisiones?tab=tecnico', icon: 'pi pi-fw pi-user-cog' },
+        { label: 'Vendedores', route: '/comisiones?tab=vendedor', icon: 'pi pi-fw pi-briefcase' }
+      ]
     }] : []),
     {
       label: 'Soporte IA',

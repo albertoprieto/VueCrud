@@ -41,6 +41,8 @@ import UtilidadesImei from '@/modules/UtilidadesImei.vue';
 import Bancos from '@/modules/Bancos.vue';
 import DetalleBanco from '@/modules/DetalleBanco.vue';
 import CasosWhatsapp from '@/modules/CasosWhatsapp.vue';
+import Comisiones from '@/modules/Comisiones.vue';
+import DetalleComision from '@/modules/DetalleComision.vue';
 
 const routes = [
   { path: '/nuevo-reporte-servicio', name: 'nuevo-reporte-servicio', component: NuevoReporteDeServicio },
@@ -87,6 +89,8 @@ const routes = [
   ,{ path: '/bancos', name: 'bancos', component: Bancos }
   ,{ path: '/bancos/:nombre', name: 'detalle-banco', component: DetalleBanco, props: true }
   ,{ path: '/casos-whatsapp', name: 'casos-whatsapp', component: CasosWhatsapp }
+  ,{ path: '/comisiones', name: 'comisiones', component: Comisiones }
+  ,{ path: '/comisiones/:tipo/:nombre', name: 'detalle-comision', component: DetalleComision, props: true }
 ];
 
 const router = createRouter({
