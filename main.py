@@ -6006,9 +6006,8 @@ class TrackSolidClient:
         return (_time.time() - self._token_time) >= (self._token_expires_in - 10)
 
     def _ensure_valid_token(self):
-        """Solo obtiene token si no tenemos uno. NO re-autentica proactivamente."""
         with self._token_lock:
-            if not self._has_token():
+            if not self._has_token() or self._is_token_expired():
                 self._get_access_token()
 
     def _get_access_token(self):
@@ -6232,10 +6231,15 @@ class TrackSolidClient:
         # que IOPGPSClient.search_devices con get_device_detail) — evita
         # depender del caché de 3000 sub-cuentas para el caso común.
         if q_stripped.isdigit() and len(q_stripped) >= 6:
-            try:
-                detail = self.fetch_device_detail(q_stripped)
-            except Exception:
-                detail = {}
+            detail = {}
+            for intento in range(2):
+                try:
+                    detail = self.fetch_device_detail(q_stripped)
+                    if detail.get("code") == 0:
+                        break
+                except Exception:
+                    detail = {}
+                _time.sleep(1.5)
             if detail.get("code") == 0 and detail.get("result"):
                 raw = detail["result"]
                 dev = raw[0] if isinstance(raw, list) and raw else raw

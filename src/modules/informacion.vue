@@ -46,7 +46,8 @@ const groupedItems = computed(() => {
         title: 'Técnicos',
         items: [
           // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
-          { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' }
+          { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' },
+          { label: 'Mis Comprobantes', route: '/comisiones?tab=tecnico', icon: 'pi pi-fw pi-file-check', desc: 'Qué reportes tuyos tienen comprobante y cuáles faltan' }
         ]
       }
     ];
@@ -78,6 +79,13 @@ const groupedItems = computed(() => {
       items: [
         { label: 'Pagos', route: '/pagos', icon: 'pi pi-fw pi-wallet', desc: 'Notas y Facturas — histórico y estatus' },
         { label: 'Bancos', route: '/bancos', icon: 'pi pi-fw pi-building-columns', desc: 'Estado de cuenta y retiros por banco' }
+      ]
+    }] : []),
+    ...(esAdmin.value ? [{
+      title: 'Comprobantes',
+      items: [
+        { label: 'Técnicos', route: '/comisiones?tab=tecnico', icon: 'pi pi-fw pi-file-check', desc: 'Qué técnicos tienen comprobantes pendientes de subir' },
+        { label: 'Vendedores', route: '/comisiones?tab=vendedor', icon: 'pi pi-fw pi-file-check', desc: 'Qué responsables tienen comprobantes pendientes de subir' }
       ]
     }] : []),
     {
