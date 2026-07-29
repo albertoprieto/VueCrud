@@ -267,6 +267,11 @@ const items = computed(() => {
       route: '/pagos'
     }] : []),
     ...(esAdmin.value ? [{
+      label: 'Facturación',
+      icon: 'pi pi-fw pi-receipt',
+      route: '/facturacion'
+    }] : []),
+    ...(esAdmin.value ? [{
       label: 'Bancos',
       icon: 'pi pi-fw pi-building-columns',
       route: '/bancos'

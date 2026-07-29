@@ -7,14 +7,14 @@
     </div>
 
     <template v-else>
-      <!-- Lo que se quiere ver rápido: qué falta subir (sin nota + con nota pero sin comprobante). -->
+      <!-- Pendiente = sin nota/factura todavía — mismo criterio que "pendientes" en el bot de WhatsApp. -->
       <div class="banner-pendientes" :class="{ 'sin-pendientes': !totalGeneral.reportesPendientes }">
         <i :class="totalGeneral.reportesPendientes ? 'pi pi-exclamation-triangle' : 'pi pi-check-circle'" />
         <span v-if="totalGeneral.reportesPendientes">
-          <strong>{{ totalGeneral.reportesPendientes }}</strong> reporte{{ totalGeneral.reportesPendientes === 1 ? '' : 's' }} pendiente{{ totalGeneral.reportesPendientes === 1 ? '' : 's' }} de comprobante,
+          <strong>{{ totalGeneral.reportesPendientes }}</strong> reporte{{ totalGeneral.reportesPendientes === 1 ? '' : 's' }} sin nota/factura,
           de <strong>{{ totalGeneral.personasConPendientes }}</strong> {{ tab === 'tecnico' ? 'técnico' : 'responsable' }}{{ totalGeneral.personasConPendientes === 1 ? '' : 's' }}.
         </span>
-        <span v-else>Todos los reportes tienen comprobante. Nada pendiente por revisar.</span>
+        <span v-else>Todos los reportes tienen nota/factura. Nada pendiente por revisar.</span>
       </div>
 
       <div class="filtro-mes-wrap">
@@ -23,21 +23,6 @@
           <option value="todos">Todos</option>
           <option v-for="m in meses" :key="m.value" :value="m.value">{{ m.label }}</option>
         </select>
-      </div>
-
-      <!-- Admin: saltar directo al detalle de una persona en concreto, sin
-           buscarla en la cuadrícula. -->
-      <div v-if="esAdmin" class="ver-como-wrap">
-        <label for="ver-como">Ver como</label>
-        <Dropdown
-          id="ver-como"
-          v-model="verComoNombre"
-          :options="nombresDisponibles"
-          placeholder="Buscar técnico/vendedor..."
-          filter
-          showClear
-          class="ver-como-select"
-        />
       </div>
 
       <!-- Cuántos reportes hay en total, cuántos ya tienen comprobante y cuántos faltan. -->
@@ -52,9 +37,9 @@
           <span v-if="tab === 'vendedor'" class="resumen-subvalor">{{ formatTotal(totalGeneral.vendidoConComprobante) }} vendido</span>
         </div>
         <div class="resumen-item">
-          <span class="resumen-label">Reportes sin comprobante</span>
+          <span class="resumen-label">Reportes sin nota/factura</span>
           <span class="resumen-valor sin">{{ totalGeneral.reportesPendientes }}</span>
-          <span v-if="tab === 'vendedor'" class="resumen-subvalor">{{ formatTotal(totalGeneral.vendido - totalGeneral.vendidoConComprobante) }} vendido</span>
+          <span v-if="tab === 'vendedor'" class="resumen-subvalor">{{ formatTotal(totalGeneral.vendidoSinNota) }} vendido</span>
         </div>
       </div>
 
@@ -76,12 +61,12 @@
           <span class="persona-sub">
             reportes con comprobante<template v-if="tab === 'vendedor'"> · {{ formatTotal(p.totalVendido) }} vendido</template>
           </span>
-          <span v-if="(p.reportesSinComprobante + p.reportesSinNota) > 0" class="pendiente-tag">
+          <span v-if="p.reportesSinNota > 0" class="pendiente-tag">
             <i class="pi pi-exclamation-triangle" />
-            {{ p.reportesSinComprobante + p.reportesSinNota }} pendiente{{ (p.reportesSinComprobante + p.reportesSinNota) === 1 ? '' : 's' }}
+            {{ p.reportesSinNota }} sin nota{{ p.reportesSinNota === 1 ? '' : 's' }}
           </span>
           <span v-else class="al-dia-tag">
-            <i class="pi pi-check-circle" /> Todo con comprobante
+            <i class="pi pi-check-circle" /> Todo con nota/factura
           </span>
         </button>
       </div>
@@ -103,9 +88,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import Dropdown from 'primevue/dropdown';
 import { useLoginStore } from '@/stores/loginStore';
 import { getReportesServicioTodos } from '@/services/reportesService';
 import { getNotas, getFacturas } from '@/services/pagosService';
@@ -114,7 +98,6 @@ import { indexarNotasFacturas, agruparPorPersona, mesesDisponibles, filtrarPorMe
 const route = useRoute();
 const router = useRouter();
 const loginStore = useLoginStore();
-const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
 const user = computed(() => loginStore.user || {});
 
 const loading = ref(true);
@@ -143,8 +126,11 @@ const personas = computed(() => {
   return agruparPorPersona(reportesFiltradosPorMes.value, indice.value, campo);
 });
 
+// "Pendiente" = sin nota/factura todavía — mismo criterio que usa el
+// comando "pendientes" del bot de WhatsApp (no cuenta "con nota pero sin
+// comprobante" como pendiente, eso queda solo como dato aparte en el detalle).
 function tienePendientes(p) {
-  return (p.reportesSinComprobante + p.reportesSinNota) > 0;
+  return p.reportesSinNota > 0;
 }
 // Actividad = tiene reportes, punto — no depende de dinero. Un técnico con
 // reportes pero $0 de comisión capturada (dato faltante) sigue siendo
@@ -154,18 +140,15 @@ function actividad(p) {
 }
 
 // Ordenado por el número que se ve en la tarjeta — reportes CON comprobante,
-// no dinero. Empate: desempata por cuántos le faltan, para no mezclar
-// "sin nada pendiente" con "le falta un montón".
+// no dinero. Empate: desempata por cuántos le faltan nota/factura.
 const personasOrdenadas = computed(() => {
   const conActividad = personas.value.filter(p => actividad(p) > 0);
   return [...conActividad].sort((a, b) => {
-    const pendA = a.reportesSinComprobante + a.reportesSinNota;
-    const pendB = b.reportesSinComprobante + b.reportesSinNota;
     if (tab.value === 'vendedor') {
-      // Vendedor/Responsable: el más atrasado en subir comprobantes va primero.
-      return pendB - pendA || b.reportesConComprobante - a.reportesConComprobante;
+      // Vendedor/Responsable: el más atrasado (sin nota) va primero.
+      return b.reportesSinNota - a.reportesSinNota || b.reportesConComprobante - a.reportesConComprobante;
     }
-    return b.reportesConComprobante - a.reportesConComprobante || pendB - pendA;
+    return b.reportesConComprobante - a.reportesConComprobante || b.reportesSinNota - a.reportesSinNota;
   });
 });
 
@@ -178,26 +161,17 @@ const totalGeneral = computed(() => {
     acc.totalReportes += p.totalReportes;
     acc.vendido += p.totalVendido;
     acc.vendidoConComprobante += p.totalConComprobante;
+    acc.vendidoSinNota += p.totalSinNota;
     acc.reportesConComprobante += p.reportesConComprobante;
-    // "Pendientes" junta sin_nota + sin_comprobante a propósito — para el
-    // resumen general no importa la razón exacta, solo que falta algo.
-    acc.reportesPendientes += p.reportesSinComprobante + p.reportesSinNota;
+    acc.reportesPendientes += p.reportesSinNota;
     if (tienePendientes(p)) acc.personasConPendientes += 1;
     return acc;
-  }, { totalReportes: 0, vendido: 0, vendidoConComprobante: 0, reportesConComprobante: 0, reportesPendientes: 0, personasConPendientes: 0 });
+  }, { totalReportes: 0, vendido: 0, vendidoConComprobante: 0, vendidoSinNota: 0, reportesConComprobante: 0, reportesPendientes: 0, personasConPendientes: 0 });
 });
 
 function verDetalle(nombre) {
   router.push({ name: 'detalle-comision', params: { tipo: tab.value, nombre } });
 }
-
-// "Ver como": salto directo al detalle de cualquier persona sin buscarla en
-// la cuadrícula — solo para Admin.
-const verComoNombre = ref(null);
-const nombresDisponibles = computed(() => personas.value.map(p => p.nombre).sort((a, b) => a.localeCompare(b)));
-watch(verComoNombre, nombre => {
-  if (nombre) verDetalle(nombre);
-});
 
 async function cargar() {
   loading.value = true;
@@ -261,22 +235,18 @@ onMounted(async () => {
   border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
   color: var(--color-success);
 }
-.filtro-mes-wrap, .ver-como-wrap {
+.filtro-mes-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
-.filtro-mes-wrap label, .ver-como-wrap label {
+.filtro-mes-wrap label {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--color-text);
   opacity: 0.75;
-}
-.ver-como-select {
-  width: 260px;
-  max-width: 60vw;
 }
 .filtro-mes-select {
   padding: 0.4rem 0.8rem;

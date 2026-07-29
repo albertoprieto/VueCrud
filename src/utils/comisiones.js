@@ -98,7 +98,15 @@ const NO_ES_PERSONA = {
 // clave). Agregar aquí nuevos casos conforme aparezcan.
 const ALIAS_PERSONA = {
   vendedor: {
-    'Victor Ortiz': ['victor ortiz', 'victor'],
+    'Victor': ['victor ortiz', 'victor'],
+    'Carlos': ['carlos lopez', 'carlosl', 'Carlos Lopez Estavillo'],
+    'Eliseo': ['eliseo', 'eliseo 2'],
+    'Ricardo': ['Ricardoa', 'Ricardo Arteaga Gomez'],
+    'Braulio': ['Braulio Ávila (CDMX)', 'Braulior']
+  },
+  nombre_instalador: {
+    'Carlos': ['carlos lopez', 'carlosl'],
+    'Eliseo': ['eliseo', 'eliseo 2'],
   },
 };
 
@@ -109,7 +117,9 @@ function resolverNombre(campo, nombreRaw) {
   const alias = ALIAS_PERSONA[campo];
   if (alias) {
     for (const canonico of Object.keys(alias)) {
-      if (alias[canonico].includes(norm)) return canonico;
+      // Comparación insensible a mayúsculas — no importa cómo se haya
+      // escrito la variante en la lista de arriba.
+      if (alias[canonico].some(variante => variante.trim().toLowerCase() === norm)) return canonico;
     }
   }
   return nombre;

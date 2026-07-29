@@ -28,10 +28,10 @@
           :key="'est-' + (est.value || 'todos')"
           type="button"
           class="wa-filter-chip wa-filter-chip-sm"
-          :class="{ activo: filtroEstado === est.value }"
+          :class="{ activo: est.value ? filtroEstado.includes(est.value) : filtroEstado.length === 0 }"
           :style="est.color ? { '--chip-color': est.color } : {}"
           :title="est.label"
-          @click="filtroEstado = filtroEstado === est.value ? '' : est.value"
+          @click="toggleEstado(est.value)"
         >
           {{ est.short }}
         </button>
@@ -295,7 +295,9 @@ const loading = ref(true);
 const loadingDetalle = ref(false);
 const casos = ref([]);
 const filtroCategoria = ref('');
-const filtroEstado = ref('');
+// Al entrar, se muestran los casos que de verdad necesitan atención: abiertos
+// y escalados. "Todos" (chip vacío) limpia el filtro por completo.
+const filtroEstado = ref(['abierto', 'escalado']);
 const filtroTexto = ref('');
 const casoActivo = ref(null);
 const atendidoPorInput = ref('');
@@ -320,7 +322,7 @@ const casosFiltrados = computed(() => {
   const texto = filtroTexto.value.trim().toLowerCase();
   return casos.value.filter(c => {
     if (filtroCategoria.value && c.categoria !== filtroCategoria.value) return false;
-    if (filtroEstado.value && c.estado !== filtroEstado.value) return false;
+    if (filtroEstado.value.length && !filtroEstado.value.includes(c.estado)) return false;
     if (texto) {
       const enNombre = (c.nombre_contacto || '').toLowerCase().includes(texto);
       const enTelefono = (c.telefono || '').toLowerCase().includes(texto);
@@ -379,6 +381,13 @@ function contarPorEstado(valor) {
 }
 function toggleCategoria(valor) {
   filtroCategoria.value = filtroCategoria.value === valor ? '' : valor;
+}
+function toggleEstado(valor) {
+  if (!valor) { filtroEstado.value = []; return; } // chip "Todos" limpia el filtro
+  const idx = filtroEstado.value.indexOf(valor);
+  filtroEstado.value = idx === -1
+    ? [...filtroEstado.value, valor]
+    : filtroEstado.value.filter(v => v !== valor);
 }
 
 function tiempoRelativo(fecha) {

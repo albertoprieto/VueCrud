@@ -1,26 +1,12 @@
 <template>
   <div class="detalle-comision-container">
-    <div class="top-bar">
-      <Button
-        v-if="!esTecnicoRestringido"
-        icon="pi pi-arrow-left"
-        label="Volver a Comprobantes"
-        class="p-button-text"
-        @click="router.push(`/comisiones?tab=${tipo}`)"
-      />
-      <div v-if="esAdmin" class="ver-como-wrap">
-        <label for="ver-como">Ver como</label>
-        <Dropdown
-          id="ver-como"
-          v-model="verComoNombre"
-          :options="nombresDisponibles"
-          placeholder="Buscar técnico/vendedor..."
-          filter
-          showClear
-          class="ver-como-select"
-        />
-      </div>
-    </div>
+    <Button
+      v-if="!esTecnicoRestringido"
+      icon="pi pi-arrow-left"
+      label="Volver a Comprobantes"
+      class="p-button-text mb-3"
+      @click="router.push(`/comisiones?tab=${tipo}`)"
+    />
 
     <div v-if="loading" style="text-align:center;padding:3rem;">
       <i class="pi pi-spin pi-spinner" style="font-size:2rem;"></i>
@@ -223,11 +209,10 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
-import Dropdown from 'primevue/dropdown';
 import { useLoginStore } from '@/stores/loginStore';
 import { getReportesServicioTodos } from '@/services/reportesService';
 import { getNotas, getFacturas } from '@/services/pagosService';
-import { indexarNotasFacturas, agruparPorPersona, reportesDePersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS } from '@/utils/comisiones';
+import { indexarNotasFacturas, reportesDePersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS } from '@/utils/comisiones';
 
 const props = defineProps({
   tipo: { type: String, required: true },   // 'tecnico' | 'vendedor'
@@ -243,7 +228,6 @@ const nombre = computed(() => props.nombre || route.params.nombre);
 
 // Un Técnico no puede ver la comisión de alguien más cambiando la URL a mano.
 const esTecnicoRestringido = computed(() => (user.value.perfil || '') === 'Tecnico');
-const esAdmin = computed(() => (user.value.perfil || '').toLowerCase() === 'admin');
 
 const loading = ref(true);
 const reportes = ref([]);
@@ -316,23 +300,6 @@ const totales = computed(() => {
     }
   }
   return t;
-});
-
-// "Ver como": saltar al detalle de otra persona (mismo tipo) sin volver a la
-// lista — solo para Admin. Reusa agruparPorPersona para que la lista de
-// nombres respete los mismos alias/exclusiones que la pantalla de lista.
-const verComoNombre = ref(null);
-const nombresDisponibles = computed(() =>
-  agruparPorPersona(reportes.value, indice.value, campo.value)
-    .map(p => p.nombre)
-    .filter(n => n.toLowerCase() !== (nombre.value || '').toLowerCase())
-    .sort((a, b) => a.localeCompare(b))
-);
-watch(verComoNombre, nuevoNombre => {
-  if (nuevoNombre) {
-    router.push({ name: 'detalle-comision', params: { tipo: tipo.value, nombre: nuevoNombre } });
-    verComoNombre.value = null;
-  }
 });
 
 async function cargar() {
@@ -426,7 +393,11 @@ function abrirDetalle(reporte) {
 function irAPago() {
   if (!reporteSeleccionado.value?.referencia) return;
   const { tipo: refTipo, id } = reporteSeleccionado.value.referencia;
-  router.push({ name: 'detalle-pago', params: { tipo: refTipo, id } });
+  if (refTipo === 'factura') {
+    router.push({ name: 'detalle-factura', params: { id } });
+  } else {
+    router.push({ name: 'detalle-pago', params: { tipo: 'nota', id } });
+  }
 }
 </script>
 
@@ -439,29 +410,6 @@ function irAPago() {
   box-sizing: border-box;
 }
 .mb-3 { margin-bottom: 1rem; }
-.top-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-.ver-como-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.ver-como-wrap label {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--color-text);
-  opacity: 0.75;
-}
-.ver-como-select {
-  width: 240px;
-  max-width: 50vw;
-}
 .resumen-card {
   display: flex;
   flex-direction: column;
