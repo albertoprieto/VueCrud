@@ -37,6 +37,8 @@ import RenovacionesRecientes from '@/modules/RenovacionesRecientes.vue';
 import NuevoReporteRenovacion from '@/modules/NuevoReporteRenovacion.vue';
 import Pagos from '@/modules/Pagos.vue';
 import DetallePago from '@/modules/DetallePago.vue';
+import Facturacion from '@/modules/Facturacion.vue';
+import DetalleFactura from '@/modules/DetalleFactura.vue';
 import UtilidadesImei from '@/modules/UtilidadesImei.vue';
 import Bancos from '@/modules/Bancos.vue';
 import DetalleBanco from '@/modules/DetalleBanco.vue';
@@ -85,6 +87,8 @@ const routes = [
   ,{ path: '/nuevo-reporte-renovacion', name: 'nuevo-reporte-renovacion', component: NuevoReporteRenovacion }
   ,{ path: '/pagos', name: 'pagos', component: Pagos }
   ,{ path: '/pagos/:tipo/:id', name: 'detalle-pago', component: DetallePago, props: true }
+  ,{ path: '/facturacion', name: 'facturacion', component: Facturacion }
+  ,{ path: '/facturacion/:id', name: 'detalle-factura', component: DetalleFactura, props: true }
   ,{ path: '/utilidades-imei', name: 'utilidades-imei', component: UtilidadesImei }
   ,{ path: '/bancos', name: 'bancos', component: Bancos }
   ,{ path: '/bancos/:nombre', name: 'detalle-banco', component: DetalleBanco, props: true }

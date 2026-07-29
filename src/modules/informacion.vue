@@ -77,7 +77,8 @@ const groupedItems = computed(() => {
     ...(esAdmin.value ? [{
       title: 'Pagos',
       items: [
-        { label: 'Pagos', route: '/pagos', icon: 'pi pi-fw pi-wallet', desc: 'Notas y Facturas — histórico y estatus' },
+        { label: 'Pagos', route: '/pagos', icon: 'pi pi-fw pi-wallet', desc: 'Notas — histórico y estatus' },
+        { label: 'Facturación', route: '/facturacion', icon: 'pi pi-fw pi-receipt', desc: 'Prefacturas, timbrado y CFDI de Comercializadora' },
         { label: 'Bancos', route: '/bancos', icon: 'pi pi-fw pi-building-columns', desc: 'Estado de cuenta y retiros por banco' }
       ]
     }] : []),

@@ -148,7 +148,7 @@ def _sw_authenticate(sw_base: str, pac_user: str, pac_pass: str) -> str:
     return auth_data["data"]["token"]
 
 
-def _construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
+def _sw_construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
                                productos, serie="A", folio=None,
                                domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None):
     """Arma el CFDI 4.0 en JSON y lo timbra con el servicio 'Emision Timbrado JSON' de SW Sapien.
@@ -317,6 +317,183 @@ def _construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago
         "no_certificado_sat": no_certificado_sat,
         "rfc_pac": rfc_pac,
     }
+
+
+def _extraer_tfd(xml_bytes: bytes):
+    """TimbreFiscalDigital del XML timbrado — mismo formato sin importar el PAC."""
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(xml_bytes)
+        tfd = root.find('.//{http://www.sat.gob.mx/TimbreFiscalDigital}TimbreFiscalDigital')
+        if tfd is not None:
+            return tfd.get('FechaTimbrado'), tfd.get('NoCertificadoSAT'), tfd.get('RfcProvCertif')
+    except Exception:
+        pass
+    return None, None, None
+
+
+def _fiscalapi_base_url() -> str:
+    return "https://live.fiscalapi.com" if os.getenv("FISCALAPI_ENV", "TEST").upper() == "LIVE" else "https://test.fiscalapi.com"
+
+
+def _fiscalapi_headers() -> dict:
+    api_key = os.getenv("FISCALAPI_API_KEY")
+    tenant_key = os.getenv("FISCALAPI_TENANT_KEY")
+    if not (api_key and tenant_key):
+        raise HTTPException(status_code=500, detail="FiscalAPI no configurado (FISCALAPI_API_KEY/FISCALAPI_TENANT_KEY)")
+    return {
+        "X-API-KEY": api_key,
+        "X-TENANT-KEY": tenant_key,
+        "X-TIME-ZONE": "America/Mexico_City",
+        "Content-Type": "application/json",
+    }
+
+
+def _fiscalapi_csd_credentials() -> list:
+    """Lee el CSD (.cer/.key) de disco y lo manda en base64 en cada timbrado
+    ("by values") — la alternativa por referencia (subir el CSD una sola vez
+    a FiscalAPI y solo reusar un id) no se implementó todavía: el endpoint
+    POST /api/v4/people de su documentación trae campos de cuenta de usuario
+    (email/password) que no confirmamos que sea el flujo correcto para un
+    emisor — mejor no adivinar con certificados reales. Retomar esto en
+    cuanto haya credenciales de sandbox para probarlo de verdad."""
+    cer_path = os.getenv("FISCALAPI_CSD_CER_PATH")
+    key_path = os.getenv("FISCALAPI_CSD_KEY_PATH")
+    password = os.getenv("FISCALAPI_CSD_PASSWORD")
+    if not (cer_path and key_path and password):
+        raise HTTPException(
+            status_code=500,
+            detail="CSD de FiscalAPI no configurado (FISCALAPI_CSD_CER_PATH/FISCALAPI_CSD_KEY_PATH/FISCALAPI_CSD_PASSWORD)"
+        )
+    try:
+        with open(cer_path, "rb") as f:
+            cer_b64 = base64.b64encode(f.read()).decode("utf-8")
+        with open(key_path, "rb") as f:
+            key_b64 = base64.b64encode(f.read()).decode("utf-8")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo leer el CSD de FiscalAPI: {e}")
+    return [
+        {"base64File": cer_b64, "fileType": 0, "password": password},
+        {"base64File": key_b64, "fileType": 1, "password": password},
+    ]
+
+
+def _fiscalapi_construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
+                                         productos, serie="A", folio=None,
+                                         domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None):
+    """Arma el CFDI 4.0 y lo timbra con FiscalAPI (modo 'by values' — emisor,
+    receptor y conceptos van completos en cada request, sin registrar nada
+    de antemano). Mismo shape de retorno que la versión de SW, para que
+    facturar()/timbrar_factura_pago() no necesiten cambiar."""
+    import requests
+    from satcfdi.cfdi import CFDI
+    from satcfdi.render import pdf_write
+
+    RFC = os.getenv("CSD_RFC", "RAQÑ7701212M3")
+    RAZON_SOCIAL = os.getenv("CSD_RAZON_SOCIAL", "Empresa de Pruebas")
+    REGIMEN_FISCAL_EMISOR = os.getenv("CSD_REGIMEN_FISCAL", "601")
+    LUGAR_EXPEDICION = os.getenv("CSD_LUGAR_EXPEDICION", "64000")
+
+    if rfc_cliente == RFC_PUBLICO_GENERAL:
+        uso_cfdi = "S01"
+        domicilio_receptor = LUGAR_EXPEDICION
+        regimen_receptor = "616"
+    else:
+        domicilio_receptor = domicilio_fiscal_receptor or LUGAR_EXPEDICION
+        regimen_receptor = regimen_fiscal_receptor or REGIMEN_FISCAL_EMISOR
+
+    items = []
+    for p in productos:
+        items.append({
+            "itemCode": p.ClaveProdServ,
+            "quantity": p.Cantidad,
+            "unitOfMeasurementCode": p.ClaveUnidad,
+            "description": p.Descripcion,
+            "unitPrice": p.ValorUnitario,
+            "taxObjectCode": "02",
+            "discount": 0,
+            "itemTaxes": [{"taxCode": "002", "taxTypeCode": "Tasa", "taxRate": 0.16, "taxFlagCode": "T"}],
+        })
+
+    payload = {
+        "versionCode": "4.0",
+        "series": serie or "A",
+        "date": datetime.now(ZoneInfo("America/Mexico_City")).strftime("%Y-%m-%dT%H:%M:%S"),
+        "paymentFormCode": forma_pago,
+        "paymentMethodCode": metodo_pago,
+        "currencyCode": "MXN",
+        "typeCode": "I",
+        "expeditionZipCode": LUGAR_EXPEDICION,
+        "exchangeRate": 1,
+        "exportCode": "01",
+        "issuer": {
+            "tin": RFC,
+            "legalName": RAZON_SOCIAL,
+            "taxRegimeCode": REGIMEN_FISCAL_EMISOR,
+            "taxCredentials": _fiscalapi_csd_credentials(),
+        },
+        "recipient": {
+            "tin": rfc_cliente,
+            "legalName": nombre_cliente,
+            "zipCode": domicilio_receptor,
+            "taxRegimeCode": regimen_receptor,
+            "cfdiUseCode": uso_cfdi,
+        },
+        "items": items,
+    }
+    if folio:
+        payload["folio"] = folio
+
+    try:
+        resp = requests.post(
+            f"{_fiscalapi_base_url()}/api/v4/invoices",
+            json=payload,
+            headers=_fiscalapi_headers(),
+            timeout=30,
+        )
+        resp_data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con FiscalAPI (timbrado): {e}")
+    if not resp.ok:
+        raise HTTPException(status_code=502, detail=f"Error al timbrar con FiscalAPI: {resp_data.get('message') or resp_data}")
+
+    data = resp_data.get("data", resp_data)
+    uuid_ = data["uuid"]
+    xml_bytes = base64.b64decode(data["invoiceBase64"])
+    stamped_cfdi = CFDI.from_string(xml_bytes)
+
+    folder = os.path.join("uploads", "facturas")
+    os.makedirs(folder, exist_ok=True)
+    xml_path = os.path.join(folder, f"{uuid_}.xml")
+    with open(xml_path, "wb") as f:
+        f.write(xml_bytes)
+
+    pdf_path = os.path.join(folder, f"{uuid_}.pdf")
+    pdf_write([stamped_cfdi], pdf_path)
+    with open(pdf_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    fecha_certificacion, no_certificado_sat, rfc_pac = _extraer_tfd(xml_bytes)
+
+    return {
+        "uuid": uuid_,
+        "xml_bytes": xml_bytes,
+        "pdf_bytes": pdf_bytes,
+        "xml_path": xml_path,
+        "pdf_path": pdf_path,
+        "fecha_certificacion": fecha_certificacion,
+        "no_certificado_sat": no_certificado_sat,
+        "rfc_pac": rfc_pac,
+    }
+
+
+# Switch de proveedor — en Render: PAC_PROVIDER=fiscalapi (default: sw, sin
+# cambios hasta que se activen credenciales de FiscalAPI a propósito).
+def _construir_y_timbrar_cfdi(*args, **kwargs):
+    proveedor = os.getenv("PAC_PROVIDER", "sw").strip().lower()
+    if proveedor == "fiscalapi":
+        return _fiscalapi_construir_y_timbrar_cfdi(*args, **kwargs)
+    return _sw_construir_y_timbrar_cfdi(*args, **kwargs)
 
 
 @app.post("/api/facturar")
@@ -5108,6 +5285,33 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
         ) for r in reportes
     ]
 
+    # Si el frontend no mandó domicilio/régimen del receptor, NUNCA se debe
+    # caer al domicilio/régimen del EMISOR (eso produciría un CFDI con los
+    # datos fiscales de la propia empresa en el campo del cliente). En vez
+    # de eso, se busca al cliente por nombre y se usan sus datos reales; si
+    # tampoco existen ahí, se rechaza — mejor bloquear que timbrar mal.
+    domicilio_receptor = data.domicilio_fiscal_receptor
+    regimen_receptor = data.regimen_fiscal_receptor
+    if (not domicilio_receptor or not regimen_receptor) and data.rfc_cliente != RFC_PUBLICO_GENERAL:
+        db2 = mysql.connector.connect(
+            host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+        )
+        cur2 = db2.cursor(dictionary=True)
+        cur2.execute(
+            "SELECT codigo_postal, regimen_fiscal FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1",
+            (factura['cliente'],)
+        )
+        cliente_row = cur2.fetchone()
+        cur2.close()
+        db2.close()
+        domicilio_receptor = domicilio_receptor or (cliente_row or {}).get('codigo_postal')
+        regimen_receptor = regimen_receptor or (cliente_row or {}).get('regimen_fiscal')
+        if not domicilio_receptor or not regimen_receptor:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Faltan datos fiscales del cliente '{factura['cliente']}' (código postal y/o régimen fiscal). Complétalos antes de timbrar."
+            )
+
     resultado = _construir_y_timbrar_cfdi(
         nombre_cliente=factura['cliente'],
         rfc_cliente=data.rfc_cliente,
@@ -5117,8 +5321,8 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
         productos=productos,
         serie="F",
         folio=str(factura_id),
-        domicilio_fiscal_receptor=data.domicilio_fiscal_receptor,
-        regimen_fiscal_receptor=data.regimen_fiscal_receptor,
+        domicilio_fiscal_receptor=domicilio_receptor,
+        regimen_fiscal_receptor=regimen_receptor,
     )
 
     db = mysql.connector.connect(
@@ -5138,7 +5342,7 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
         (data.rfc_cliente, data.uso_cfdi, data.forma_pago, data.metodo_pago,
          resultado['uuid'], resultado['xml_path'], resultado['pdf_path'],
          resultado['fecha_certificacion'], resultado['no_certificado_sat'], resultado['rfc_pac'],
-         data.regimen_fiscal_receptor, factura_id)
+         regimen_receptor, factura_id)
     )
     db.commit()
     cursor.close()
@@ -5365,14 +5569,24 @@ def eliminar_factura_pago(factura_id: int):
         password="tu_password_segura",
         database="nombre_de_tu_db"
     )
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM facturas_pago WHERE id=%s", (factura_id,))
+    cursor = db.cursor(dictionary=True)
+    # Una factura ya Timbrada es un CFDI real ante el SAT — borrar el
+    # registro local lo dejaría sin rastro. Solo se puede cancelar (endpoint
+    # /cancelar), nunca eliminar.
+    cursor.execute("SELECT status FROM facturas_pago WHERE id=%s", (factura_id,))
+    factura = cursor.fetchone()
+    if not factura:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.get('status') == 'Timbrado':
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="No se puede eliminar una factura ya timbrada — usa /cancelar en su lugar")
+    cursor2 = db.cursor()
+    cursor2.execute("DELETE FROM facturas_pago WHERE id=%s", (factura_id,))
     db.commit()
-    affected = cursor.rowcount
+    cursor2.close()
     cursor.close()
     db.close()
-    if affected == 0:
-        raise HTTPException(status_code=404, detail="Factura no encontrada")
     return {"message": "Factura eliminada"}
 
 @app.post("/facturas-pago/{factura_id}/comprobante")

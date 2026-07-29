@@ -9,7 +9,7 @@
     <div v-else-if="item">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
         <h2 class="detalle-title" style="margin-bottom:0;">
-          {{ esNota ? 'Nota' : 'Factura' }} #{{ item.id }}
+          Nota #{{ item.id }}
         </h2>
         <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
           <Button
@@ -27,20 +27,6 @@
             class="p-button-outlined p-button-success"
             @click="abrirAgregarDialog"
           />
-          <Button
-            v-if="!esNota && item.status === 'Pendiente timbre'"
-            icon="pi pi-verified"
-            label="Timbrar"
-            class="p-button-success"
-            @click="abrirTimbrarDialog"
-          />
-          <Button
-            v-if="!esNota && item.status === 'Timbrado' && esAdmin"
-            icon="pi pi-ban"
-            label="Cancelar factura"
-            class="p-button-danger p-button-outlined"
-            @click="abrirCancelarDialog"
-          />
         </div>
       </div>
 
@@ -53,13 +39,6 @@
         <div class="detalle-row">
           <strong>Estatus actual:</strong>
           <span :class="'badge badge-' + badgeClass(item.status)" style="margin-left:0.5rem;">{{ item.status }}</span>
-        </div>
-        <div v-if="!esNota && item.cfdi_uuid" class="detalle-row">
-          <strong>UUID (CFDI):</strong> {{ item.cfdi_uuid }}
-          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
-            <Button icon="pi pi-file" label="XML" class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_xml_path)" />
-            <Button icon="pi pi-file-pdf" label="PDF" class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_pdf_path)" />
-          </div>
         </div>
       </div>
 
@@ -291,10 +270,10 @@
       />
     </Dialog>
 
-    <!-- Dialog: Agregar Servicios a la nota/factura -->
+    <!-- Dialog: Agregar Servicios a la nota -->
     <Dialog
       v-model:visible="agregarDialogVisible"
-      :header="`Agregar servicios a ${esNota ? 'Nota' : 'Factura'} #${item?.id}`"
+      :header="`Agregar servicios a Nota #${item?.id}`"
       :modal="true"
       :style="{ width: '75vw' }"
       :draggable="false"
@@ -345,89 +324,6 @@
         </div>
       </template>
     </Dialog>
-
-    <!-- Dialog: Timbrar factura -->
-    <Dialog
-      v-model:visible="timbrarDialogVisible"
-      header="Timbrar factura (CFDI)"
-      :modal="true"
-      :style="{ width: '480px', maxWidth: '95vw' }"
-      :draggable="false"
-    >
-      <div class="timbrar-form">
-        <div class="timbrar-field">
-          <label>RFC del cliente</label>
-          <InputText v-model="timbrarForm.rfc_cliente" placeholder="XAXX010101000" class="w-full" />
-        </div>
-        <div class="timbrar-field">
-          <label>Uso CFDI</label>
-          <InputText v-model="timbrarForm.uso_cfdi" placeholder="G03 / S01" class="w-full" />
-        </div>
-        <div class="timbrar-field">
-          <label>Forma de pago</label>
-          <InputText v-model="timbrarForm.forma_pago" placeholder="01 = Efectivo, 03 = Transferencia" class="w-full" />
-        </div>
-        <div class="timbrar-field">
-          <label>Método de pago</label>
-          <InputText v-model="timbrarForm.metodo_pago" placeholder="PUE / PPD" class="w-full" />
-        </div>
-        <small style="color:var(--color-text-muted,#888);">
-          Se generará un CFDI con los {{ item?.reporte_ids?.length || 0 }} reporte(s) de servicio/renovación de esta factura.
-        </small>
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
-        <Button label="Cancelar" class="p-button-text" @click="timbrarDialogVisible = false" />
-        <Button
-          label="Timbrar"
-          icon="pi pi-verified"
-          class="p-button-success"
-          :disabled="!timbrarForm.rfc_cliente || !timbrarForm.uso_cfdi || !timbrarForm.forma_pago || !timbrarForm.metodo_pago"
-          :loading="timbrando"
-          @click="confirmarTimbrar"
-        />
-      </div>
-    </Dialog>
-
-    <!-- Dialog: Cancelar factura (CFDI) -->
-    <Dialog
-      v-model:visible="cancelarDialogVisible"
-      header="Cancelar factura (CFDI)"
-      :modal="true"
-      :style="{ width: '480px', maxWidth: '95vw' }"
-      :draggable="false"
-    >
-      <div class="timbrar-form">
-        <div class="timbrar-field">
-          <label>Motivo de cancelación</label>
-          <Dropdown
-            v-model="cancelarForm.motivo"
-            :options="motivosCancelacion"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Selecciona un motivo"
-            class="w-full"
-          />
-        </div>
-        <div class="timbrar-field" v-if="cancelarForm.motivo === '01'">
-          <label>UUID de la factura que sustituye</label>
-          <InputText v-model="cancelarForm.folio_sustitucion" placeholder="UUID de la factura sustituta" class="w-full" />
-        </div>
-        <small style="color:var(--color-text-muted,#888);">
-          Esto cancela el CFDI ante el SAT vía SW. No se puede deshacer.
-        </small>
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
-        <Button label="Cerrar" class="p-button-text" @click="cancelarDialogVisible = false" />
-        <Button
-          label="Cancelar factura"
-          icon="pi pi-ban"
-          class="p-button-danger"
-          :disabled="!cancelarForm.motivo || (cancelarForm.motivo === '01' && !cancelarForm.folio_sustitucion)"
-          :loading="cancelando"
-          @click="confirmarCancelar"
-        />
-      </div>
-    </Dialog>
   </div>
 </template>
 
@@ -443,28 +339,16 @@ import Dropdown from 'primevue/dropdown';
 import Textarea from 'primevue/textarea';
 import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
-import { useLoginStore } from '@/stores/loginStore';
 import {
   getNotaById,
-  getFacturaById,
   actualizarStatusNota,
-  actualizarStatusFactura,
   actualizarLugarPagoNota,
-  actualizarLugarPagoFactura,
   actualizarObservacionesNota,
-  actualizarObservacionesFactura,
   actualizarDatosPagoNota,
-  actualizarDatosPagoFactura,
   subirComprobanteNota,
-  subirComprobanteFactura,
   eliminarComprobanteNota,
-  eliminarComprobanteFactura,
   agregarReportesNota,
-  agregarReportesFactura,
   quitarReportesNota,
-  quitarReportesFactura,
-  timbrarFactura,
-  cancelarFactura,
   getNotas,
   getFacturas
 } from '@/services/pagosService';
@@ -473,12 +357,8 @@ import { generarPagoPDF } from '@/services/PagoPdfService.js';
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
-const loginStore = useLoginStore();
 
-const tipo = computed(() => route.params.tipo);   // 'nota' | 'factura'
 const id = computed(() => route.params.id);
-const esNota = computed(() => tipo.value === 'nota');
-const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
 
 const item = ref(null);
 const loading = ref(false);
@@ -514,27 +394,6 @@ const filtroAgregarCliente = ref('');
 const filtroAgregarFolio = ref('');
 const filtroAgregarTipo = ref('');
 
-// Timbrar factura (CFDI)
-const timbrarDialogVisible = ref(false);
-const timbrando = ref(false);
-const timbrarForm = ref({
-  rfc_cliente: '',
-  uso_cfdi: 'G03',
-  forma_pago: '03',
-  metodo_pago: 'PUE'
-});
-
-// Cancelar factura (CFDI)
-const cancelarDialogVisible = ref(false);
-const cancelando = ref(false);
-const cancelarForm = ref({ motivo: '', folio_sustitucion: '' });
-const motivosCancelacion = [
-  { label: '01 - Comprobante emitido con errores con relación', value: '01' },
-  { label: '02 - Comprobante emitido con errores sin relación', value: '02' },
-  { label: '03 - No se llevó a cabo la operación', value: '03' },
-  { label: '04 - Operación nominativa en factura global', value: '04' },
-];
-
 const reportesDisponiblesFiltrados = computed(() => {
   return reportesDisponibles.value.filter(r => {
     const cliente = filtroAgregarCliente.value.trim().toLowerCase();
@@ -558,7 +417,7 @@ const detalleOrdenesEnriquecido = computed(() => {
 const esEditable = computed(() => {
   if (!item.value?.status) return false;
   const s = item.value.status.toLowerCase();
-  return !['pagado', 'timbrado', 'cancelado'].includes(s);
+  return !['pagado', 'cancelado'].includes(s);
 });
 
 // Reportes de servicio
@@ -594,18 +453,11 @@ function nombreArchivo(path) {
   return path.split('/').pop();
 }
 
-const opcionesStatusNota = [
+const opcionesStatus = [
   { label: 'Pendiente de pago', value: 'pendiente de pago' },
   { label: 'Pagado', value: 'pagado' },
   { label: 'Cancelado', value: 'cancelado' }
 ];
-
-const opcionesStatusFactura = [
-  { label: 'Pendiente timbre', value: 'Pendiente timbre' },
-  { label: 'Cancelado', value: 'Cancelado' }
-];
-
-const opcionesStatus = computed(() => esNota.value ? opcionesStatusNota : opcionesStatusFactura);
 
 function formatFecha(f) {
   if (!f) return '';
@@ -614,8 +466,8 @@ function formatFecha(f) {
 }
 
 function badgeClass(status) {
-  if (['pagado', 'Timbrado'].includes(status)) return 'success';
-  if (['cancelado', 'Cancelado'].includes(status)) return 'danger';
+  if (status === 'pagado') return 'success';
+  if (status === 'cancelado') return 'danger';
   return 'warning';
 }
 
@@ -664,11 +516,7 @@ async function cargarDetalleOrdenesEnriquecido() {
 async function cargarDetalle() {
   loading.value = true;
   try {
-    if (esNota.value) {
-      item.value = await getNotaById(id.value);
-    } else {
-      item.value = await getFacturaById(id.value);
-    }
+    item.value = await getNotaById(id.value);
     nuevoStatus.value = item.value?.status || '';
     nuevoLugarPago.value = item.value?.lugar_pago || '';
     observacionesTexto.value = item.value?.observaciones || '';
@@ -704,11 +552,7 @@ async function cargarClienteFiscal() {
 async function guardarDatosPago() {
   guardandoDatosPago.value = true;
   try {
-    if (esNota.value) {
-      await actualizarDatosPagoNota(id.value, { ...datosPagoForm.value });
-    } else {
-      await actualizarDatosPagoFactura(id.value, { ...datosPagoForm.value });
-    }
+    await actualizarDatosPagoNota(id.value, { ...datosPagoForm.value });
     Object.assign(item.value, datosPagoForm.value);
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Datos de pago guardados correctamente.', life: 3000 });
   } catch {
@@ -720,34 +564,22 @@ async function guardarDatosPago() {
 async function cambiarStatusYLugar() {
   const statusChanged = nuevoStatus.value && nuevoStatus.value !== item.value?.status;
   const lugarChanged = nuevoLugarPago.value && nuevoLugarPago.value !== item.value?.lugar_pago;
-  
+
   if (!statusChanged && !lugarChanged) return;
-  
+
   saving.value = true;
   try {
-    if (esNota.value) {
-      if (statusChanged) {
-        await actualizarStatusNota(id.value, nuevoStatus.value);
-        item.value.status = nuevoStatus.value;
-      }
-      if (lugarChanged) {
-        await actualizarLugarPagoNota(id.value, nuevoLugarPago.value);
-        item.value.lugar_pago = nuevoLugarPago.value;
-      }
-    } else {
-      if (statusChanged) {
-        await actualizarStatusFactura(id.value, nuevoStatus.value);
-        item.value.status = nuevoStatus.value;
-      }
-      if (lugarChanged) {
-        await actualizarLugarPagoFactura(id.value, nuevoLugarPago.value);
-        item.value.lugar_pago = nuevoLugarPago.value;
-      }
+    if (statusChanged) {
+      await actualizarStatusNota(id.value, nuevoStatus.value);
+      item.value.status = nuevoStatus.value;
+    }
+    if (lugarChanged) {
+      await actualizarLugarPagoNota(id.value, nuevoLugarPago.value);
+      item.value.lugar_pago = nuevoLugarPago.value;
     }
     toast.add({ severity: 'success', summary: 'Actualizado', detail: 'Datos actualizados correctamente.', life: 3000 });
     // Si se canceló, recargar para reflejar que reporte_ids quedó vacío
-    const cancelado = ['cancelado', 'Cancelado'].includes(nuevoStatus.value);
-    if (statusChanged && cancelado) await cargarDetalle();
+    if (statusChanged && nuevoStatus.value === 'cancelado') await cargarDetalle();
   } catch (error) {
     console.error(error);
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar los datos.', life: 4000 });
@@ -758,7 +590,7 @@ async function cambiarStatusYLugar() {
 async function descargarPDF() {
   if (!item.value) return;
   try {
-    await generarPagoPDF(tipo.value, item.value);
+    await generarPagoPDF('nota', item.value);
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF.', life: 4000 });
   }
@@ -767,11 +599,7 @@ async function descargarPDF() {
 async function guardarObservaciones() {
   guardandoObs.value = true;
   try {
-    if (esNota.value) {
-      await actualizarObservacionesNota(id.value, observacionesTexto.value);
-    } else {
-      await actualizarObservacionesFactura(id.value, observacionesTexto.value);
-    }
+    await actualizarObservacionesNota(id.value, observacionesTexto.value);
     item.value.observaciones = observacionesTexto.value;
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Observaciones guardadas correctamente.', life: 3000 });
   } catch {
@@ -793,11 +621,7 @@ async function subirComprobante() {
   if (!archivoSeleccionado.value) return;
   subiendo.value = true;
   try {
-    if (esNota.value) {
-      await subirComprobanteNota(id.value, archivoSeleccionado.value);
-    } else {
-      await subirComprobanteFactura(id.value, archivoSeleccionado.value);
-    }
+    await subirComprobanteNota(id.value, archivoSeleccionado.value);
     toast.add({ severity: 'success', summary: 'Subido', detail: 'Comprobante cargado correctamente.', life: 3000 });
     archivoSeleccionado.value = null;
     const inputEl = document.getElementById('inputComprobante');
@@ -812,11 +636,7 @@ async function subirComprobante() {
 async function eliminarComprobante(path) {
   eliminandoComprobante.value = path;
   try {
-    if (esNota.value) {
-      await eliminarComprobanteNota(id.value, path);
-    } else {
-      await eliminarComprobanteFactura(id.value, path);
-    }
+    await eliminarComprobanteNota(id.value, path);
     toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Comprobante eliminado.', life: 3000 });
     await cargarDetalle();
   } catch {
@@ -870,11 +690,7 @@ function cerrarPdfDialog() {
 async function quitarReporte(reporte) {
   quitando.value = reporte.id;
   try {
-    if (esNota.value) {
-      await quitarReportesNota(id.value, [reporte.id]);
-    } else {
-      await quitarReportesFactura(id.value, [reporte.id]);
-    }
+    await quitarReportesNota(id.value, [reporte.id]);
     reportesList.value = reportesList.value.filter(r => r.id !== reporte.id);
     if (reportesList.value.length === 0) reportesDialogVisible.value = false;
     await cargarDetalle();
@@ -898,13 +714,12 @@ async function abrirAgregarDialog() {
     const currentIds = new Set(item.value?.reporte_ids || []);
     for (const n of notas) {
       for (const rid of (n.reporte_ids || [])) {
-        if (esNota.value && n.id === Number(id.value)) continue;
+        if (n.id === Number(id.value)) continue;
         asignados.add(rid);
       }
     }
     for (const f of facturas) {
       for (const rid of (f.reporte_ids || [])) {
-        if (!esNota.value && f.id === Number(id.value)) continue;
         asignados.add(rid);
       }
     }
@@ -925,11 +740,7 @@ async function confirmarAgregar() {
   agregando.value = true;
   try {
     const nuevos_ids = reportesSeleccionados.value.map(r => r.id);
-    if (esNota.value) {
-      await agregarReportesNota(id.value, nuevos_ids);
-    } else {
-      await agregarReportesFactura(id.value, nuevos_ids);
-    }
+    await agregarReportesNota(id.value, nuevos_ids);
     agregarDialogVisible.value = false;
     reportesSeleccionados.value = [];
     await cargarDetalle();
@@ -938,62 +749,6 @@ async function confirmarAgregar() {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudieron agregar los servicios.', life: 4000 });
   }
   agregando.value = false;
-}
-
-async function abrirTimbrarDialog() {
-  timbrarForm.value = {
-    rfc_cliente: item.value?.rfc_cliente || '',
-    uso_cfdi: item.value?.uso_cfdi || 'G03',
-    forma_pago: item.value?.forma_pago || '03',
-    metodo_pago: item.value?.metodo_pago || 'PUE'
-  };
-  // Intenta prellenar el RFC buscando al cliente por nombre
-  if (!timbrarForm.value.rfc_cliente && item.value?.cliente) {
-    try {
-      const resp = await axios.get(`${API_URL}/clientes`);
-      const match = (resp.data || []).find(c => (c.nombre || '').trim().toLowerCase() === item.value.cliente.trim().toLowerCase());
-      if (match?.rfc) timbrarForm.value.rfc_cliente = match.rfc;
-    } catch {
-      // sin bloquear el flujo si no se puede prellenar
-    }
-  }
-  timbrarDialogVisible.value = true;
-}
-
-async function confirmarTimbrar() {
-  timbrando.value = true;
-  try {
-    await timbrarFactura(id.value, { ...timbrarForm.value });
-    toast.add({ severity: 'success', summary: 'Timbrada', detail: 'CFDI generado y timbrado correctamente.', life: 4000 });
-    timbrarDialogVisible.value = false;
-    await cargarDetalle();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo timbrar la factura.', life: 5000 });
-  }
-  timbrando.value = false;
-}
-
-function abrirArchivoCfdi(path) {
-  if (!path) return;
-  window.open(urlComprobante(path), '_blank', 'noopener');
-}
-
-function abrirCancelarDialog() {
-  cancelarForm.value = { motivo: '', folio_sustitucion: '' };
-  cancelarDialogVisible.value = true;
-}
-
-async function confirmarCancelar() {
-  cancelando.value = true;
-  try {
-    await cancelarFactura(id.value, { ...cancelarForm.value });
-    toast.add({ severity: 'success', summary: 'Cancelada', detail: 'CFDI cancelado ante el SAT correctamente.', life: 4000 });
-    cancelarDialogVisible.value = false;
-    await cargarDetalle();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo cancelar la factura.', life: 5000 });
-  }
-  cancelando.value = false;
 }
 </script>
 
@@ -1118,15 +873,4 @@ async function confirmarCancelar() {
 .badge-warning { background: #fff3cd; color: #856404; }
 .badge-danger  { background: #f8d7da; color: #721c24; }
 .mb-3 { margin-bottom: 1rem; }
-.timbrar-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-}
-.timbrar-field label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 0.3rem;
-  font-size: 0.85rem;
-}
 </style>

@@ -88,7 +88,9 @@
         <template #body="slotProps">
           <router-link
             v-if="asignacionPagoMap[slotProps.data.id]"
-            :to="{ name: 'detalle-pago', params: { tipo: asignacionPagoMap[slotProps.data.id].tipo, id: asignacionPagoMap[slotProps.data.id].id } }"
+            :to="asignacionPagoMap[slotProps.data.id].tipo === 'factura'
+              ? { name: 'detalle-factura', params: { id: asignacionPagoMap[slotProps.data.id].id } }
+              : { name: 'detalle-pago', params: { tipo: 'nota', id: asignacionPagoMap[slotProps.data.id].id } }"
             style="font-weight:bold; color:#1976d2; text-decoration:none; cursor:pointer;"
           >
             {{ asignacionPagoMap[slotProps.data.id].label }}
@@ -132,13 +134,13 @@
           {{ slotProps.data.total ? '$' + Number(slotProps.data.total).toFixed(2) : '-' }}
         </template>
       </Column>
-      <Column field="pagado" header="¿Pagado?">
+      <!-- <Column field="pagado" header="¿Pagado?">
         <template #body="slotProps">
           <span :style="{ color: slotProps.data.pagado ? '#28a745' : (slotProps.data.comprobante_estado==='pendiente' ? '#f0ad4e' : '#d32f2f'), fontWeight: 'bold' }">
             {{ slotProps.data.pagado ? 'Sí' : (slotProps.data.comprobante_estado==='pendiente' ? 'En revisión' : 'No') }}
           </span>
         </template>
-      </Column>
+      </Column> -->
       <Column header="Acciones">
           <template #body="slotProps">
             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-start; align-items: center; min-width: 320px;">
