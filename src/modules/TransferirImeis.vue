@@ -34,12 +34,29 @@
           :disabled="!ubicacionOrigen"
           @keydown.enter.prevent="agregarImei"
         />
+        <div class="bulk-actions" v-if="ubicacionOrigen">
+          <Button
+            :label="`Agregar todos (${imeisEnUbicacion.length})`"
+            icon="pi pi-check-square"
+            class="p-button-text p-button-sm"
+            :disabled="!imeisEnUbicacion.length"
+            @click="agregarTodos"
+          />
+          <Button
+            v-if="imeis.length"
+            label="Vaciar lista"
+            icon="pi pi-trash"
+            class="p-button-text p-button-sm p-button-danger"
+            @click="vaciarLista"
+          />
+        </div>
         <DataTable
           v-if="imeis.length"
           :value="imeis"
           class="imeis-table"
-          :rows="5"
-          :paginator="imeis.length > 5"
+          :rows="15"
+          :rowsPerPageOptions="[15, 50, 100]"
+          :paginator="imeis.length > 15"
           responsiveLayout="scroll"
           emptyMessage="No hay IMEIs agregados."
         >
@@ -169,6 +186,16 @@ const eliminarImei = (idx) => {
   validarImeis();
 };
 
+const agregarTodos = () => {
+  imeis.value = imeisEnUbicacion.value.map(i => i.imei);
+  validarImeis();
+};
+
+const vaciarLista = () => {
+  imeis.value = [];
+  validarImeis();
+};
+
 const validarImeis = () => {
   // Solo permitir IMEIs que estén en la ubicación origen y no estén ya en la ubicación destino
   imeisInvalidos.value = imeis.value.filter(imei => {
@@ -247,6 +274,11 @@ label {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+}
+.bulk-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 .dialog-actions {
   display: flex;

@@ -74,10 +74,21 @@ const groupedItems = computed(() => {
         // { label: 'Dinero', route: '/dinero', icon: 'pi pi-fw pi-wallet', desc: 'Ver movimientos y saldo de dinero' }
       ]
     },
-    ...(esAdmin.value ? [{
-      title: 'Pagos',
+
+    {
+      title: 'Reportes',
       items: [
-        { label: 'Pagos', route: '/pagos', icon: 'pi pi-fw pi-wallet', desc: 'Notas — histórico y estatus' },
+        // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
+        { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' },
+        ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock', desc: 'Instalaciones recientes desde CSV' }] : []),
+        ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh', desc: 'Renovaciones recientes desde CSV' }] : [])
+      ]
+    },
+
+    ...(esAdmin.value ? [{
+      title: 'Notas y Facturas',
+      items: [
+        { label: 'Notas y Facturas', route: '/pagos', icon: 'pi pi-fw pi-wallet', desc: 'Notas y Facturas— histórico y estatus' },
         { label: 'Facturación', route: '/facturacion', icon: 'pi pi-fw pi-receipt', desc: 'Prefacturas, timbrado y CFDI de Comercializadora' },
         { label: 'Bancos', route: '/bancos', icon: 'pi pi-fw pi-building-columns', desc: 'Estado de cuenta y retiros por banco' }
       ]
@@ -101,15 +112,7 @@ const groupedItems = computed(() => {
         { label: 'Usuarios', route: '/usuarios', icon: 'pi pi-fw pi-users', desc: 'Gestión de usuarios' }
       ]
     }] : []),
-    {
-      title: 'Técnicos',
-      items: [
-        // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus', desc: 'Calendario visual y personalizable de asignaciones' },
-        { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', desc: 'Consultar reportes de servicio' },
-        ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock', desc: 'Instalaciones recientes desde CSV' }] : []),
-        ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh', desc: 'Renovaciones recientes desde CSV' }] : [])
-      ]
-    }
+
   ];
 });
 </script>

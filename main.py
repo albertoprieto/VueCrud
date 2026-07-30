@@ -1843,8 +1843,12 @@ def transferir_imeis(request: TransferirIMEIsRequest):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
-    for imei in request.imeis:
-        cursor.execute("UPDATE imeis SET ubicacion_id=%s WHERE imei=%s", (request.destino_id, imei))
+    if request.imeis:
+        placeholders = ','.join(['%s'] * len(request.imeis))
+        cursor.execute(
+            f"UPDATE imeis SET ubicacion_id=%s WHERE imei IN ({placeholders})",
+            (request.destino_id, *request.imeis)
+        )
     db.commit()
     cursor.close()
     db.close()
@@ -1867,6 +1871,36 @@ def buscar_imei(digitos: str):
         WHERE i.imei LIKE %s
     """
     cursor.execute(query, ('%' + digitos,))
+    resultados = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return resultados
+
+class BuscarImeisBulkRequest(BaseModel):
+    imeis: list[str]
+
+@app.post("/buscar-imeis-bulk")
+def buscar_imeis_bulk(data: BuscarImeisBulkRequest):
+    """Igual que /buscar-imei pero para muchos IMEIs exactos de una sola vez
+    (ej. enriquecer un datatable de cientos de filas sin un request por fila)."""
+    imeis = [i for i in dict.fromkeys(data.imeis) if i]
+    if not imeis:
+        return []
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    placeholders = ','.join(['%s'] * len(imeis))
+    cursor.execute(f"""
+        SELECT i.imei, i.articulo_nombre, a.sku, i.status, u.nombre as ubicacion
+        FROM imeis i
+        LEFT JOIN ubicaciones u ON i.ubicacion_id = u.id
+        LEFT JOIN articulos a ON i.articulo_nombre = a.nombre
+        WHERE i.imei IN ({placeholders})
+    """, tuple(imeis))
     resultados = cursor.fetchall()
     cursor.close()
     db.close()
@@ -3481,7 +3515,9 @@ class BulkActivacionesRequest(BaseModel):
 @app.get("/activaciones-recientes")
 def get_activaciones_recientes(
     status: Optional[str] = Query(None, description="Filtrar por status: pendiente, con_reporte, sin_reporte"),
-    dias: Optional[int] = Query(30, description="Filtrar por días de antigüedad"),
+    dias: Optional[int] = Query(30, description="Filtrar por días de antigüedad (ignorado si se manda anio+mes)"),
+    anio: Optional[int] = Query(None, description="Año del filtro por mes calendario"),
+    mes: Optional[int] = Query(None, ge=1, le=12, description="Mes del filtro (1-12), calendario completo"),
     cuenta: Optional[str] = Query(None, description="Filtrar por cuenta"),
     limit: Optional[int] = Query(500, description="Límite de registros")
 ):
@@ -3520,7 +3556,15 @@ def get_activaciones_recientes(
         query += " AND ar.status = %s"
         params.append(status)
     
-    if dias:
+    if anio and mes:
+        inicio_mes = datetime(anio, mes, 1)
+        fin_mes = datetime(anio + 1, 1, 1) if mes == 12 else datetime(anio, mes + 1, 1)
+        query += """ AND (
+            (ar.hora_activacion >= %s AND ar.hora_activacion < %s)
+            OR (ar.hora_activacion IS NULL AND ar.fecha_carga >= %s AND ar.fecha_carga < %s)
+        )"""
+        params.extend([inicio_mes, fin_mes, inicio_mes, fin_mes])
+    elif dias:
         # Incluir registros con hora_activacion en rango O con hora_activacion NULL pero fecha_carga en rango
         query += """ AND (
             ar.hora_activacion >= DATE_SUB(NOW(), INTERVAL %s DAY)
@@ -3528,11 +3572,11 @@ def get_activaciones_recientes(
         )"""
         params.append(dias)
         params.append(dias)
-    
+
     if cuenta:
         query += " AND ar.cuenta LIKE %s"
         params.append(f"%{cuenta}%")
-    
+
     query += " ORDER BY ar.hora_activacion DESC"
     
     if limit:
@@ -3948,7 +3992,9 @@ def get_activaciones_stats():
 @app.get("/renovaciones-recientes")
 def get_renovaciones_recientes(
     status: str = Query(None, description="Filtrar por status"),
-    dias: int = Query(30, description="Días de antigüedad"),
+    dias: int = Query(30, description="Días de antigüedad (ignorado si se manda anio+mes)"),
+    anio: Optional[int] = Query(None, description="Año del filtro por mes calendario"),
+    mes: Optional[int] = Query(None, ge=1, le=12, description="Mes del filtro (1-12), calendario completo"),
     cuenta: str = Query(None, description="Filtrar por cuenta"),
     limit: int = Query(1000, description="Límite de registros")
 ):
@@ -3959,17 +4005,30 @@ def get_renovaciones_recientes(
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    
-    query = """
-        SELECT rr.*, rs.folio as folio_reporte
-        FROM renovaciones_recientes rr
-        LEFT JOIN reportes_servicio rs ON rr.reporte_servicio_id = rs.id
-        WHERE (rr.hora_activacion >= DATE_SUB(NOW(), INTERVAL %s DAY) 
-               OR rr.hora_activacion IS NULL 
-               OR rr.fecha_carga >= DATE_SUB(NOW(), INTERVAL %s DAY))
-    """
-    params = [dias, dias]
-    
+
+    if anio and mes:
+        inicio_mes = datetime(anio, mes, 1)
+        fin_mes = datetime(anio + 1, 1, 1) if mes == 12 else datetime(anio, mes + 1, 1)
+        query = """
+            SELECT rr.*, rs.folio as folio_reporte
+            FROM renovaciones_recientes rr
+            LEFT JOIN reportes_servicio rs ON rr.reporte_servicio_id = rs.id
+            WHERE (
+                (rr.hora_activacion >= %s AND rr.hora_activacion < %s)
+                OR (rr.hora_activacion IS NULL AND rr.fecha_carga >= %s AND rr.fecha_carga < %s)
+            )
+        """
+        params = [inicio_mes, fin_mes, inicio_mes, fin_mes]
+    else:
+        query = """
+            SELECT rr.*, rs.folio as folio_reporte
+            FROM renovaciones_recientes rr
+            LEFT JOIN reportes_servicio rs ON rr.reporte_servicio_id = rs.id
+            WHERE (rr.hora_activacion >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                   OR (rr.hora_activacion IS NULL AND rr.fecha_carga >= DATE_SUB(NOW(), INTERVAL %s DAY)))
+        """
+        params = [dias, dias]
+
     if status:
         query += " AND rr.status = %s"
         params.append(status)
@@ -4198,7 +4257,7 @@ def verificar_reportes_renovaciones():
     )
     cursor = db.cursor(dictionary=True)
     
-    # Buscar renovaciones que tienen reporte por IMEI
+    # Buscar renovaciones que tienen reporte por IMEI en el campo principal
     cursor.execute("""
         UPDATE renovaciones_recientes rr
         INNER JOIN reportes_servicio rs ON rr.numero_dispositivo = rs.imei
@@ -4206,31 +4265,53 @@ def verificar_reportes_renovaciones():
         WHERE rr.status != 'con_reporte'
     """)
     actualizados_imei = cursor.rowcount
-    
+
+    # Un reporte de servicio puede agrupar varios IMEIs bajo imeis_articulos
+    # (ej. varias SIMs/IMEIs en un mismo folio) — el IMEI principal (rs.imei)
+    # es solo uno de ellos, así que también hay que buscar ahí antes de
+    # marcar la renovación como sin reporte.
+    cursor.execute("""
+        SELECT rr.id, rr.numero_dispositivo, rs.id as reporte_id
+        FROM renovaciones_recientes rr
+        CROSS JOIN reportes_servicio rs
+        WHERE rr.status != 'con_reporte'
+        AND rs.imeis_articulos IS NOT NULL
+        AND JSON_SEARCH(rs.imeis_articulos, 'all', rr.numero_dispositivo) IS NOT NULL
+    """)
+    matches_json = cursor.fetchall()
+    for match in matches_json:
+        cursor.execute("""
+            UPDATE renovaciones_recientes
+            SET status = 'con_reporte', reporte_servicio_id = %s
+            WHERE id = %s
+        """, (match['reporte_id'], match['id']))
+    actualizados_json = len(matches_json)
+
     # Marcar como sin_reporte los que no tienen reporte
     cursor.execute("""
-        UPDATE renovaciones_recientes 
+        UPDATE renovaciones_recientes
         SET status = 'sin_reporte'
-        WHERE status = 'pendiente' 
+        WHERE status = 'pendiente'
         AND reporte_servicio_id IS NULL
         AND status NOT IN ('es_envio', 'no_requiere')
     """)
     sin_reporte = cursor.rowcount
-    
+
     # Obtener conteos actualizados
     cursor.execute("""
-        SELECT status, COUNT(*) as cantidad 
-        FROM renovaciones_recientes 
+        SELECT status, COUNT(*) as cantidad
+        FROM renovaciones_recientes
         GROUP BY status
     """)
     conteos = {row['status']: row['cantidad'] for row in cursor.fetchall()}
-    
+
     db.commit()
     cursor.close()
     db.close()
-    
+
     return {
         "actualizados_por_imei": actualizados_imei,
+        "actualizados_por_json": actualizados_json,
         "marcados_sin_reporte": sin_reporte,
         "conteos": conteos
     }
@@ -5213,7 +5294,7 @@ class TimbrarFacturaPagoRequest(BaseModel):
 
 
 @app.post("/facturas-pago/{factura_id}/timbrar")
-def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
+def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, current=Depends(get_current_user)):
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -5233,6 +5314,8 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_no_certificado_sat VARCHAR(25) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_rfc_pac VARCHAR(20) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN regimen_fiscal_receptor VARCHAR(3) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN timbrado_por VARCHAR(100) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN timbrado_fecha DATETIME NULL",
     ):
         try:
             cursor.execute(_col_sql)
@@ -5249,6 +5332,10 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
         cursor.close()
         db.close()
         raise HTTPException(status_code=400, detail="La factura ya está timbrada")
+    if factura.get('status') == 'Timbrando':
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=409, detail="Esta factura ya se está timbrando (otra solicitud en curso). Espera unos segundos y refresca.")
 
     reporte_ids = factura.get('reporte_ids')
     if isinstance(reporte_ids, str):
@@ -5265,11 +5352,23 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
     placeholders = ','.join(['%s'] * len(reporte_ids))
     cursor.execute(f"SELECT id, tipo_servicio, total, folio FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
     reportes = cursor.fetchall()
-    cursor.close()
-    db.close()
 
     if not reportes:
+        cursor.close()
+        db.close()
         raise HTTPException(status_code=400, detail="No se encontraron los reportes de servicio asociados a esta factura")
+
+    # Reserva la factura antes de llamar al PAC: si dos solicitudes llegan casi
+    # simultáneas (doble-click, reintento automático), la segunda ve status
+    # 'Timbrando' y se rechaza en vez de generar dos CFDIs para el mismo folio.
+    cursor.execute("UPDATE facturas_pago SET status='Timbrando' WHERE id=%s AND status='Pendiente timbre'", (factura_id,))
+    db.commit()
+    if cursor.rowcount != 1:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=409, detail="Esta factura ya se está timbrando o cambió de estatus. Refresca e intenta de nuevo.")
+    cursor.close()
+    db.close()
 
     # r['total'] ya incluye IVA (16%); SW vuelve a calcular el IVA sobre el
     # importe que le mandemos, así que aquí se manda la base sin IVA.
@@ -5285,45 +5384,58 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
         ) for r in reportes
     ]
 
-    # Si el frontend no mandó domicilio/régimen del receptor, NUNCA se debe
-    # caer al domicilio/régimen del EMISOR (eso produciría un CFDI con los
-    # datos fiscales de la propia empresa en el campo del cliente). En vez
-    # de eso, se busca al cliente por nombre y se usan sus datos reales; si
-    # tampoco existen ahí, se rechaza — mejor bloquear que timbrar mal.
-    domicilio_receptor = data.domicilio_fiscal_receptor
-    regimen_receptor = data.regimen_fiscal_receptor
-    if (not domicilio_receptor or not regimen_receptor) and data.rfc_cliente != RFC_PUBLICO_GENERAL:
-        db2 = mysql.connector.connect(
+    try:
+        # Si el frontend no mandó domicilio/régimen del receptor, NUNCA se debe
+        # caer al domicilio/régimen del EMISOR (eso produciría un CFDI con los
+        # datos fiscales de la propia empresa en el campo del cliente). En vez
+        # de eso, se busca al cliente por nombre y se usan sus datos reales; si
+        # tampoco existen ahí, se rechaza — mejor bloquear que timbrar mal.
+        domicilio_receptor = data.domicilio_fiscal_receptor
+        regimen_receptor = data.regimen_fiscal_receptor
+        if (not domicilio_receptor or not regimen_receptor) and data.rfc_cliente != RFC_PUBLICO_GENERAL:
+            db2 = mysql.connector.connect(
+                host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+            )
+            cur2 = db2.cursor(dictionary=True)
+            cur2.execute(
+                "SELECT codigo_postal, regimen_fiscal FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1",
+                (factura['cliente'],)
+            )
+            cliente_row = cur2.fetchone()
+            cur2.close()
+            db2.close()
+            domicilio_receptor = domicilio_receptor or (cliente_row or {}).get('codigo_postal')
+            regimen_receptor = regimen_receptor or (cliente_row or {}).get('regimen_fiscal')
+            if not domicilio_receptor or not regimen_receptor:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Faltan datos fiscales del cliente '{factura['cliente']}' (código postal y/o régimen fiscal). Complétalos antes de timbrar."
+                )
+
+        resultado = _construir_y_timbrar_cfdi(
+            nombre_cliente=factura['cliente'],
+            rfc_cliente=data.rfc_cliente,
+            uso_cfdi=data.uso_cfdi,
+            metodo_pago=data.metodo_pago,
+            forma_pago=data.forma_pago,
+            productos=productos,
+            serie="F",
+            folio=str(factura_id),
+            domicilio_fiscal_receptor=domicilio_receptor,
+            regimen_fiscal_receptor=regimen_receptor,
+        )
+    except Exception:
+        # El PAC falló o faltaron datos: liberar la reserva 'Timbrando' para
+        # que la factura vuelva a quedar disponible y se pueda reintentar.
+        db_revert = mysql.connector.connect(
             host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
         )
-        cur2 = db2.cursor(dictionary=True)
-        cur2.execute(
-            "SELECT codigo_postal, regimen_fiscal FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1",
-            (factura['cliente'],)
-        )
-        cliente_row = cur2.fetchone()
-        cur2.close()
-        db2.close()
-        domicilio_receptor = domicilio_receptor or (cliente_row or {}).get('codigo_postal')
-        regimen_receptor = regimen_receptor or (cliente_row or {}).get('regimen_fiscal')
-        if not domicilio_receptor or not regimen_receptor:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Faltan datos fiscales del cliente '{factura['cliente']}' (código postal y/o régimen fiscal). Complétalos antes de timbrar."
-            )
-
-    resultado = _construir_y_timbrar_cfdi(
-        nombre_cliente=factura['cliente'],
-        rfc_cliente=data.rfc_cliente,
-        uso_cfdi=data.uso_cfdi,
-        metodo_pago=data.metodo_pago,
-        forma_pago=data.forma_pago,
-        productos=productos,
-        serie="F",
-        folio=str(factura_id),
-        domicilio_fiscal_receptor=domicilio_receptor,
-        regimen_fiscal_receptor=regimen_receptor,
-    )
+        cur_revert = db_revert.cursor()
+        cur_revert.execute("UPDATE facturas_pago SET status='Pendiente timbre' WHERE id=%s AND status='Timbrando'", (factura_id,))
+        db_revert.commit()
+        cur_revert.close()
+        db_revert.close()
+        raise
 
     db = mysql.connector.connect(
         host="localhost",
@@ -5337,12 +5449,12 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest):
            SET status='Timbrado', rfc_cliente=%s, uso_cfdi=%s, forma_pago=%s, metodo_pago=%s,
                cfdi_uuid=%s, cfdi_xml_path=%s, cfdi_pdf_path=%s,
                cfdi_fecha_certificacion=%s, cfdi_no_certificado_sat=%s, cfdi_rfc_pac=%s,
-               regimen_fiscal_receptor=%s
+               regimen_fiscal_receptor=%s, timbrado_por=%s, timbrado_fecha=NOW()
            WHERE id=%s""",
         (data.rfc_cliente, data.uso_cfdi, data.forma_pago, data.metodo_pago,
          resultado['uuid'], resultado['xml_path'], resultado['pdf_path'],
          resultado['fecha_certificacion'], resultado['no_certificado_sat'], resultado['rfc_pac'],
-         regimen_receptor, factura_id)
+         regimen_receptor, current.get('username'), factura_id)
     )
     db.commit()
     cursor.close()
@@ -5389,6 +5501,7 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_motivo VARCHAR(2) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_estatus VARCHAR(10) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_fecha DATETIME NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cancelado_por VARCHAR(100) NULL",
     ):
         try:
             cursor.execute(_col_sql)
@@ -5450,9 +5563,10 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
     cursor = db.cursor()
     cursor.execute(
         """UPDATE facturas_pago
-           SET status='Cancelado', cfdi_cancelacion_motivo=%s, cfdi_cancelacion_estatus=%s, cfdi_cancelacion_fecha=NOW()
+           SET status='Cancelado', cfdi_cancelacion_motivo=%s, cfdi_cancelacion_estatus=%s, cfdi_cancelacion_fecha=NOW(),
+               cancelado_por=%s
            WHERE id=%s""",
-        (data.motivo, estatus_uuid, factura_id)
+        (data.motivo, estatus_uuid, user.get('username'), factura_id)
     )
     db.commit()
     cursor.close()
@@ -5464,6 +5578,73 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
         "status": "Cancelado",
         "estatus_uuid": estatus_uuid,
     }
+
+
+class EnviarCfdiFacturaRequest(BaseModel):
+    correo: str
+
+
+@app.post("/facturas-pago/{factura_id}/enviar-cfdi")
+def enviar_cfdi_factura(factura_id: int, data: EnviarCfdiFacturaRequest, current=Depends(get_current_user)):
+    """Reenvía el XML+PDF del CFDI ya timbrado al correo indicado. Requiere
+    SMTP_USER/SMTP_PASS en el entorno — sin eso no hay forma de mandar correo."""
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT status, cliente, cfdi_uuid, cfdi_xml_path, cfdi_pdf_path FROM facturas_pago WHERE id=%s",
+        (factura_id,)
+    )
+    factura = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not factura:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.get('status') != 'Timbrado' or not factura.get('cfdi_xml_path'):
+        raise HTTPException(status_code=400, detail="Solo se puede enviar el CFDI de una factura ya timbrada")
+
+    smtp_server = os.getenv("SMTP_SERVER", "smtpout.secureserver.net")
+    smtp_port = int(os.getenv("SMTP_PORT", "465"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+    if not (smtp_user and smtp_pass):
+        raise HTTPException(status_code=500, detail="Envío de correo no configurado (faltan SMTP_USER/SMTP_PASS en el entorno)")
+
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.application import MIMEApplication
+
+    msg = MIMEMultipart()
+    msg["Subject"] = f"CFDI — {factura.get('cliente') or 'Factura'} — {factura.get('cfdi_uuid') or factura_id}"
+    msg["From"] = smtp_user
+    msg["To"] = data.correo
+    msg.attach(MIMEText(
+        f"Hola,\n\nAdjuntamos el XML y PDF del CFDI de tu factura.\nUUID: {factura.get('cfdi_uuid') or '-'}\n\nSaludos."
+    ))
+
+    adjuntos = (
+        (factura.get('cfdi_xml_path'), f"CFDI_{factura_id}.xml"),
+        (factura.get('cfdi_pdf_path'), f"CFDI_{factura_id}.pdf"),
+    )
+    for rel_path, filename in adjuntos:
+        if not rel_path:
+            continue
+        try:
+            with open(rel_path, 'rb') as f:
+                part = MIMEApplication(f.read())
+                part.add_header('Content-Disposition', 'attachment', filename=filename)
+                msg.attach(part)
+        except FileNotFoundError:
+            continue
+
+    try:
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [data.correo], msg.as_string())
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo enviar el correo: {e}")
+
+    return {"message": "CFDI enviado correctamente", "correo": data.correo}
 
 
 @app.put("/facturas-pago/{factura_id}/status")

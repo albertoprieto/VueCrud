@@ -176,11 +176,11 @@ async function cargarCasosAbiertos() {
 }
 
 // Registrar sesión al cargar el dashboard
-// onMounted(() => {
-//   if (user.value?.id) {
-//     registrarSesion(user.value.id);
-//   }
-// });
+onMounted(() => {
+  if (user.value?.id) {
+    registrarSesion(user.value.id);
+  }
+});
 
 onMounted(() => {
   cargarCasosAbiertos();
@@ -217,7 +217,7 @@ const items = computed(() => {
 
   return [
     {
-      label: 'Inicio',
+      label: '',
       icon: 'pi pi-fw pi-home',
       route: '/dashboard'
     },
@@ -248,6 +248,16 @@ const items = computed(() => {
         // { label: 'Consultar Orden de Servicio', route: '/historico-notas', icon: 'pi pi-fw pi-file' }
       ]
     },
+    {
+      label: 'Reportes',
+      icon: 'pi pi-fw pi-user-cog',
+      items: [
+        // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
+        { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
+        ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
+        ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
+      ]
+    },
     // {
     //   label: 'Tickets',
     //   icon: 'pi pi-fw pi-ticket',
@@ -262,28 +272,24 @@ const items = computed(() => {
     //   route: '/dinero'
     // },
     ...(esAdmin.value ? [{
-      label: 'Pagos',
+      label: 'Notas y Facturas',
       icon: 'pi pi-fw pi-wallet',
-      route: '/pagos'
+      items: [
+        { label: 'Notas', route: '/pagos', icon: 'pi pi-fw pi-wallet' },
+        { label: 'Facturación', route: '/facturacion', icon: 'pi pi-fw pi-receipt' }
+      ]
     }] : []),
-    ...(esAdmin.value ? [{
-      label: 'Facturación',
-      icon: 'pi pi-fw pi-receipt',
-      route: '/facturacion'
-    }] : []),
-    ...(esAdmin.value ? [{
-      label: 'Bancos',
-      icon: 'pi pi-fw pi-building-columns',
-      route: '/bancos'
-    }] : []),
+
     ...(esAdmin.value ? [{
       label: 'Comprobantes',
       icon: 'pi pi-fw pi-file-check',
       items: [
-        { label: 'Técnicos', route: '/comisiones?tab=tecnico', icon: 'pi pi-fw pi-user-cog' },
-        { label: 'Vendedores', route: '/comisiones?tab=vendedor', icon: 'pi pi-fw pi-briefcase' }
+        { label: 'Técnicos', route: '/comisiones?tab=tecnico', icon: 'pi pi-fw pi-users' },
+        { label: 'Vendedores', route: '/comisiones?tab=vendedor', icon: 'pi pi-fw pi-briefcase' },
+        { label: 'Bancos', route: '/bancos', icon: 'pi pi-fw pi-building-columns' }
       ]
     }] : []),
+
     {
       label: 'Soporte IA',
       icon: 'pi pi-fw pi-whatsapp',
@@ -295,16 +301,7 @@ const items = computed(() => {
       icon: 'pi pi-fw pi-users',
       route: '/usuarios'
     }] : []),
-    {
-      label: 'Técnicos',
-      icon: 'pi pi-fw pi-user-cog',
-      items: [
-        // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
-        { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
-        ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
-        ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
-      ]
-    },
+
     {
       label: 'Cerrar Sesión',
       icon: 'pi pi-fw pi-sign-out',
