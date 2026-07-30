@@ -145,3 +145,8 @@ export async function cancelarFactura(id, payload) {
   const res = await axios.post(`${API_URL}/facturas-pago/${id}/cancelar`, payload);
   return res.data;
 }
+
+export async function enviarCfdiFactura(id, correo) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${id}/enviar-cfdi`, { correo });
+  return res.data;
+}

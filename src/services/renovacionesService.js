@@ -20,7 +20,12 @@ export async function getRenovacionesRecientes(filtros = {}) {
     const params = new URLSearchParams();
     
     if (filtros.status) params.append("status", filtros.status);
-    if (filtros.dias) params.append("dias", filtros.dias);
+    if (filtros.anio && filtros.mes) {
+      params.append("anio", filtros.anio);
+      params.append("mes", filtros.mes);
+    } else if (filtros.dias) {
+      params.append("dias", filtros.dias);
+    }
     if (filtros.cuenta) params.append("cuenta", filtros.cuenta);
     if (filtros.limit) params.append("limit", filtros.limit);
     

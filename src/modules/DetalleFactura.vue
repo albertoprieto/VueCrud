@@ -47,50 +47,58 @@
         <div v-if="cargandoCliente" style="text-align:center;padding:1.5rem;"><i class="pi pi-spin pi-spinner" /></div>
 
         <template v-else>
-          <!-- Datos fiscales del cliente: completos -> resumen; incompletos/inexistentes -> formulario -->
-          <div v-if="datosFiscalesCompletos" class="fiscal-resumen">
-            <div class="fiscal-resumen-item"><span>RFC</span><strong>{{ clienteFiscal.rfc }}</strong></div>
-            <div class="fiscal-resumen-item"><span>C.P.</span><strong>{{ clienteFiscal.codigo_postal }}</strong></div>
-            <div class="fiscal-resumen-item"><span>Régimen fiscal</span><strong>{{ clienteFiscal.regimen_fiscal }}</strong></div>
-            <Button label="Editar" icon="pi pi-pencil" class="p-button-text p-button-sm" @click="editandoFiscal = true" />
-          </div>
+          <label class="publico-general-toggle">
+            <input type="checkbox" v-model="publicoGeneral" />
+            Venta a público en general (sin RFC específico del cliente)
+          </label>
 
-          <div v-if="!datosFiscalesCompletos || editandoFiscal" class="fiscal-form">
-            <p class="fiscal-form-aviso">
-              <i class="pi pi-info-circle" />
-              {{ clienteExiste ? 'Faltan datos fiscales de este cliente.' : 'Este cliente no está registrado — se creará al guardar.' }}
-              Sin esto no se puede timbrar.
-            </p>
-            <div class="fiscal-form-grid">
-              <div class="fiscal-field">
-                <label>RFC</label>
-                <InputText v-model="fiscalForm.rfc" placeholder="XAXX010101000" class="w-full" :class="{ 'p-invalid': fiscalForm.rfc && !rfcValido }" />
-                <small v-if="fiscalForm.rfc && !rfcValido" class="fiscal-error">RFC con formato inválido</small>
-              </div>
-              <div class="fiscal-field">
-                <label>Código postal</label>
-                <InputText v-model="fiscalForm.codigo_postal" placeholder="64000" maxlength="5" class="w-full" />
-              </div>
-              <div class="fiscal-field">
-                <label>Régimen fiscal (SAT)</label>
-                <Dropdown v-model="fiscalForm.regimen_fiscal" :options="REGIMENES_FISCALES" optionLabel="label" optionValue="value" placeholder="Selecciona..." class="w-full" />
-              </div>
+          <template v-if="!publicoGeneral">
+            <!-- Datos fiscales del cliente: completos -> resumen; incompletos/inexistentes -> formulario -->
+            <div v-if="datosFiscalesCompletos" class="fiscal-resumen">
+              <div class="fiscal-resumen-item"><span>RFC</span><strong>{{ clienteFiscal.rfc }}</strong></div>
+              <div class="fiscal-resumen-item"><span>C.P.</span><strong>{{ clienteFiscal.codigo_postal }}</strong></div>
+              <div class="fiscal-resumen-item"><span>Régimen fiscal</span><strong>{{ clienteFiscal.regimen_fiscal }}</strong></div>
+              <Button label="Editar" icon="pi pi-pencil" class="p-button-text p-button-sm" @click="editandoFiscal = true" />
             </div>
-            <Button label="Guardar datos fiscales" icon="pi pi-save" class="p-button-sm" :loading="guardandoFiscal" @click="guardarDatosFiscales" />
-          </div>
+
+            <div v-if="!datosFiscalesCompletos || editandoFiscal" class="fiscal-form">
+              <p class="fiscal-form-aviso">
+                <i class="pi pi-info-circle" />
+                {{ clienteExiste ? 'Faltan datos fiscales de este cliente.' : 'Este cliente no está registrado — se creará al guardar.' }}
+                Sin esto no se puede timbrar.
+              </p>
+              <div class="fiscal-form-grid">
+                <div class="fiscal-field">
+                  <label>RFC</label>
+                  <InputText v-model="fiscalForm.rfc" placeholder="XAXX010101000" class="w-full" :class="{ 'p-invalid': fiscalForm.rfc && !rfcValido }" />
+                  <small v-if="fiscalForm.rfc && !rfcValido" class="fiscal-error">RFC con formato inválido</small>
+                </div>
+                <div class="fiscal-field">
+                  <label>Código postal</label>
+                  <InputText v-model="fiscalForm.codigo_postal" placeholder="64000" maxlength="5" class="w-full" />
+                </div>
+                <div class="fiscal-field">
+                  <label>Régimen fiscal (SAT)</label>
+                  <Dropdown v-model="fiscalForm.regimen_fiscal" :options="REGIMENES_FISCALES" optionLabel="label" optionValue="value" placeholder="Selecciona..." class="w-full" />
+                </div>
+              </div>
+              <Button label="Guardar datos fiscales" icon="pi pi-save" class="p-button-sm" :loading="guardandoFiscal" @click="guardarDatosFiscales" />
+            </div>
+          </template>
 
           <div class="fiscal-form-grid" style="margin-top:1rem;">
             <div class="fiscal-field">
               <label>Uso CFDI</label>
-              <Dropdown v-model="timbrarForm.uso_cfdi" :options="USOS_CFDI" optionLabel="label" optionValue="value" placeholder="Selecciona..." class="w-full" />
-            </div>
-            <div class="fiscal-field">
-              <label>Forma de pago</label>
-              <Dropdown v-model="timbrarForm.forma_pago" :options="formasPago" optionLabel="label" optionValue="value" class="w-full" />
+              <Dropdown v-if="!publicoGeneral" v-model="timbrarForm.uso_cfdi" :options="USOS_CFDI" optionLabel="label" optionValue="value" placeholder="Selecciona..." class="w-full" />
+              <InputText v-else value="S01 - Sin efectos fiscales (forzado)" class="w-full" disabled />
             </div>
             <div class="fiscal-field">
               <label>Método de pago</label>
               <Dropdown v-model="timbrarForm.metodo_pago" :options="[{ label: 'PUE - Pago en una sola exhibición', value: 'PUE' }, { label: 'PPD - Pago en parcialidades o diferido', value: 'PPD' }]" optionLabel="label" optionValue="value" class="w-full" />
+            </div>
+            <div class="fiscal-field">
+              <label>Forma de pago</label>
+              <Dropdown v-model="timbrarForm.forma_pago" :options="formasPago" optionLabel="label" optionValue="value" class="w-full" />
             </div>
           </div>
 
@@ -101,16 +109,25 @@
         </template>
       </div>
 
+      <!-- ═══ Timbrando (reservada, PAC en curso) ═══ -->
+      <div v-else-if="item.status === 'Timbrando'" class="timbrado-card">
+        <h3><i class="pi pi-spin pi-spinner" /> Timbrando…</h3>
+        <p>Esta factura se está timbrando en este momento. Espera unos segundos y recarga la página.</p>
+      </div>
+
       <!-- ═══ Ya timbrada / cancelada ═══ -->
       <div v-else class="timbrado-card">
         <h3><i class="pi pi-receipt" /> Datos del CFDI</h3>
         <div class="detalle-row"><strong>UUID:</strong> {{ item.cfdi_uuid || '-' }}</div>
         <div class="detalle-row"><strong>RFC cliente:</strong> {{ item.rfc_cliente || '-' }}</div>
         <div class="detalle-row"><strong>Fecha certificación:</strong> {{ item.cfdi_fecha_certificacion || '-' }}</div>
+        <div v-if="item.timbrado_por" class="detalle-row"><strong>Timbrada por:</strong> {{ item.timbrado_por }}</div>
         <div v-if="item.status === 'Cancelado'" class="detalle-row"><strong>Motivo cancelación:</strong> {{ item.cfdi_cancelacion_motivo || '-' }}</div>
-        <div v-if="item.cfdi_uuid" style="display:flex;gap:0.5rem;margin-top:0.75rem;">
+        <div v-if="item.status === 'Cancelado' && item.cancelado_por" class="detalle-row"><strong>Cancelada por:</strong> {{ item.cancelado_por }}</div>
+        <div v-if="item.cfdi_uuid" style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap;">
           <Button icon="pi pi-file" label="XML" class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_xml_path)" />
           <Button icon="pi pi-file-pdf" label="PDF" class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_pdf_path)" />
+          <Button v-if="item.status === 'Timbrado'" icon="pi pi-send" label="Enviar por correo" class="p-button-sm p-button-outlined" @click="abrirEnviarDialog" />
         </div>
       </div>
 
@@ -220,11 +237,23 @@
         <Button label="Cancelar factura" icon="pi pi-ban" class="p-button-danger" :disabled="!cancelarForm.motivo || (cancelarForm.motivo === '01' && !cancelarForm.folio_sustitucion)" :loading="cancelando" @click="confirmarCancelar" />
       </div>
     </Dialog>
+
+    <!-- Dialog: enviar CFDI por correo -->
+    <Dialog v-model:visible="enviarDialogVisible" header="Enviar CFDI por correo" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }" :draggable="false">
+      <div class="fiscal-field">
+        <label>Correo del destinatario</label>
+        <InputText v-model="correoEnvio" placeholder="cliente@correo.com" class="w-full" />
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
+        <Button label="Cancelar" class="p-button-text" @click="enviarDialogVisible = false" />
+        <Button label="Enviar" icon="pi pi-send" class="p-button-success" :disabled="!correoEnvio" :loading="enviando" @click="confirmarEnviar" />
+      </div>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import DataTable from 'primevue/datatable';
@@ -240,7 +269,7 @@ import {
   getFacturaById, actualizarLugarPagoFactura, actualizarObservacionesFactura,
   subirComprobanteFactura, eliminarComprobanteFactura,
   agregarReportesFactura, quitarReportesFactura,
-  timbrarFactura, cancelarFactura, getNotas, getFacturas,
+  timbrarFactura, cancelarFactura, enviarCfdiFactura, getNotas, getFacturas,
 } from '@/services/pagosService';
 import { getClientes, addCliente, updateCliente } from '@/services/clientesService';
 import { generarReporteServicioPDF } from '@/components/GeneraReporteServicioPDF.js';
@@ -267,7 +296,7 @@ function formatFecha(f) {
 function badgeClass(status) {
   if (status === 'Timbrado') return 'success';
   if (status === 'Cancelado') return 'danger';
-  return 'warning';
+  return 'warning'; // Pendiente timbre / Timbrando
 }
 function urlComprobante(path) {
   if (!path) return '';
@@ -303,21 +332,37 @@ const REGIMENES_FISCALES = [
   { label: '621 - Incorporación Fiscal', value: '621' },
   { label: '626 - Régimen Simplificado de Confianza (RESICO)', value: '626' },
 ];
-const USOS_CFDI = [
+// Catálogo SAT c_UsoCFDI (CFDI 4.0) — los D01-D10 (deducciones personales)
+// solo aplican a régimen de persona física; el resto aplica a cualquier régimen.
+const USOS_CFDI_CATALOGO = [
   { label: 'G01 - Adquisición de mercancías', value: 'G01' },
+  { label: 'G02 - Devoluciones, descuentos o bonificaciones', value: 'G02' },
   { label: 'G03 - Gastos en general', value: 'G03' },
+  { label: 'I01 - Construcciones', value: 'I01' },
+  { label: 'I02 - Mobiliario y equipo de oficina por inversiones', value: 'I02' },
+  { label: 'I03 - Equipo de transporte', value: 'I03' },
+  { label: 'I04 - Equipo de computo y accesorios', value: 'I04' },
+  { label: 'I08 - Otra maquinaria y equipo', value: 'I08' },
+  { label: 'D01 - Honorarios médicos, dentales y gastos hospitalarios', value: 'D01', personaFisica: true },
+  { label: 'D02 - Gastos médicos por incapacidad o discapacidad', value: 'D02', personaFisica: true },
+  { label: 'D03 - Gastos funerales', value: 'D03', personaFisica: true },
+  { label: 'D04 - Donativos', value: 'D04', personaFisica: true },
+  { label: 'D10 - Pagos por servicios educativos (colegiaturas)', value: 'D10', personaFisica: true },
   { label: 'S01 - Sin efectos fiscales', value: 'S01' },
   { label: 'P01 - Por definir', value: 'P01' },
 ];
-const formasPago = [
+const REGIMENES_PERSONA_FISICA = new Set(['605', '606', '608', '612', '616', '621', '626']);
+
+const formasPagoCatalogo = [
   { label: '01 - Efectivo', value: '01' },
   { label: '02 - Cheque nominativo', value: '02' },
   { label: '03 - Transferencia electrónica de fondos', value: '03' },
   { label: '04 - Tarjeta de crédito', value: '04' },
   { label: '28 - Tarjeta de débito', value: '28' },
-  { label: '99 - Por definir', value: '99' },
+  { label: '99 - Por definir', value: '99' }, // el SAT solo la permite con MétodoPago PPD
 ];
 const RFC_REGEX = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i;
+const RFC_PUBLICO_GENERAL = 'XAXX010101000';
 
 const clientesCache = ref([]);
 const clienteFiscal = ref(null);
@@ -328,8 +373,26 @@ const guardandoFiscal = ref(false);
 const fiscalForm = ref({ rfc: '', codigo_postal: '', regimen_fiscal: '' });
 
 const rfcValido = computed(() => RFC_REGEX.test((fiscalForm.value.rfc || '').trim()));
+
+// Venta a público en general: el backend fuerza RFC genérico + UsoCFDI S01 +
+// régimen/domicilio del propio emisor sin importar lo que se mande — así que
+// aquí no tiene sentido exigir datos fiscales del cliente ni dejarlo elegir uso CFDI.
+const publicoGeneral = ref(false);
+
 const datosFiscalesCompletos = computed(() =>
+  publicoGeneral.value ||
   !!(clienteFiscal.value?.rfc && clienteFiscal.value?.codigo_postal && clienteFiscal.value?.regimen_fiscal)
+);
+
+const regimenReceptorActivo = computed(() => publicoGeneral.value ? '616' : (clienteFiscal.value?.regimen_fiscal || ''));
+
+const USOS_CFDI = computed(() => {
+  const esFisica = REGIMENES_PERSONA_FISICA.has(regimenReceptorActivo.value);
+  return USOS_CFDI_CATALOGO.filter(u => !u.personaFisica || esFisica);
+});
+
+const formasPago = computed(() =>
+  formasPagoCatalogo.filter(f => f.value !== '99' || timbrarForm.value.metodo_pago === 'PPD')
 );
 
 async function cargarClienteFiscal() {
@@ -375,16 +438,34 @@ async function guardarDatosFiscales() {
 
 const timbrarForm = ref({ uso_cfdi: 'G03', forma_pago: '03', metodo_pago: 'PUE' });
 const timbrando = ref(false);
-const listoParaTimbrar = computed(() =>
-  datosFiscalesCompletos.value &&
-  RFC_REGEX.test(clienteFiscal.value?.rfc || '') &&
-  !!timbrarForm.value.uso_cfdi && !!timbrarForm.value.forma_pago && !!timbrarForm.value.metodo_pago
-);
+
+// El SAT solo permite FormaPago '99' cuando MétodoPago es PPD — si el usuario
+// cambia a PUE con '99' seleccionado, hay que corregirlo o el PAC rechaza el CFDI.
+watch(() => timbrarForm.value.metodo_pago, (metodo) => {
+  if (metodo !== 'PPD' && timbrarForm.value.forma_pago === '99') {
+    timbrarForm.value.forma_pago = '03';
+  }
+});
+// Público en general fuerza Uso CFDI S01 en el backend sin importar lo que se mande.
+watch(publicoGeneral, (activo) => {
+  if (activo) timbrarForm.value.uso_cfdi = 'S01';
+});
+
+const listoParaTimbrar = computed(() => {
+  if (!(!!timbrarForm.value.uso_cfdi && !!timbrarForm.value.forma_pago && !!timbrarForm.value.metodo_pago)) return false;
+  if (publicoGeneral.value) return true;
+  return datosFiscalesCompletos.value && RFC_REGEX.test(clienteFiscal.value?.rfc || '');
+});
 
 async function confirmarTimbrar() {
   timbrando.value = true;
   try {
-    await timbrarFactura(id.value, {
+    await timbrarFactura(id.value, publicoGeneral.value ? {
+      rfc_cliente: RFC_PUBLICO_GENERAL,
+      uso_cfdi: 'S01',
+      forma_pago: timbrarForm.value.forma_pago,
+      metodo_pago: timbrarForm.value.metodo_pago,
+    } : {
       rfc_cliente: clienteFiscal.value.rfc,
       uso_cfdi: timbrarForm.value.uso_cfdi,
       forma_pago: timbrarForm.value.forma_pago,
@@ -604,7 +685,43 @@ async function cargarDetalle() {
   loading.value = false;
 }
 
-onMounted(cargarDetalle);
+// ── Enviar CFDI por correo ──
+const enviarDialogVisible = ref(false);
+const enviando = ref(false);
+const correoEnvio = ref('');
+
+async function abrirEnviarDialog() {
+  correoEnvio.value = '';
+  try {
+    const clientes = await getClientes();
+    const match = clientes.find(c => (c.nombre || '').trim().toLowerCase() === (item.value?.cliente || '').trim().toLowerCase());
+    correoEnvio.value = match?.correo || '';
+  } catch {
+    // sin bloquear el flujo si no se puede prellenar el correo
+  }
+  enviarDialogVisible.value = true;
+}
+
+async function confirmarEnviar() {
+  if (!correoEnvio.value) return;
+  enviando.value = true;
+  try {
+    await enviarCfdiFactura(id.value, correoEnvio.value.trim());
+    toast.add({ severity: 'success', summary: 'Enviado', detail: 'CFDI enviado por correo.', life: 3000 });
+    enviarDialogVisible.value = false;
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo enviar el correo.', life: 5000 });
+  }
+  enviando.value = false;
+}
+
+onMounted(() => {
+  if (!esAdmin.value) {
+    router.replace('/');
+    return;
+  }
+  cargarDetalle();
+});
 </script>
 
 <style scoped>
@@ -634,6 +751,7 @@ onMounted(cargarDetalle);
 .fiscal-field label { display: block; font-weight: 600; margin-bottom: 0.3rem; font-size: 0.85rem; }
 .fiscal-error { color: var(--color-error); }
 .timbrar-btn { margin-top: 1.25rem; width: 100%; }
+.publico-general-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; cursor: pointer; }
 .timbrar-form { display: flex; flex-direction: column; gap: 0.9rem; }
 
 .comprobante-section, .observaciones-section, .ordenes-detalle { margin-bottom: 1.5rem; }

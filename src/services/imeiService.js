@@ -64,3 +64,8 @@ export const deleteIMEI = async (imei) => {
   const res = await axios.delete(`${API_URL}/${imei}`);
   return res.data;
 };
+
+export const buscarImeisBulk = async (imeis) => {
+  const res = await axios.post(`${import.meta.env.VITE_API_URL}/buscar-imeis-bulk`, { imeis });
+  return res.data;
+};

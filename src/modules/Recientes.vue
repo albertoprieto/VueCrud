@@ -198,16 +198,8 @@
       <template #header>
         <div class="table-header">
           <div class="header-left">
-            <span class="pi pi-calendar"></span>
-            <span class="header-label">Últimos</span>
-            <InputNumber 
-              v-model="diasFiltro" 
-              :min="1" 
-              :max="365" 
-              suffix=" días" 
-              class="dias-input"
-              @input="recargarDatos" 
-            />
+            <span class="header-label">Mes</span>
+            <Calendar v-model="mesFiltro" view="month" dateFormat="mm/yy" showIcon iconDisplay="input" class="mes-input" />
           </div>
           <div class="header-right">
             <Button 
@@ -242,6 +234,17 @@
             {{ formatCell(slotProps.data[col], col) }}
           </span>
         </template>
+      </Column>
+
+      <!-- Datos del IMEI en inventario (artículo/status/ubicación) -->
+      <Column header="Artículo">
+        <template #body="slotProps">{{ slotProps.data._articuloImei || '—' }}</template>
+      </Column>
+      <Column header="Status IMEI">
+        <template #body="slotProps">{{ slotProps.data._statusImei || '—' }}</template>
+      </Column>
+      <Column header="Ubicación IMEI">
+        <template #body="slotProps">{{ slotProps.data._ubicacionImei || '—' }}</template>
       </Column>
 
       <!-- Columna de estado de reporte -->
@@ -327,7 +330,7 @@
     <!-- Estado vacío -->
     <div v-else-if="!processing && !dataEnriquecida.length" class="empty-state">
       <span class="pi pi-inbox empty-icon"></span>
-      <p>No hay dispositivos activos en los últimos {{ diasFiltro }} días</p>
+      <p>No hay dispositivos activos en {{ mesFiltroLabel() }}</p>
       <p class="empty-hint">Carga un archivo Excel para agregar dispositivos</p>
     </div>
     
@@ -341,16 +344,16 @@
 
 <script setup>
 const cargaInicial = ref(true);
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
-import InputNumber from 'primevue/inputnumber';
 import Message from 'primevue/message';
 import Tag from 'primevue/tag';
+import Calendar from 'primevue/calendar';
 import * as XLSX from 'xlsx';
 
 import {
@@ -363,6 +366,7 @@ import {
   getActivacionesRecientes,
   verificarReportesActivaciones
 } from '@/services/activacionesService';
+import { buscarImeisBulk } from '@/services/imeiService';
 
 const router = useRouter();
 const toast = useToast();
@@ -392,7 +396,11 @@ onMounted(async () => {
 const fileInput = ref(null);
 const selectedFile = ref(null);
 const fileName = ref('');
-const diasFiltro = ref(30);
+const diasFiltro = ref(30); // usado solo para filtrar filas al importar CSV, no para la vista de la tabla
+const mesFiltro = ref(new Date());
+function mesFiltroLabel() {
+  return `${String(mesFiltro.value.getMonth() + 1).padStart(2, '0')}/${mesFiltro.value.getFullYear()}`;
+}
 const processing = ref(false);
 const sincronizando = ref(false);
 const error = ref(null);
@@ -531,7 +539,8 @@ const cargarDatos = async () => {
   
   try {
     const response = await getActivacionesRecientes({
-      dias: diasFiltro.value,
+      anio: mesFiltro.value.getFullYear(),
+      mes: mesFiltro.value.getMonth() + 1,
       limit: 2000
     });
     
@@ -563,7 +572,8 @@ const cargarDatos = async () => {
       _hora_sort: r._hora_sort
     })));
     actualizarTotales();
-    
+    await enriquecerConDatosImei();
+
   } catch (err) {
     console.error('Error cargando datos:', err);
     // Si falla, solo mostrar tabla vacía (no es error crítico)
@@ -573,7 +583,29 @@ const cargarDatos = async () => {
   }
 };
 
-// Recargar cuando cambia el filtro de días
+// Trae articulo/status/ubicación reales del IMEI en inventario, en un solo
+// request para toda la tabla (no uno por fila).
+const enriquecerConDatosImei = async () => {
+  const imeis = [...new Set(dataEnriquecida.value.map(r => r['Número de dispositivo']).filter(Boolean))];
+  if (!imeis.length) return;
+  try {
+    const resultados = await buscarImeisBulk(imeis);
+    const porImei = new Map(resultados.map(r => [r.imei, r]));
+    dataEnriquecida.value = dataEnriquecida.value.map(r => {
+      const info = porImei.get(r['Número de dispositivo']);
+      return {
+        ...r,
+        _articuloImei: info?.articulo_nombre || '',
+        _statusImei: info?.status || '',
+        _ubicacionImei: info?.ubicacion || ''
+      };
+    });
+  } catch (err) {
+    console.error('Error enriqueciendo con datos de IMEI:', err);
+  }
+};
+
+// Recargar cuando cambia el filtro de mes
 let recargarTimeout = null;
 const recargarDatos = () => {
   clearTimeout(recargarTimeout);
@@ -581,6 +613,7 @@ const recargarDatos = () => {
     cargarDatos();
   }, 500);
 };
+watch(mesFiltro, recargarDatos);
 
 // Detectar formato del archivo basándose en las columnas
 const detectarFormatoArchivo = async (file) => {
@@ -1161,7 +1194,7 @@ const exportarSinReporte = () => {
     { Concepto: '  - No requiere reporte', Valor: cantNoRequiere },
     { Concepto: '', Valor: '' },
     { Concepto: 'Fecha de exportación', Valor: new Date().toLocaleString('es-MX') },
-    { Concepto: 'Filtro aplicado', Valor: `Últimos ${diasFiltro.value} días` }
+    { Concepto: 'Filtro aplicado', Valor: `Mes ${mesFiltroLabel()}` }
   ];
   const wsResumen = XLSX.utils.json_to_sheet(resumenData);
   wsResumen['!cols'] = [{ wch: 30 }, { wch: 25 }];
@@ -1183,7 +1216,6 @@ const exportarSinReporte = () => {
 <style scoped>
 .recientes-container {
   padding: 1.5rem;
-  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -1639,14 +1671,12 @@ const exportarSinReporte = () => {
   align-items: center;
 }
 
-.dias-input {
-  width: 120px;
+.mes-input {
+  width: 150px;
 }
-
-.dias-input :deep(.p-inputnumber-input) {
+.mes-input :deep(.p-inputtext) {
   padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
-  text-align: center;
 }
 
 .table-footer {
@@ -1781,9 +1811,9 @@ const exportarSinReporte = () => {
     justify-content: flex-start;
   }
 
-  .dias-input {
+  .mes-input {
     flex: 1;
-    max-width: 140px;
+    max-width: 160px;
   }
 
   .resultado-info {
