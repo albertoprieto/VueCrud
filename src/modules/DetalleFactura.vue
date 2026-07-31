@@ -38,6 +38,15 @@
           <strong>Estatus:</strong>
           <span :class="'badge badge-' + badgeClass(item.status)" style="margin-left:0.5rem;">{{ item.status }}</span>
         </div>
+        <div class="detalle-row">
+          <strong>Pago:</strong>
+          <span :class="'badge badge-' + (item.pagado ? 'success' : 'warning')" style="margin-left:0.5rem;">{{ item.pagado ? 'Pagada' : 'Pendiente pago' }}</span>
+          <Button
+            :label="item.pagado ? 'Marcar como pendiente' : 'Marcar como pagada'"
+            icon="pi pi-dollar" class="p-button-sm p-button-text" style="margin-left:0.75rem;"
+            :loading="guardandoPagado" @click="togglePagado"
+          />
+        </div>
       </div>
 
       <!-- ═══ Timbrado ═══ -->
@@ -270,6 +279,7 @@ import {
   subirComprobanteFactura, eliminarComprobanteFactura,
   agregarReportesFactura, quitarReportesFactura,
   timbrarFactura, cancelarFactura, enviarCfdiFactura, getNotas, getFacturas,
+  actualizarPagadoFactura,
 } from '@/services/pagosService';
 import { getClientes, addCliente, updateCliente } from '@/services/clientesService';
 import { generarReporteServicioPDF } from '@/components/GeneraReporteServicioPDF.js';
@@ -318,6 +328,20 @@ async function guardarLugarPago() {
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar.', life: 4000 });
   }
+}
+
+const guardandoPagado = ref(false);
+async function togglePagado() {
+  const nuevoValor = !item.value.pagado;
+  guardandoPagado.value = true;
+  try {
+    await actualizarPagadoFactura(id.value, nuevoValor);
+    item.value.pagado = nuevoValor;
+    toast.add({ severity: 'success', summary: 'Guardado', detail: nuevoValor ? 'Factura marcada como pagada.' : 'Factura marcada como pendiente de pago.', life: 2500 });
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el estatus de pago.', life: 4000 });
+  }
+  guardandoPagado.value = false;
 }
 
 // ── Timbrado: datos fiscales del cliente ──

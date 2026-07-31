@@ -95,6 +95,11 @@ export async function actualizarLugarPagoFactura(id, lugar_pago) {
   return res.data;
 }
 
+export async function actualizarPagadoFactura(id, pagado) {
+  const res = await axios.put(`${API_URL}/facturas-pago/${id}/pagado`, { pagado });
+  return res.data;
+}
+
 export async function actualizarObservacionesFactura(id, observaciones) {
   const res = await axios.put(`${API_URL}/facturas-pago/${id}/observaciones`, { observaciones });
   return res.data;

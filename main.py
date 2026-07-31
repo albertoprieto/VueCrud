@@ -5129,6 +5129,8 @@ class FacturaPagoCreate(BaseModel):
     total: float
     status: str = "Pendiente timbre"
     reporte_ids: List[int] = []
+    productos_manual: Optional[List[dict]] = None
+    pagado: bool = False
 
 @app.get("/facturas-pago")
 def get_facturas_pago():
@@ -5152,6 +5154,12 @@ def get_facturas_pago():
                 r['reporte_ids'] = json.loads(r['reporte_ids'])
             except Exception:
                 r['reporte_ids'] = []
+        if isinstance(r.get('productos_manual'), str):
+            try:
+                r['productos_manual'] = json.loads(r['productos_manual'])
+            except Exception:
+                r['productos_manual'] = None
+        r['pagado'] = bool(r.get('pagado'))
         if r.get('fecha') and hasattr(r['fecha'], 'isoformat'):
             r['fecha'] = r['fecha'].isoformat()
         # Obtener IMEIs asociados desde reportes_servicio
@@ -5217,6 +5225,12 @@ def get_factura_pago(factura_id: int):
             except Exception:
                 reporte_ids = []
         row['reporte_ids'] = reporte_ids
+        if isinstance(row.get('productos_manual'), str):
+            try:
+                row['productos_manual'] = json.loads(row['productos_manual'])
+            except Exception:
+                row['productos_manual'] = None
+        row['pagado'] = bool(row.get('pagado'))
         if reporte_ids:
             placeholders = ','.join(['%s'] * len(reporte_ids))
             cursor.execute(
@@ -5266,15 +5280,27 @@ def crear_factura_pago(data: FacturaPagoCreate):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN productos_manual TEXT NULL")
+        db.commit()
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN pagado TINYINT(1) NOT NULL DEFAULT 0")
+        db.commit()
+    except Exception:
+        pass
     cursor.execute(
-        """INSERT INTO facturas_pago (ordenes, cliente, total, status, reporte_ids, fecha)
-           VALUES (%s, %s, %s, %s, %s, NOW())""",
+        """INSERT INTO facturas_pago (ordenes, cliente, total, status, reporte_ids, productos_manual, pagado, fecha)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())""",
         (
             json.dumps(data.ordenes),
             data.cliente,
             data.total,
             data.status,
-            json.dumps(data.reporte_ids)
+            json.dumps(data.reporte_ids),
+            json.dumps(data.productos_manual) if data.productos_manual else None,
+            int(data.pagado)
         )
     )
     db.commit()
@@ -5344,19 +5370,30 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
         except Exception:
             reporte_ids = []
     reporte_ids = reporte_ids or []
-    if not reporte_ids:
+
+    productos_manual = factura.get('productos_manual')
+    if isinstance(productos_manual, str):
+        try:
+            productos_manual = json.loads(productos_manual)
+        except Exception:
+            productos_manual = None
+    productos_manual = productos_manual or []
+
+    if not reporte_ids and not productos_manual:
         cursor.close()
         db.close()
-        raise HTTPException(status_code=400, detail="La factura no tiene reportes de servicio asociados")
+        raise HTTPException(status_code=400, detail="La factura no tiene reportes de servicio ni productos asociados")
 
-    placeholders = ','.join(['%s'] * len(reporte_ids))
-    cursor.execute(f"SELECT id, tipo_servicio, total, folio FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
-    reportes = cursor.fetchall()
+    reportes = []
+    if reporte_ids:
+        placeholders = ','.join(['%s'] * len(reporte_ids))
+        cursor.execute(f"SELECT id, tipo_servicio, total, folio FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
+        reportes = cursor.fetchall()
 
-    if not reportes:
-        cursor.close()
-        db.close()
-        raise HTTPException(status_code=400, detail="No se encontraron los reportes de servicio asociados a esta factura")
+        if not reportes:
+            cursor.close()
+            db.close()
+            raise HTTPException(status_code=400, detail="No se encontraron los reportes de servicio asociados a esta factura")
 
     # Reserva la factura antes de llamar al PAC: si dos solicitudes llegan casi
     # simultáneas (doble-click, reintento automático), la segunda ve status
@@ -5370,19 +5407,34 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
     cursor.close()
     db.close()
 
-    # r['total'] ya incluye IVA (16%); SW vuelve a calcular el IVA sobre el
-    # importe que le mandemos, así que aquí se manda la base sin IVA.
-    productos = [
-        Producto(
-            ClaveProdServ="81112100",
-            ClaveUnidad="E48",
-            Unidad="Servicio",
-            Descripcion=r.get('tipo_servicio') or f"Servicio {r.get('folio') or r['id']}",
-            ValorUnitario=round(float(r.get('total') or 0) / 1.16, 2),
-            Importe=round(float(r.get('total') or 0) / 1.16, 2),
-            Cantidad=1
-        ) for r in reportes
-    ]
+    if reportes:
+        # r['total'] ya incluye IVA (16%); SW vuelve a calcular el IVA sobre el
+        # importe que le mandemos, así que aquí se manda la base sin IVA.
+        productos = [
+            Producto(
+                ClaveProdServ="81112100",
+                ClaveUnidad="E48",
+                Unidad="Servicio",
+                Descripcion=r.get('tipo_servicio') or f"Servicio {r.get('folio') or r['id']}",
+                ValorUnitario=round(float(r.get('total') or 0) / 1.16, 2),
+                Importe=round(float(r.get('total') or 0) / 1.16, 2),
+                Cantidad=1
+            ) for r in reportes
+        ]
+    else:
+        # Factura manual sin reportes de servicio: los productos vienen
+        # capturados a mano al crear la factura (ya sin IVA, base = ValorUnitario).
+        productos = [
+            Producto(
+                ClaveProdServ=p.get('ClaveProdServ') or "81112100",
+                ClaveUnidad=p.get('ClaveUnidad') or "E48",
+                Unidad=p.get('Unidad') or "Servicio",
+                Descripcion=p.get('Descripcion') or "Servicio",
+                ValorUnitario=round(float(p.get('ValorUnitario') or 0), 2),
+                Importe=round(float(p.get('ValorUnitario') or 0) * float(p.get('Cantidad') or 1), 2),
+                Cantidad=float(p.get('Cantidad') or 1)
+            ) for p in productos_manual
+        ]
 
     try:
         # Si el frontend no mandó domicilio/régimen del receptor, NUNCA se debe
@@ -5692,6 +5744,30 @@ def actualizar_lugar_pago_factura(factura_id: int, data: dict = Body(...)):
     if affected == 0:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
     return {"message": "Lugar de pago actualizado", "id": factura_id, "lugar_pago": lugar_pago or None}
+
+@app.put("/facturas-pago/{factura_id}/pagado")
+def actualizar_pagado_factura(factura_id: int, data: dict = Body(...)):
+    pagado = bool(data.get('pagado'))
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN pagado TINYINT(1) NOT NULL DEFAULT 0")
+        db.commit()
+    except Exception:
+        pass
+    cursor.execute("UPDATE facturas_pago SET pagado=%s WHERE id=%s", (int(pagado), factura_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return {"message": "Estatus de pago actualizado", "id": factura_id, "pagado": pagado}
 
 @app.put("/facturas-pago/{factura_id}/observaciones")
 def actualizar_observaciones_factura(factura_id: int, data: dict = Body(...)):
