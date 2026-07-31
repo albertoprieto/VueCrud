@@ -512,7 +512,7 @@ function irAPago() {
 .filtro-btn.activo {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: var(--color-on-primary, #fff);
+  color: var(--color-on-primary, #b63434);
 }
 .badge {
   display: inline-flex;

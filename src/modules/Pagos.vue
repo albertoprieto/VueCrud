@@ -26,8 +26,8 @@
         <InputText v-model="filtroOrden" placeholder="Buscar por orden..." class="w-full" />
       </div>
       <div class="filtro-item">
-        <label>IMEI (últimos 6 dígitos)</label>
-        <InputText v-model="filtroImei" placeholder="Ej: 123456" maxlength="6" class="w-full" />
+        <label>IMEI</label>
+        <InputText v-model="filtroImei" placeholder="Buscar por IMEI..." class="w-full" />
       </div>
       <div class="filtro-item">
         <label>Instalador</label>
@@ -288,7 +288,7 @@ function filtrarRegistros(rows) {
   let result = rows;
   const cl = filtroCliente.value.trim().toLowerCase();
   const ord = filtroOrden.value.trim().toLowerCase();
-  const imei6 = filtroImei.value.trim();
+  const imei = filtroImei.value.trim();
   const inst = filtroInstalador.value.trim().toLowerCase();
   const vend = filtroVendedor.value.trim().toLowerCase();
   if (cl) {
@@ -297,8 +297,8 @@ function filtrarRegistros(rows) {
   if (ord) {
     result = result.filter(r => (r.ordenes || []).some(o => String(o).toLowerCase().includes(ord)));
   }
-  if (imei6) {
-    result = result.filter(r => getImeisUnicos(r).some(im => String(im).endsWith(imei6)));
+  if (imei) {
+    result = result.filter(r => getImeisUnicos(r).some(im => String(im).includes(imei)));
   }
   if (inst) {
     result = result.filter(r => (r.instalador || '').toLowerCase().includes(inst));

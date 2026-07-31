@@ -58,9 +58,9 @@
         showClear
       />
     </div>
-    <DataTable 
-      :value="reportesFiltrados" 
-      responsiveLayout="scroll" 
+    <DataTable
+      :value="reportesFiltrados"
+      responsiveLayout="scroll"
       :loading="loading"
       :paginator="true"
       :rows="100"
@@ -68,6 +68,7 @@
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
       currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} reportes"
       dataKey="id"
+      :rowClass="filaClasePago"
     >
       <template #loading>
         <DataTableLoader text="Cargando reportes..." />
@@ -148,26 +149,26 @@
                 v-if="!slotProps.data.pagado"  
                 icon="pi pi-pencil"
                 class="p-button-sm p-button-info"
-                label="Editar"
+                
                 @click="abrirEditar(slotProps.data)"
               />
               <Button
                 v-if="!slotProps.data.pagado"
                 icon="pi pi-trash"
                 class="p-button-sm p-button-danger"
-                label="Eliminar"
+              
                 @click="confirmarEliminarReporte(slotProps.data)"
               />
+              <!-- <Button
+                icon="pi pi-file-pdf"
+                class="p-button-sm p-button-warning"
+                label="Reporte"
+                @click="descargarReporteServicio(slotProps.data)"
+              /> -->
               <Button
                 icon="pi pi-file-pdf"
                 class="p-button-sm p-button-warning"
-                label="Reporte de servicio"
-                @click="descargarReporteServicio(slotProps.data)"
-              />
-              <Button
-                icon="pi pi-search"
-                class="p-button-sm p-button-help"
-                label="Consultar PDF"
+                label="Reporte"
                 @click="consultarReporteServicio(slotProps.data)"
               />
               <!-- Ver comprobante cuando existe -->
@@ -175,7 +176,7 @@
                 <Button
                   icon="pi pi-download"
                   class="p-button-sm p-button-secondary"
-                  label="Ver comprobante"
+                  label="Comprobante"
                 />
               </a>
               <!-- <Button
@@ -185,20 +186,20 @@
                 label="Adjuntar comprobante"
                 @click="marcarComoPagado(slotProps.data)"
               /> -->
-              <Button
+              <!-- <Button
                 v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
                 icon="pi pi-check-circle"
                 class="p-button-sm p-button-success"
                 label="Aprobar comprobante"
                 @click="aprobarComprobante(slotProps.data)"
-              />
-              <Button
+              /> -->
+              <!-- <Button
                 v-if="user && user.perfil==='Admin' && slotProps.data.comprobante_estado==='pendiente' && !slotProps.data.pagado"
                 icon="pi pi-times-circle"
                 class="p-button-sm p-button-danger"
                 label="Rechazar comprobante"
                 @click="rechazarComprobante(slotProps.data)"
-              />
+              /> -->
             </div>
           </template>
       </Column>
@@ -502,17 +503,25 @@ const asignacionPagoMap = computed(() => {
   for (const n of notasCargadas.value) {
     const ids = Array.isArray(n.reporte_ids) ? n.reporte_ids : [];
     for (const rid of ids) {
-      map[rid] = { label: `Nota #${n.id}`, tipo: 'nota', id: n.id };
+      map[rid] = { label: `Nota #${n.id}`, tipo: 'nota', id: n.id, pagado: n.status === 'pagado' };
     }
   }
   for (const f of facturasCargadas.value) {
     const ids = Array.isArray(f.reporte_ids) ? f.reporte_ids : [];
     for (const rid of ids) {
-      map[rid] = { label: `Factura #${f.id}`, tipo: 'factura', id: f.id };
+      map[rid] = { label: `Factura #${f.id}`, tipo: 'factura', id: f.id, pagado: !!f.pagado };
     }
   }
   return map;
 });
+
+// Verde: con nota/factura y pagado (o con comprobante de pago cargado) — Rojo: con nota/factura y sin pagar — Amarillo: sin nota/factura
+function filaClasePago(data) {
+  if (data.comprobante_path) return 'fila-pago-verde';
+  const asignacion = asignacionPagoMap.value[data.id];
+  if (!asignacion) return 'fila-pago-amarillo';
+  return asignacion.pagado ? 'fila-pago-verde' : 'fila-pago-rojo';
+}
 
 function esSeleccionable(event) {
   return !asignacionPagoMap.value[event.data.id];
@@ -1418,6 +1427,10 @@ function irReporteRenovacionGlobal() {
   margin-bottom: 2rem;
   /* color: #e4c8c8; */
 }
+/* Verde: con nota/factura y pagado — Rojo: con nota/factura y sin pagar — Amarillo: sin nota/factura */
+:deep(tr.fila-pago-verde > td) { background: color-mix(in srgb, var(--color-success, #28a745) 14%, transparent); }
+:deep(tr.fila-pago-rojo > td) { background: color-mix(in srgb, var(--color-error, #d32f2f) 14%, transparent); }
+:deep(tr.fila-pago-amarillo > td) { background: color-mix(in srgb, var(--color-warning, #ffc107) 16%, transparent); }
 .historico-dialog :deep(.p-dialog-content) {
   /* background: var(--color-card, #23272f); */
   padding: 1.5rem 1rem;

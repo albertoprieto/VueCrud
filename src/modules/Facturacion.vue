@@ -2,15 +2,38 @@
   <div class="fact-container">
     <h2 class="fact-title"><i class="pi pi-receipt" /> Facturación</h2>
 
+    <div class="fact-nueva-bar">
+      <Button label="Nueva Factura" icon="pi pi-plus" class="p-button-sm" @click="abrirNuevaFactura" />
+    </div>
+
     <div class="fact-toolbar">
       <div class="fact-search">
         <i class="pi pi-search" />
         <InputText v-model="filtroCliente" placeholder="Buscar por cliente..." />
       </div>
       <div class="fact-search">
+        <i class="pi pi-hashtag" />
+        <InputText v-model="filtroOrden" placeholder="Buscar por orden..." />
+      </div>
+      <div class="fact-search">
         <i class="pi pi-mobile" />
         <InputText v-model="filtroImei" placeholder="Buscar por IMEI..." />
       </div>
+      <div class="fact-search">
+        <i class="pi pi-wrench" />
+        <InputText v-model="filtroInstalador" placeholder="Buscar por instalador..." />
+      </div>
+      <div class="fact-search">
+        <i class="pi pi-user" />
+        <InputText v-model="filtroVendedor" placeholder="Buscar por vendedor..." />
+      </div>
+      <Dropdown
+        v-model="filtroLugarPago"
+        :options="lugaresPago"
+        placeholder="Pagado en"
+        showClear
+        class="fact-dropdown"
+      />
       <div class="filtro-estado">
         <button
           v-for="op in opcionesEstado"
@@ -22,6 +45,19 @@
         >
           {{ op.label }}
           <span class="estado-chip-count">{{ contarPorEstado(op.value) }}</span>
+        </button>
+      </div>
+      <div class="filtro-estado">
+        <button
+          v-for="op in opcionesPago"
+          :key="op.value"
+          type="button"
+          class="estado-chip"
+          :class="{ activo: filtroPago === op.value }"
+          @click="filtroPago = op.value"
+        >
+          {{ op.label }}
+          <span class="estado-chip-count">{{ contarPorPago(op.value) }}</span>
         </button>
       </div>
     </div>
@@ -50,6 +86,11 @@
         <Column header="Estatus">
           <template #body="{ data }">
             <span :class="'badge badge-' + badgeClass(data.status)">{{ data.status }}</span>
+          </template>
+        </Column>
+        <Column header="Pago">
+          <template #body="{ data }">
+            <span :class="'badge badge-' + (data.pagado ? 'success' : 'warning')">{{ data.pagado ? 'Pagada' : 'Pendiente pago' }}</span>
           </template>
         </Column>
         <Column header="Fecha">
@@ -93,7 +134,10 @@
                 <p class="mobile-card-id">Factura #{{ item.id }}</p>
                 <p class="mobile-card-cliente">{{ item.cliente || 'Sin cliente' }}</p>
               </div>
-              <span :class="'badge badge-' + badgeClass(item.status)">{{ item.status }}</span>
+              <div style="display:flex;flex-direction:column;gap:0.3rem;align-items:flex-end;">
+                <span :class="'badge badge-' + badgeClass(item.status)">{{ item.status }}</span>
+                <span :class="'badge badge-' + (item.pagado ? 'success' : 'warning')">{{ item.pagado ? 'Pagada' : 'Pendiente pago' }}</span>
+              </div>
             </header>
             <div class="mobile-card-grid">
               <div class="mobile-field"><span class="mobile-label">Total</span><span class="mobile-value">{{ formatTotal(item.total) }}</span></div>
@@ -118,6 +162,97 @@
         <Button label="Cancelar" class="p-button-secondary" @click="showConfirmDelete = false" />
       </div>
     </Dialog>
+
+    <Dialog v-model:visible="showNuevaDialog" header="Nueva factura" :modal="true" :closable="false" style="width: 920px; max-width: 96vw;">
+      <div class="nueva-fact-form">
+        <div class="form-group">
+          <label>Cliente</label>
+          <InputText v-model="nuevaCliente" class="w-full" placeholder="Nombre del cliente (existente o nuevo)" />
+          <small style="color:var(--color-text);opacity:0.7;">
+            Al ligar un reporte de servicio se autocompleta con su cliente (editable). Si el cliente no existe aún, se dará de alta con sus datos fiscales al momento de timbrar.
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label>Órdenes / reportes de servicio (opcional)</label>
+          <InputText v-model="busquedaReporte" class="w-full" placeholder="Buscar por orden o cliente..." />
+          <div class="reportes-pick-list">
+            <div v-if="cargandoReportes" style="padding:0.75rem;text-align:center;"><i class="pi pi-spin pi-spinner" /></div>
+            <div v-else-if="!reportesFiltradosDisponibles.length" class="reportes-pick-empty">Sin reportes disponibles.</div>
+            <label v-for="r in reportesFiltradosDisponibles" :key="r.id" class="reportes-pick-item">
+              <input type="checkbox" :checked="reporteEstaSeleccionado(r)" @change="toggleReporteSeleccionado(r, $event.target.checked)" />
+              <span>{{ r.folio || r.id }} — {{ r.nombre_cliente || 'Sin cliente' }} — {{ formatTotal(r.total) }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Artículos en existencia (opcional) — descuenta stock y marca el IMEI como vendido</label>
+          <div class="articulo-pick-row">
+            <Dropdown
+              v-model="ubicacionSeleccionada"
+              :options="ubicaciones"
+              optionLabel="nombre"
+              filter
+              placeholder="Selecciona una bodega/ubicación..."
+              class="w-full"
+              @change="onUbicacionSeleccionada"
+            />
+          </div>
+          <InputText
+            v-if="ubicacionSeleccionada"
+            v-model="busquedaArticuloImei"
+            class="w-full"
+            style="margin-top:0.5rem;"
+            placeholder="Buscar por artículo, SKU o IMEI..."
+          />
+          <div v-if="ubicacionSeleccionada" class="reportes-pick-list">
+            <div v-if="cargandoImeisUbicacion" style="padding:0.75rem;text-align:center;"><i class="pi pi-spin pi-spinner" /></div>
+            <div v-else-if="!imeisDisponiblesFiltrados.length" class="reportes-pick-empty">Sin IMEIs disponibles en esta ubicación.</div>
+            <label v-for="im in imeisDisponiblesFiltrados" :key="im.imei" class="reportes-pick-item">
+              <input type="checkbox" :checked="false" @change="agregarArticuloVendido(im, $event.target.checked)" />
+              <span>{{ im.articulo_nombre || im.sku || 'Artículo' }} — IMEI {{ im.imei }} — {{ formatTotal(precioDeArticulo(im.articulo_nombre)) }}</span>
+            </label>
+          </div>
+          <div v-if="articulosVendidos.length" class="articulos-vendidos-lista">
+            <div v-for="(a, idx) in articulosVendidos" :key="a.imei" class="articulo-vendido-item">
+              <span>{{ a.articulo_nombre }} — IMEI {{ a.imei }} — {{ formatTotal(a.precioVenta) }}</span>
+              <Button icon="pi pi-times" class="p-button-sm p-button-danger p-button-text" @click="quitarArticuloVendido(idx)" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Productos / conceptos manuales (requerido si no hay reportes ni artículos ligados)</label>
+          <div v-for="(prod, idx) in productosManuales" :key="idx" class="producto-manual-row">
+            <InputText v-model="prod.Descripcion" placeholder="Descripción" class="producto-desc" />
+            <InputNumber v-model="prod.ValorUnitario" placeholder="Precio unitario" mode="currency" currency="MXN" locale="es-MX" class="producto-precio" />
+            <InputNumber v-model="prod.Cantidad" placeholder="Cant." :min="1" class="producto-cant" />
+            <Button icon="pi pi-trash" class="p-button-sm p-button-danger p-button-text" @click="quitarProductoManual(idx)" v-if="productosManuales.length > 1" />
+          </div>
+          <Button icon="pi pi-plus" label="Agregar concepto" class="p-button-sm p-button-text" @click="agregarProductoManual" />
+        </div>
+
+        <div class="form-group">
+          <label>Total</label>
+          <InputNumber v-model="nuevaTotal" class="w-full" mode="currency" currency="MXN" locale="es-MX" />
+        </div>
+
+        <div class="form-group">
+          <label class="pago-toggle-label">
+            <input type="checkbox" v-model="nuevaPagada" />
+            Ya está pagada
+          </label>
+          <small style="color:var(--color-text);opacity:0.7;">
+            Si no la marcas, la factura queda como "Pendiente pago" (independiente de si ya está timbrada o no).
+          </small>
+        </div>
+      </div>
+      <div class="modal-actions" style="display:flex;gap:1rem;justify-content:flex-end;padding-top:0.5rem;">
+        <Button label="Crear factura" icon="pi pi-check" :loading="creandoFactura" @click="confirmarNuevaFactura" />
+        <Button label="Cancelar" class="p-button-secondary" @click="showNuevaDialog = false" />
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -129,10 +264,16 @@ import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
+import InputNumber from 'primevue/inputnumber';
+import Dropdown from 'primevue/dropdown';
 import DataTableLoader from '@/components/DataTableLoader.vue';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
-import { getFacturas, eliminarFactura } from '@/services/pagosService';
+import { getFacturas, eliminarFactura, crearFactura, getNotas } from '@/services/pagosService';
+import { getTodosReportes } from '@/services/reportesServicio';
+import { getTodosArticulos, sincronizarStockArticulos } from '@/services/articulosService';
+import { updateIMEI } from '@/services/imeiService';
+import { getUbicaciones, getImeisPorUbicacion } from '@/services/ubicacionesService';
 
 const router = useRouter();
 const toast = useToast();
@@ -143,8 +284,22 @@ const facturas = ref([]);
 const loading = ref(true);
 const isMobile = ref(false);
 const filtroCliente = ref('');
+const filtroOrden = ref('');
 const filtroImei = ref('');
+const filtroInstalador = ref('');
+const filtroVendedor = ref('');
+const filtroLugarPago = ref('');
 const filtroEstado = ref('todos');
+const filtroPago = ref('todos');
+
+const lugaresPago = [
+  'ASP Renovaciones',
+  'Comercializadora',
+  'BBVA PAU',
+  'Tecnico',
+  'Oficina',
+  'Mercadopago'
+];
 
 const opcionesEstado = [
   { value: 'todos', label: 'Todas' },
@@ -153,9 +308,21 @@ const opcionesEstado = [
   { value: 'Cancelado', label: 'Canceladas' },
 ];
 
+const opcionesPago = [
+  { value: 'todos', label: 'Cualquier pago' },
+  { value: 'pagadas', label: 'Pagadas' },
+  { value: 'pendientes', label: 'Pendiente pago' },
+];
+
 function contarPorEstado(valor) {
   if (valor === 'todos') return facturas.value.length;
   return facturas.value.filter(f => f.status === valor).length;
+}
+
+function contarPorPago(valor) {
+  if (valor === 'todos') return facturas.value.length;
+  if (valor === 'pagadas') return facturas.value.filter(f => f.pagado).length;
+  return facturas.value.filter(f => !f.pagado).length;
 }
 
 function getImeisUnicos(row) {
@@ -165,11 +332,20 @@ function getImeisUnicos(row) {
 
 const facturasFiltradas = computed(() => {
   const cl = filtroCliente.value.trim().toLowerCase();
+  const ord = filtroOrden.value.trim().toLowerCase();
   const imei = filtroImei.value.trim();
+  const inst = filtroInstalador.value.trim().toLowerCase();
+  const vend = filtroVendedor.value.trim().toLowerCase();
   return facturas.value.filter(f => {
     if (filtroEstado.value !== 'todos' && f.status !== filtroEstado.value) return false;
     if (cl && !(f.cliente || '').toLowerCase().includes(cl)) return false;
+    if (ord && !(f.ordenes || []).some(o => String(o).toLowerCase().includes(ord))) return false;
     if (imei && !getImeisUnicos(f).some(im => im.includes(imei))) return false;
+    if (inst && !(f.instalador || '').toLowerCase().includes(inst)) return false;
+    if (vend && !(f.vendedor || '').toLowerCase().includes(vend)) return false;
+    if (filtroLugarPago.value && (f.lugar_pago || '') !== filtroLugarPago.value) return false;
+    if (filtroPago.value === 'pagadas' && !f.pagado) return false;
+    if (filtroPago.value === 'pendientes' && f.pagado) return false;
     return true;
   });
 });
@@ -237,6 +413,218 @@ function claseAntiguedad(fecha) {
   return '';
 }
 
+const showNuevaDialog = ref(false);
+const nuevaCliente = ref('');
+const nuevaTotal = ref(0);
+const nuevaPagada = ref(false);
+const busquedaReporte = ref('');
+const cargandoReportes = ref(false);
+const reportesTodos = ref([]);
+const reportesSeleccionados = ref([]);
+const reportesAsignadosIds = ref(new Set());
+const productosManuales = ref([{ Descripcion: '', ValorUnitario: 0, Cantidad: 1 }]);
+const creandoFactura = ref(false);
+
+const articulosTodos = ref([]);
+const ubicaciones = ref([]);
+const ubicacionSeleccionada = ref(null);
+const imeisUbicacion = ref([]);
+const cargandoImeisUbicacion = ref(false);
+const busquedaArticuloImei = ref('');
+const articulosVendidos = ref([]);
+
+const articulosPorNombre = computed(() => {
+  const map = {};
+  for (const a of articulosTodos.value) {
+    if (a?.nombre) map[a.nombre] = a;
+  }
+  return map;
+});
+function precioDeArticulo(nombre) {
+  return articulosPorNombre.value[nombre]?.precioVenta ?? null;
+}
+
+const imeisDisponiblesUbicacion = computed(() => {
+  const yaElegidos = new Set(articulosVendidos.value.map(a => a.imei));
+  return imeisUbicacion.value.filter(im => im.status === 'Disponible' && !yaElegidos.has(im.imei));
+});
+const imeisDisponiblesFiltrados = computed(() => {
+  const q = busquedaArticuloImei.value.trim().toLowerCase();
+  if (!q) return imeisDisponiblesUbicacion.value;
+  return imeisDisponiblesUbicacion.value.filter(im =>
+    String(im.articulo_nombre || '').toLowerCase().includes(q) ||
+    String(im.sku || '').toLowerCase().includes(q) ||
+    String(im.imei || '').toLowerCase().includes(q)
+  );
+});
+
+const reportesDisponibles = computed(() =>
+  reportesTodos.value.filter(r => !reportesAsignadosIds.value.has(r.id))
+);
+const reportesFiltradosDisponibles = computed(() => {
+  const q = busquedaReporte.value.trim().toLowerCase();
+  if (!q) return reportesDisponibles.value;
+  return reportesDisponibles.value.filter(r =>
+    String(r.folio || '').toLowerCase().includes(q) ||
+    String(r.nombre_cliente || '').toLowerCase().includes(q)
+  );
+});
+
+function reporteEstaSeleccionado(r) {
+  return reportesSeleccionados.value.some(s => s.id === r.id);
+}
+function recalcularTotal() {
+  const totalReportes = reportesSeleccionados.value.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+  const totalArticulos = articulosVendidos.value.reduce((sum, a) => sum + (Number(a.precioVenta) || 0), 0);
+  nuevaTotal.value = totalReportes + totalArticulos;
+}
+function toggleReporteSeleccionado(r, checked) {
+  if (checked) {
+    reportesSeleccionados.value = [...reportesSeleccionados.value, r];
+  } else {
+    reportesSeleccionados.value = reportesSeleccionados.value.filter(s => s.id !== r.id);
+  }
+  recalcularTotal();
+  if (reportesSeleccionados.value.length) {
+    nuevaCliente.value = reportesSeleccionados.value[0]?.nombre_cliente || nuevaCliente.value;
+  }
+}
+
+function agregarProductoManual() {
+  productosManuales.value.push({ Descripcion: '', ValorUnitario: 0, Cantidad: 1 });
+}
+function quitarProductoManual(idx) {
+  productosManuales.value.splice(idx, 1);
+}
+
+async function onUbicacionSeleccionada() {
+  imeisUbicacion.value = [];
+  busquedaArticuloImei.value = '';
+  if (!ubicacionSeleccionada.value) return;
+  cargandoImeisUbicacion.value = true;
+  try {
+    imeisUbicacion.value = await getImeisPorUbicacion(ubicacionSeleccionada.value.id);
+  } catch {
+    imeisUbicacion.value = [];
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los IMEIs de esta ubicación.', life: 4000 });
+  }
+  cargandoImeisUbicacion.value = false;
+}
+
+function agregarArticuloVendido(imeiObj, checked) {
+  if (!checked) return;
+  const articuloInfo = articulosPorNombre.value[imeiObj.articulo_nombre] || {};
+  articulosVendidos.value = [...articulosVendidos.value, {
+    imei: imeiObj.imei,
+    imeiCompleto: imeiObj,
+    articulo_id: articuloInfo.id || null,
+    articulo_nombre: imeiObj.articulo_nombre || imeiObj.sku || 'Artículo',
+    precioVenta: Number(articuloInfo.precioVenta) || 0,
+    codigoSat: articuloInfo.codigoSat || null,
+    unidadSat: articuloInfo.unidadSat || null,
+    codigoUnidadSat: articuloInfo.codigoUnidadSat || null,
+  }];
+  recalcularTotal();
+}
+function quitarArticuloVendido(idx) {
+  articulosVendidos.value.splice(idx, 1);
+  recalcularTotal();
+}
+
+async function abrirNuevaFactura() {
+  nuevaCliente.value = '';
+  nuevaTotal.value = 0;
+  nuevaPagada.value = false;
+  busquedaReporte.value = '';
+  reportesSeleccionados.value = [];
+  productosManuales.value = [{ Descripcion: '', ValorUnitario: 0, Cantidad: 1 }];
+  ubicacionSeleccionada.value = null;
+  imeisUbicacion.value = [];
+  busquedaArticuloImei.value = '';
+  articulosVendidos.value = [];
+  showNuevaDialog.value = true;
+
+  cargandoReportes.value = true;
+  try {
+    const [reportes, notas, articulos, ubis] = await Promise.all([getTodosReportes(), getNotas(), getTodosArticulos(), getUbicaciones()]);
+    reportesTodos.value = reportes;
+    articulosTodos.value = articulos;
+    ubicaciones.value = ubis;
+    const asignados = new Set();
+    for (const n of notas) for (const rid of (n.reporte_ids || [])) asignados.add(rid);
+    for (const f of facturas.value) for (const rid of (f.reporte_ids || [])) asignados.add(rid);
+    reportesAsignadosIds.value = asignados;
+  } catch {
+    reportesTodos.value = [];
+    articulosTodos.value = [];
+    ubicaciones.value = [];
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los reportes/artículos/ubicaciones.', life: 4000 });
+  }
+  cargandoReportes.value = false;
+}
+
+async function confirmarNuevaFactura() {
+  const cliente = nuevaCliente.value.trim();
+  const total = Number(nuevaTotal.value) || 0;
+  if (!cliente) {
+    toast.add({ severity: 'warn', summary: 'Falta cliente', detail: 'Escribe el nombre del cliente.', life: 3500 });
+    return;
+  }
+  if (total <= 0) {
+    toast.add({ severity: 'warn', summary: 'Total inválido', detail: 'El total debe ser mayor a cero.', life: 3500 });
+    return;
+  }
+  const conceptosManuales = productosManuales.value
+    .filter(p => p.Descripcion?.trim() && Number(p.ValorUnitario) > 0)
+    .map(p => ({ Descripcion: p.Descripcion.trim(), ValorUnitario: Number(p.ValorUnitario), Cantidad: Number(p.Cantidad) || 1 }));
+  const conceptosArticulos = articulosVendidos.value.map(a => ({
+    Descripcion: `${a.articulo_nombre} (IMEI ${a.imei})`,
+    ValorUnitario: Number(a.precioVenta) || 0,
+    Cantidad: 1,
+    ClaveProdServ: a.codigoSat || undefined,
+    ClaveUnidad: a.codigoUnidadSat || undefined,
+    Unidad: a.unidadSat || undefined,
+    imei: a.imei
+  }));
+  const todosLosConceptos = [...conceptosManuales, ...conceptosArticulos];
+
+  if (!reportesSeleccionados.value.length && !todosLosConceptos.length) {
+    toast.add({ severity: 'warn', summary: 'Faltan conceptos', detail: 'Agrega al menos un concepto, artículo o liga un reporte de servicio.', life: 4500 });
+    return;
+  }
+
+  creandoFactura.value = true;
+  try {
+    await crearFactura({
+      ordenes: reportesSeleccionados.value.map(r => r.folio),
+      cliente,
+      total,
+      status: 'Pendiente timbre',
+      reporte_ids: reportesSeleccionados.value.map(r => r.id),
+      productos_manual: todosLosConceptos.length ? todosLosConceptos : null,
+      pagado: nuevaPagada.value
+    });
+
+    if (articulosVendidos.value.length) {
+      try {
+        await Promise.all(articulosVendidos.value.map(a =>
+          updateIMEI(a.imei, { ...a.imeiCompleto, status: 'Vendido' })
+        ));
+        await sincronizarStockArticulos();
+      } catch {
+        toast.add({ severity: 'warn', summary: 'Factura creada, stock pendiente', detail: 'La factura se creó pero no se pudo actualizar el stock/IMEIs. Actualízalo manualmente.', life: 6000 });
+      }
+    }
+
+    toast.add({ severity: 'success', summary: 'Factura creada', detail: 'La prefactura se creó correctamente.', life: 3000 });
+    showNuevaDialog.value = false;
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo crear la factura.', life: 4000 });
+  }
+  creandoFactura.value = false;
+}
+
 onMounted(() => {
   if (!esAdmin.value) {
     router.replace('/');
@@ -258,6 +646,34 @@ onBeforeUnmount(() => window.removeEventListener('resize', setViewportMode));
 }
 .fact-title .pi { color: var(--color-primary); }
 
+.fact-nueva-bar { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+
+.nueva-fact-form .form-group { margin-bottom: 1.1rem; }
+.nueva-fact-form label { display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.85rem; }
+.pago-toggle-label { display: flex !important; align-items: center; gap: 0.5rem; cursor: pointer; }
+.reportes-pick-list {
+  margin-top: 0.5rem; max-height: 200px; overflow-y: auto;
+  border: 1px solid var(--color-border); border-radius: 10px; padding: 0.4rem 0.6rem;
+}
+.reportes-pick-empty { padding: 0.5rem; color: var(--color-border); text-align: center; }
+.reportes-pick-item {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.35rem 0.2rem; font-size: 0.88rem; cursor: pointer;
+}
+.producto-manual-row {
+  display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap;
+}
+.producto-desc { flex: 2; min-width: 160px; }
+.producto-precio { flex: 1; min-width: 120px; }
+.producto-cant { width: 90px; }
+.articulo-pick-row { margin-top: 0.5rem; }
+.articulos-vendidos-lista { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.articulo-vendido-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  padding: 0.4rem 0.6rem; border-radius: 8px; font-size: 0.85rem;
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+}
+
 .fact-toolbar {
   display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;
   margin-bottom: 1.5rem; padding: 1rem 1.1rem; border-radius: 16px;
@@ -274,6 +690,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', setViewportMode));
   width: 100%; padding-left: 2.4rem; border-radius: 10px;
   background: var(--color-bg-light, transparent);
 }
+.fact-dropdown { min-width: 180px; }
 .filtro-estado { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .estado-chip {
   display: flex; align-items: center; gap: 0.4rem;
@@ -283,7 +700,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', setViewportMode));
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .estado-chip:hover { border-color: var(--color-primary); }
-.estado-chip.activo { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary, #fff); }
+.estado-chip.activo { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary, #b63434); }
 .estado-chip-count {
   opacity: 0.85; font-weight: 700; font-size: 0.72rem;
   background: color-mix(in srgb, currentColor 16%, transparent);
