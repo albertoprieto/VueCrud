@@ -26,12 +26,13 @@ export async function consultarImeiFlujo(payload) {
   return response.data;
 }
 
-export async function getConsultasSim(page = 1, size = 10, filters = {}) {
+export async function getConsultasSim(page = 1, size = 10, filters = {}, sort = {}) {
   const response = await axios.get(`${API_URL}/api/utilidades/consultas-sim`, {
     params: {
       page,
       size,
-      ...filters
+      ...filters,
+      ...(sort.field ? { sort_field: sort.field, sort_order: sort.order } : {})
     }
   });
   return response.data;

@@ -26,38 +26,6 @@
         />
       </div>
 
-      <!-- Gráfica ingresos vs retiros por mes -->
-      <div class="chart-card">
-        <h3>Últimos 6 meses</h3>
-        <div class="chart-wrap">
-          <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" class="chart-svg" preserveAspectRatio="xMidYMid meet">
-            <line
-              v-for="i in 4" :key="'grid'+i"
-              :x1="padLeft" :x2="chartWidth - padRight"
-              :y1="padTop + (i-1) * (plotHeight / 3)" :y2="padTop + (i-1) * (plotHeight / 3)"
-              class="chart-grid"
-            />
-            <g v-for="(m, idx) in meses" :key="m.key">
-              <rect
-                :x="barX(idx) - barW - 2" :y="barY(m.ingreso)"
-                :width="barW" :height="plotHeight - (barY(m.ingreso) - padTop)"
-                class="bar-ingreso"
-              />
-              <rect
-                :x="barX(idx) + 2" :y="barY(m.retiro)"
-                :width="barW" :height="plotHeight - (barY(m.retiro) - padTop)"
-                class="bar-retiro"
-              />
-              <text :x="barX(idx)" :y="chartHeight - 8" text-anchor="middle" class="chart-label">{{ m.label }}</text>
-            </g>
-          </svg>
-        </div>
-        <div class="chart-legend">
-          <span class="legend-item"><span class="legend-swatch swatch-ingreso"></span>Ingresos</span>
-          <span class="legend-item"><span class="legend-swatch swatch-retiro"></span>Retiros</span>
-        </div>
-      </div>
-
       <!-- Movimientos -->
       <div class="movimientos-card">
         <h3>Movimientos</h3>
@@ -204,38 +172,6 @@ const movimientos = computed(() => {
   return [...ingresos.value, ...retirosMov].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 });
 
-// ── Gráfica: últimos 6 meses ──
-const chartWidth = 640;
-const chartHeight = 220;
-const padLeft = 20, padRight = 20, padTop = 10, padBottom = 30;
-const plotHeight = chartHeight - padTop - padBottom;
-
-const meses = computed(() => {
-  const hoy = new Date();
-  const arr = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    const label = d.toLocaleDateString('es-MX', { month: 'short' });
-    const ingreso = ingresos.value
-      .filter(r => { const rd = new Date(r.fecha); return rd.getFullYear() === d.getFullYear() && rd.getMonth() === d.getMonth(); })
-      .reduce((acc, r) => acc + r.monto, 0);
-    const retiro = retirosBanco.value
-      .filter(r => r.estatus === 'aprobado')
-      .filter(r => { const rd = new Date(r.creado_fecha); return rd.getFullYear() === d.getFullYear() && rd.getMonth() === d.getMonth(); })
-      .reduce((acc, r) => acc + (Number(r.monto) || 0), 0);
-    arr.push({ key, label, ingreso, retiro });
-  }
-  return arr;
-});
-
-const maxValor = computed(() => Math.max(1, ...meses.value.map(m => Math.max(m.ingreso, m.retiro))));
-const barW = 22;
-const groupGap = (chartWidth - padLeft - padRight) / 6;
-
-function barX(idx) { return padLeft + groupGap * idx + groupGap / 2; }
-function barY(valor) { return padTop + plotHeight - (valor / maxValor.value) * plotHeight; }
-
 // ── Registrar retiro ──
 const retiroDialogVisible = ref(false);
 const retiroForm = ref({ monto: null, motivo: '' });
@@ -366,42 +302,18 @@ onMounted(cargar);
   font-weight: 600;
   color: var(--color-warning);
 }
-.chart-card, .movimientos-card {
+.movimientos-card {
   padding: 1.5rem;
   margin-bottom: 1.5rem;
   border-radius: 14px;
   background: var(--color-card);
   border: 1px solid var(--color-border);
 }
-.chart-card h3, .movimientos-card h3 {
+.movimientos-card h3 {
   margin: 0 0 1rem;
   color: var(--color-title);
   font-size: 1rem;
 }
-.chart-wrap { width: 100%; }
-.chart-svg { width: 100%; height: 220px; }
-.chart-grid { stroke: var(--color-border); stroke-width: 1; }
-.bar-ingreso { fill: var(--color-success); }
-.bar-retiro { fill: var(--color-error); }
-.chart-label { font-size: 11px; fill: var(--color-text); }
-.chart-legend {
-  display: flex;
-  gap: 1.25rem;
-  justify-content: center;
-  margin-top: 0.5rem;
-}
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.82rem;
-  color: var(--color-text);
-}
-.legend-swatch {
-  width: 12px; height: 12px; border-radius: 3px; display: inline-block;
-}
-.swatch-ingreso { background: var(--color-success); }
-.swatch-retiro { background: var(--color-error); }
 .monto-positivo { color: var(--color-success); font-weight: 700; }
 .monto-negativo { color: var(--color-error); font-weight: 700; }
 .link-comprobante { color: var(--color-primary); font-weight: 600; text-decoration: none; }

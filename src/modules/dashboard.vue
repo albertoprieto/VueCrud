@@ -299,7 +299,10 @@ const items = computed(() => {
     ...(esAdmin.value ? [{
       label: 'Usuarios',
       icon: 'pi pi-fw pi-users',
-      route: '/usuarios'
+      items: [
+        { label: 'Usuarios', route: '/usuarios', icon: 'pi pi-fw pi-users' },
+        { label: 'Utilidades', route: '/utilidades-imei', icon: 'pi pi-fw pi-wrench' }
+      ]
     }] : []),
 
     {

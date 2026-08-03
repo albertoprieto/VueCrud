@@ -69,7 +69,7 @@
       </div>
     </div>
 
-    <!-- <div class="util-card">
+    <div class="util-card">
       <div class="section-head">
         <div>
           <h2>Carga inicial SIMPRO</h2>
@@ -85,7 +85,7 @@
           @click="importarSimpro()"
         />
       </div>
-    </div> -->
+    </div>
 
       <p v-if="message" :class="['status', messageError ? 'is-error' : 'is-ok']">{{ message }}</p>
 
@@ -100,6 +100,8 @@
           :totalRecords="totalRecords"
           lazy
           @page="onPage"
+          sortMode="single"
+          @sort="onSort"
           responsiveLayout="scroll"
         >
           <template #header>
@@ -135,7 +137,7 @@
               </div>
             </div>
           </template>
-          <Column field="tipo" header="TIPO">
+          <Column field="tipo" header="TIPO" sortable>
             <template #body="{ data }">
               <Tag
                 :value="data.tipo"
@@ -143,28 +145,28 @@
               />
             </template>
           </Column>
-          <Column field="activation_date" header="Fecha. Act">
+          <Column field="activation_date" header="Fecha. Act" sortable>
             <template #body="{ data }">{{ data.activation_date || '-' }}</template>
           </Column>
-          <Column field="deaccount" header="USUARIO">
+          <Column field="deaccount" header="USUARIO" sortable>
             <template #body="{ data }">{{ data.deaccount || '-' }}</template>
           </Column>
-          <Column field="accountName" header="CLIENTE">
+          <Column field="accountName" header="CLIENTE" sortable>
             <template #body="{ data }">{{ data.accountName || '-' }}</template>
           </Column>
-          <Column field="plataforma" header="PLATAFORMA">
+          <Column field="plataforma" header="PLATAFORMA" sortable>
             <template #body="{ data }">{{ data.plataforma || '-' }}</template>
           </Column>
-          <Column field="imei" header="IMEI">
+          <Column field="imei" header="IMEI" sortable>
             <template #body="{ data }">{{ data.imei || '-' }}</template>
           </Column>
-          <Column field="iccid" header="ICCID">
+          <Column field="iccid" header="ICCID" sortable>
             <template #body="{ data }">{{ data.iccid || '-' }}</template>
           </Column>
-          <Column field="deviceMobile" header="SIM ESPAÑOL">
+          <Column field="deviceMobile" header="SIM ESPAÑOL" sortable>
             <template #body="{ data }">{{ data.deviceMobile || '-' }}</template>
           </Column>
-          <Column field="vigencia_sim" header="VIGENCIA SIM">
+          <Column field="vigencia_sim" header="VIGENCIA SIM" sortable>
             <template #body="{ data }">
               <span>{{ data.vigencia_sim || '-' }}</span>
               <Tag v-if="esVencido(data.vigencia_sim)" value="Vencido" severity="danger" style="margin-left: 6px;" />
@@ -281,6 +283,8 @@ const historicalRecords = ref(0);
 const filteredRecords = ref(0);
 const pageSize = ref(10);
 const currentPage = ref(1);
+const sortField = ref(null);
+const sortOrder = ref(null);
 const showEditDialog = ref(false);
 const editRow = ref({});
 const importando = ref(false);
@@ -326,13 +330,22 @@ async function cargarDesdeDB() {
     const historicalData = await getConsultasSim(1, 1, {});
     historicalRecords.value = historicalData.total || 0;
 
-    const data = await getConsultasSim(currentPage.value, pageSize.value, activeFilters());
+    const sort = sortField.value ? { field: sortField.value, order: sortOrder.value } : {};
+    const data = await getConsultasSim(currentPage.value, pageSize.value, activeFilters(), sort);
     totalRecords.value = data.total || 0;
     filteredRecords.value = data.total || 0;
-    rows.value = sortRows((data.items || []).map(mapDbRow));
+    const mapped = (data.items || []).map(mapDbRow);
+    rows.value = sortField.value ? mapped : sortRows(mapped);
   } catch (_) {
     // tabla aún no creada o error de red — no interrumpir
   }
+}
+
+async function onSort(event) {
+  sortField.value = event.sortField || null;
+  sortOrder.value = event.sortOrder || null;
+  currentPage.value = 1;
+  await cargarDesdeDB();
 }
 
 function activeFilters() {
