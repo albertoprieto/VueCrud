@@ -95,11 +95,6 @@
           :value="rows"
           stripedRows
           size="small"
-          paginator
-          :rows="pageSize"
-          :totalRecords="totalRecords"
-          lazy
-          @page="onPage"
           sortMode="single"
           @sort="onSort"
           responsiveLayout="scroll"
@@ -122,6 +117,22 @@
                 <InputText v-model="filters.deaccount" placeholder="Usuario" @keyup.enter="aplicarFiltros" />
                 <InputText v-model="filters.plataforma" placeholder="Plataforma" @keyup.enter="aplicarFiltros" />
                 <InputText v-model="filters.imei" placeholder="IMEI" @keyup.enter="aplicarFiltros" />
+                <Calendar
+                  v-model="filters.fecha_desde"
+                  dateFormat="yy-mm-dd"
+                  placeholder="Fecha desde"
+                  showIcon
+                  iconDisplay="input"
+                  showButtonBar
+                />
+                <Calendar
+                  v-model="filters.fecha_hasta"
+                  dateFormat="yy-mm-dd"
+                  placeholder="Fecha hasta"
+                  showIcon
+                  iconDisplay="input"
+                  showButtonBar
+                />
                 <Dropdown
                   v-model="filters.vigencia_sim"
                   :options="vigenciaSimOptions"
@@ -187,6 +198,8 @@
             </template>
           </Column>
         </DataTable>
+        <div v-if="loadingMore" class="loading-more">Cargando más registros...</div>
+        <div v-else-if="!hasMore && rows.length" class="loading-more">No hay más registros.</div>
       </div>
 
     <Dialog v-model:visible="showEditDialog" :header="editRow.id ? 'Editar Registro' : 'Nuevo Registro Manual'" :style="{ width: '520px' }" modal>
@@ -237,10 +250,11 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import * as XLSX from 'xlsx';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
+import Calendar from 'primevue/calendar';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
@@ -281,8 +295,10 @@ const messageError = ref(false);
 const totalRecords = ref(0);
 const historicalRecords = ref(0);
 const filteredRecords = ref(0);
-const pageSize = ref(10);
+const pageSize = ref(30);
 const currentPage = ref(1);
+const hasMore = ref(true);
+const loadingMore = ref(false);
 const sortField = ref(null);
 const sortOrder = ref(null);
 const showEditDialog = ref(false);
@@ -294,6 +310,8 @@ const filters = ref({
   plataforma: '',
   imei: '',
   vigencia_sim: '',
+  fecha_desde: null,
+  fecha_hasta: null,
 });
 
 function sanitizeImei() {
@@ -330,14 +348,48 @@ async function cargarDesdeDB() {
     const historicalData = await getConsultasSim(1, 1, {});
     historicalRecords.value = historicalData.total || 0;
 
+    currentPage.value = 1;
     const sort = sortField.value ? { field: sortField.value, order: sortOrder.value } : {};
     const data = await getConsultasSim(currentPage.value, pageSize.value, activeFilters(), sort);
     totalRecords.value = data.total || 0;
     filteredRecords.value = data.total || 0;
     const mapped = (data.items || []).map(mapDbRow);
     rows.value = sortField.value ? mapped : sortRows(mapped);
+    hasMore.value = rows.value.length < totalRecords.value;
   } catch (_) {
     // tabla aún no creada o error de red — no interrumpir
+  }
+}
+
+async function cargarMasDesdeDB() {
+  if (loadingMore.value || loading.value || !hasMore.value) return;
+  loadingMore.value = true;
+  try {
+    const nextPage = currentPage.value + 1;
+    const sort = sortField.value ? { field: sortField.value, order: sortOrder.value } : {};
+    const data = await getConsultasSim(nextPage, pageSize.value, activeFilters(), sort);
+    const mapped = (data.items || []).map(mapDbRow);
+    totalRecords.value = data.total || totalRecords.value;
+    filteredRecords.value = data.total || filteredRecords.value;
+
+    if (mapped.length) {
+      currentPage.value = nextPage;
+      const combined = [...rows.value, ...mapped];
+      rows.value = sortField.value ? combined : sortRows(combined);
+    }
+    hasMore.value = mapped.length > 0 && rows.value.length < totalRecords.value;
+  } catch (_) {
+    // se reintentará en el próximo scroll
+  } finally {
+    loadingMore.value = false;
+  }
+}
+
+function onWindowScroll() {
+  const scrollPosition = window.innerHeight + window.scrollY;
+  const threshold = document.documentElement.scrollHeight - 300;
+  if (scrollPosition >= threshold) {
+    cargarMasDesdeDB();
   }
 }
 
@@ -348,12 +400,29 @@ async function onSort(event) {
   await cargarDesdeDB();
 }
 
+function toIsoDate(value) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function activeFilters() {
   const payload = {};
   Object.entries(filters.value).forEach(([key, value]) => {
+    if (key === 'fecha_desde' || key === 'fecha_hasta') return;
     const cleaned = String(value || '').trim();
     if (cleaned) payload[key] = cleaned;
   });
+
+  const desde = toIsoDate(filters.value.fecha_desde);
+  const hasta = toIsoDate(filters.value.fecha_hasta);
+  if (desde) payload.activation_date_from = desde;
+  if (hasta) payload.activation_date_to = hasta;
+
   return payload;
 }
 
@@ -393,11 +462,6 @@ function mapDbRow(r) {
   };
 }
 
-async function onPage(event) {
-  currentPage.value = event.page + 1;
-  await cargarDesdeDB();
-}
-
 async function aplicarFiltros() {
   currentPage.value = 1;
   await cargarDesdeDB();
@@ -410,6 +474,8 @@ async function limpiarFiltros() {
     plataforma: '',
     imei: '',
     vigencia_sim: '',
+    fecha_desde: null,
+    fecha_hasta: null,
   };
   currentPage.value = 1;
   await cargarDesdeDB();
@@ -739,7 +805,14 @@ function stamp() {
   return `${y}${m}${day}_${hh}${mm}${ss}`;
 }
 
-onMounted(loadPlataformas);
+onMounted(() => {
+  loadPlataformas();
+  window.addEventListener('scroll', onWindowScroll);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', onWindowScroll);
+});
 </script>
 
 <style scoped>
@@ -896,6 +969,13 @@ onMounted(loadPlataformas);
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.loading-more {
+  text-align: center;
+  padding: 0.9rem 0;
+  color: var(--color-text);
+  font-weight: 600;
 }
 
 .row-actions {

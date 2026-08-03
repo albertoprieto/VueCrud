@@ -7558,6 +7558,8 @@ def list_consultas_sim(
     size: int = Query(10, ge=1, le=100),
     tipo: str | None = Query(None),
     activation_date: str | None = Query(None),
+    activation_date_from: str | None = Query(None, description="Filtra activation_date >= YYYY-MM-DD"),
+    activation_date_to: str | None = Query(None, description="Filtra activation_date <= YYYY-MM-DD"),
     deaccount: str | None = Query(None),
     account_name: str | None = Query(None),
     plataforma: str | None = Query(None),
@@ -7598,7 +7600,17 @@ def list_consultas_sim(
             conditions.append("tipo = %s")
             values.append(cleaned_tipo)
 
-    add_like("activation_date", activation_date)
+    desde = str(activation_date_from or "").strip()
+    hasta = str(activation_date_to or "").strip()
+    if desde or hasta:
+        if desde:
+            conditions.append("activation_date <> '' AND LEFT(activation_date, 10) >= %s")
+            values.append(desde)
+        if hasta:
+            conditions.append("activation_date <> '' AND LEFT(activation_date, 10) <= %s")
+            values.append(hasta)
+    else:
+        add_like("activation_date", activation_date)
     add_like("deaccount", deaccount)
     add_like("account_name", account_name)
     add_like("plataforma", plataforma)
