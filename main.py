@@ -631,6 +631,7 @@ class MovimientoDinero(BaseModel):
     concepto: str
     monto: float
     referencia: str = ""
+    banco: Optional[str] = None
 
 @app.get("/movimientos-dinero")
 def get_movimientos_dinero():
@@ -656,14 +657,56 @@ def add_movimiento_dinero(mov: MovimientoDinero):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL")
+        db.commit()
+    except Exception:
+        pass
     cursor.execute(
-        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia) VALUES (%s, %s, %s, %s, %s)",
-        (mov.fecha, mov.tipo, mov.concepto, mov.monto, mov.referencia)
+        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia, banco) VALUES (%s, %s, %s, %s, %s, %s)",
+        (mov.fecha, mov.tipo, mov.concepto, mov.monto, mov.referencia, mov.banco)
     )
     db.commit()
     cursor.close()
     db.close()
     return {"message": "Movimiento registrado"}
+
+@app.put("/movimientos-dinero/{movimiento_id}")
+def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
+    """Edición desde la tabla unificada de Comprobantes — mismos campos editables
+    (banco, nombre/concepto, monto) que notas y facturas."""
+    campos_validos = {'fecha', 'tipo', 'concepto', 'monto', 'referencia', 'banco'}
+    campos = []
+    valores = []
+    for k, v in data.items():
+        if k in campos_validos:
+            campos.append(f"{k}=%s")
+            valores.append(v)
+    if not campos:
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL")
+        db.commit()
+    except Exception:
+        pass
+    cursor.execute("SELECT id FROM movimientos_dinero WHERE id=%s", (movimiento_id,))
+    if not cursor.fetchone():
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    valores.append(movimiento_id)
+    cursor.execute(f"UPDATE movimientos_dinero SET {', '.join(campos)} WHERE id=%s", valores)
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Movimiento actualizado", "id": movimiento_id}
 
 @app.delete("/movimientos-dinero/{movimiento_id}")
 def delete_movimiento_dinero(movimiento_id: int):
@@ -4489,6 +4532,92 @@ def get_renovaciones_stats():
         "total": sum(por_status.values()) if por_status else 0
     }
 
+
+@app.get("/operacion-imeis")
+def get_operacion_imeis(
+    anio: Optional[int] = Query(None, description="Año del filtro por mes calendario"),
+    mes: Optional[int] = Query(None, ge=1, le=12, description="Mes del filtro (1-12), calendario completo"),
+    imei: Optional[str] = Query(None, description="Filtrar por IMEI (coincidencia parcial)"),
+    limit: Optional[int] = Query(500, description="Límite de registros")
+):
+    """
+    Vista de operación por IMEI: une activaciones y renovaciones recientes con el
+    estatus/bodega del IMEI en inventario y, si existe, el reporte de servicio
+    generado — la base para saber qué pasó con cada dispositivo desde que se activó.
+    """
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+
+    query = """
+        SELECT
+            CONCAT(base.tipo, '-', base.id) AS row_id,
+            base.tipo, base.cuenta, base.plataforma, base.imei,
+            base.hora_activacion, base.fecha_carga, base.status,
+            rs.id AS reporte_servicio_id,
+            im.status AS estatus_imei,
+            ub.nombre AS bodega,
+            rs.folio AS folio_reporte,
+            rs.fecha AS fecha_reporte,
+            rs.pagado AS reporte_pagado,
+            rs.comprobante_path AS reporte_comprobante_path,
+            rs.vendedor AS vendedor_reporte,
+            rs.nombre_instalador AS tecnico_reporte
+        FROM (
+            SELECT 'Activación' AS tipo, ar.id, ar.numero_dispositivo AS imei, ar.cuenta, ar.plataforma,
+                   ar.hora_activacion, ar.fecha_carga, ar.status, ar.reporte_servicio_id
+            FROM activaciones_recientes ar
+            UNION ALL
+            SELECT 'Renovación' AS tipo, rr.id, rr.numero_dispositivo AS imei, rr.cuenta, rr.plataforma,
+                   rr.hora_activacion, rr.fecha_carga, rr.status, rr.reporte_servicio_id
+            FROM renovaciones_recientes rr
+        ) base
+        LEFT JOIN imeis im ON im.imei = base.imei
+        LEFT JOIN ubicaciones ub ON ub.id = im.ubicacion_id
+        LEFT JOIN reportes_servicio rs ON rs.id = COALESCE(
+            base.reporte_servicio_id,
+            (SELECT rs2.id FROM reportes_servicio rs2 WHERE rs2.imei = base.imei ORDER BY rs2.fecha DESC, rs2.id DESC LIMIT 1)
+        )
+        WHERE 1=1
+    """
+    params = []
+
+    if anio and mes:
+        inicio_mes = datetime(anio, mes, 1)
+        fin_mes = datetime(anio + 1, 1, 1) if mes == 12 else datetime(anio, mes + 1, 1)
+        query += """ AND (
+            (base.hora_activacion >= %s AND base.hora_activacion < %s)
+            OR (base.hora_activacion IS NULL AND base.fecha_carga >= %s AND base.fecha_carga < %s)
+        )"""
+        params.extend([inicio_mes, fin_mes, inicio_mes, fin_mes])
+
+    if imei:
+        query += " AND base.imei LIKE %s"
+        params.append(f"%{imei}%")
+
+    query += " ORDER BY base.hora_activacion DESC"
+    if limit:
+        query += " LIMIT %s"
+        params.append(limit)
+
+    cursor.execute(query, params)
+    filas = cursor.fetchall()
+
+    for f in filas:
+        for key in ('hora_activacion', 'fecha_carga', 'fecha_reporte'):
+            if f.get(key) and hasattr(f[key], 'isoformat'):
+                f[key] = f[key].isoformat()
+        f['reporte_pagado'] = bool(f.get('reporte_pagado'))
+
+    cursor.close()
+    db.close()
+
+    return {"total": len(filas), "filas": filas}
+
 @app.post("/renovaciones-recientes/datos-reporte")
 def get_datos_reporte_renovacion(data: dict = Body(...)):
     """
@@ -4723,17 +4852,29 @@ def get_notas_pago():
                             if im:
                                 imeis_set.append(im)
             r['imeis'] = imeis_set
-        # Obtener instalador y vendedor desde reportes_servicio
+        # Obtener instalador, vendedor y usuario desde reportes_servicio
         r['instalador'] = ''
         r['vendedor'] = ''
+        r['usuario'] = ''
         if rids:
             placeholders2 = ','.join(['%s'] * len(rids))
-            cursor.execute(f"SELECT nombre_instalador, vendedor FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
+            cursor.execute(f"SELECT nombre_instalador, vendedor, usuario FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
             reps2 = cursor.fetchall()
             instaladores = list({rep['nombre_instalador'] for rep in reps2 if rep.get('nombre_instalador')})
             vendedores_list = list({rep['vendedor'] for rep in reps2 if rep.get('vendedor')})
+            usuarios_list = list({rep['usuario'] for rep in reps2 if rep.get('usuario')})
             r['instalador'] = ', '.join(instaladores)
             r['vendedor'] = ', '.join(vendedores_list)
+            r['usuario'] = ', '.join(usuarios_list)
+        # Parsear comprobantes JSON (la lista completa vive en el detalle, aquí solo se
+        # necesita saber si hay al menos uno para la reconciliación reportes-vs-comprobantes)
+        if isinstance(r.get('comprobantes'), str):
+            try:
+                r['comprobantes'] = json.loads(r['comprobantes'])
+            except Exception:
+                r['comprobantes'] = []
+        if r.get('comprobantes') is None:
+            r['comprobantes'] = []
     cursor.close()
     db.close()
     return rows
@@ -4875,6 +5016,40 @@ def actualizar_lugar_pago_nota(nota_id: int, data: dict = Body(...)):
     if affected == 0:
         raise HTTPException(status_code=404, detail="Nota no encontrada")
     return {"message": "Lugar de pago actualizado", "id": nota_id, "lugar_pago": lugar_pago or None}
+
+@app.put("/notas-pago/{nota_id}/editar-campos")
+def editar_campos_nota(nota_id: int, data: dict = Body(...)):
+    """Edición manual de cliente/total desde la tabla unificada de Comprobantes.
+    El total normalmente se deriva de los reportes ligados (agregar/quitar-reportes),
+    pero aquí se permite sobrescribirlo a mano igual que el resto de la fila."""
+    campos = []
+    valores = []
+    if 'cliente' in data:
+        campos.append("cliente=%s")
+        valores.append(str(data.get('cliente') or '').strip())
+    if 'total' in data:
+        campos.append("total=%s")
+        valores.append(float(data.get('total') or 0))
+    if not campos:
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM notas_pago WHERE id=%s", (nota_id,))
+    if not cursor.fetchone():
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    valores.append(nota_id)
+    cursor.execute(f"UPDATE notas_pago SET {', '.join(campos)} WHERE id=%s", valores)
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Campos actualizados", "id": nota_id}
 
 @app.put("/notas-pago/{nota_id}/observaciones")
 def actualizar_observaciones_nota(nota_id: int, data: dict = Body(...)):
@@ -5185,17 +5360,27 @@ def get_facturas_pago():
                             if im:
                                 imeis_set.append(im)
             r['imeis'] = imeis_set
-        # Obtener instalador y vendedor desde reportes_servicio
+        # Obtener instalador, vendedor y usuario desde reportes_servicio
         r['instalador'] = ''
         r['vendedor'] = ''
+        r['usuario'] = ''
         if rids:
             placeholders2 = ','.join(['%s'] * len(rids))
-            cursor.execute(f"SELECT nombre_instalador, vendedor FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
+            cursor.execute(f"SELECT nombre_instalador, vendedor, usuario FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
             reps2 = cursor.fetchall()
             instaladores = list({rep['nombre_instalador'] for rep in reps2 if rep.get('nombre_instalador')})
             vendedores_list = list({rep['vendedor'] for rep in reps2 if rep.get('vendedor')})
+            usuarios_list = list({rep['usuario'] for rep in reps2 if rep.get('usuario')})
             r['instalador'] = ', '.join(instaladores)
             r['vendedor'] = ', '.join(vendedores_list)
+            r['usuario'] = ', '.join(usuarios_list)
+        if isinstance(r.get('comprobantes'), str):
+            try:
+                r['comprobantes'] = json.loads(r['comprobantes'])
+            except Exception:
+                r['comprobantes'] = []
+        if r.get('comprobantes') is None:
+            r['comprobantes'] = []
     cursor.close()
     db.close()
     return rows
@@ -5744,6 +5929,38 @@ def actualizar_lugar_pago_factura(factura_id: int, data: dict = Body(...)):
     if affected == 0:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
     return {"message": "Lugar de pago actualizado", "id": factura_id, "lugar_pago": lugar_pago or None}
+
+@app.put("/facturas-pago/{factura_id}/editar-campos")
+def editar_campos_factura(factura_id: int, data: dict = Body(...)):
+    """Edición manual de cliente/total desde la tabla unificada de Comprobantes."""
+    campos = []
+    valores = []
+    if 'cliente' in data:
+        campos.append("cliente=%s")
+        valores.append(str(data.get('cliente') or '').strip())
+    if 'total' in data:
+        campos.append("total=%s")
+        valores.append(float(data.get('total') or 0))
+    if not campos:
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+    db = mysql.connector.connect(
+        host="localhost",
+        user="usuario_vue",
+        password="tu_password_segura",
+        database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM facturas_pago WHERE id=%s", (factura_id,))
+    if not cursor.fetchone():
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    valores.append(factura_id)
+    cursor.execute(f"UPDATE facturas_pago SET {', '.join(campos)} WHERE id=%s", valores)
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Campos actualizados", "id": factura_id}
 
 @app.put("/facturas-pago/{factura_id}/pagado")
 def actualizar_pagado_factura(factura_id: int, data: dict = Body(...)):
@@ -7348,6 +7565,8 @@ def list_consultas_sim(
     iccid: str | None = Query(None),
     device_mobile: str | None = Query(None),
     vigencia_sim: str | None = Query(None),
+    sort_field: str | None = Query(None),
+    sort_order: int | None = Query(None, description="1 ascendente, -1 descendente"),
 ):
     db = _get_db()
     cursor = db.cursor(dictionary=True)
@@ -7394,9 +7613,21 @@ def list_consultas_sim(
     cursor.execute(f"SELECT COUNT(*) AS total FROM consultas_sim{where_sql}", values)
     total = cursor.fetchone()["total"]
 
+    columnas_ordenables = {
+        'tipo': 'tipo', 'activation_date': 'activation_date', 'deaccount': 'deaccount',
+        'accountName': 'account_name', 'plataforma': 'plataforma', 'imei': 'imei',
+        'iccid': 'iccid', 'deviceMobile': 'device_mobile', 'vigencia_sim': 'vigencia_sim',
+    }
+    columna_sort = columnas_ordenables.get(sort_field)
+    if columna_sort:
+        direccion = 'ASC' if sort_order == 1 else 'DESC'
+        order_sql = f"{columna_sort} {direccion}, creado_en DESC"
+    else:
+        order_sql = "activation_date DESC, creado_en DESC"
+
     query_values = list(values) + [size, offset]
     cursor.execute(
-        f"SELECT * FROM consultas_sim{where_sql} ORDER BY activation_date DESC, creado_en DESC LIMIT %s OFFSET %s",
+        f"SELECT * FROM consultas_sim{where_sql} ORDER BY {order_sql} LIMIT %s OFFSET %s",
         query_values
     )
     rows = cursor.fetchall()

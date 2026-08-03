@@ -28,6 +28,11 @@ export async function actualizarLugarPagoNota(id, lugar_pago) {
   return res.data;
 }
 
+export async function actualizarCamposNota(id, campos) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/editar-campos`, campos);
+  return res.data;
+}
+
 export async function actualizarObservacionesNota(id, observaciones) {
   const res = await axios.put(`${API_URL}/notas-pago/${id}/observaciones`, { observaciones });
   return res.data;
@@ -97,6 +102,11 @@ export async function actualizarLugarPagoFactura(id, lugar_pago) {
 
 export async function actualizarPagadoFactura(id, pagado) {
   const res = await axios.put(`${API_URL}/facturas-pago/${id}/pagado`, { pagado });
+  return res.data;
+}
+
+export async function actualizarCamposFactura(id, campos) {
+  const res = await axios.put(`${API_URL}/facturas-pago/${id}/editar-campos`, campos);
   return res.data;
 }
 
