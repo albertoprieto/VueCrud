@@ -27,3 +27,21 @@ export const obtenerDetalleDispositivo = async (imei, plataforma) => {
   });
   return res.data;
 };
+
+/**
+ * Teléfono de contacto asociado al dispositivo — IOP y Tracksolid lo guardan
+ * en lugares distintos de la respuesta de /api/plataformas/buscar:
+ * IOP: item.account.contactTel · Tracksolid: item.sim (driverPhone viene
+ * vacío siempre en la práctica — el número real es el de la SIM).
+ * Espera un item crudo de `resultados[]` (buscarDispositivosPlataforma), no
+ * el objeto ya aplanado.
+ * @param {object} item
+ * @param {'iop'|'tracksolid'} plataforma
+ * @returns {string}
+ */
+export const extraerTelefonoContacto = (item, plataforma) => {
+  if (!item) return '';
+  if (plataforma === 'iop') return item.account?.contactTel || '';
+  if (plataforma === 'tracksolid') return item.sim || item.driverPhone || '';
+  return '';
+};

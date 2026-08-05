@@ -73,6 +73,25 @@
       <template #loading>
         <DataTableLoader text="Cargando reportes..." />
       </template>
+      <Column header="Orden" headerStyle="width: 3.5rem" style="text-align:center;">
+        <template #body="slotProps">
+          <div style="display:flex;flex-direction:column;gap:0.1rem;" :title="filtrosActivos ? 'Quita los filtros para poder reordenar' : ''">
+            <Button
+              icon="pi pi-chevron-up" class="p-button-sm p-button-text"
+              style="padding:0.15rem;width:1.8rem;height:1.4rem;"
+              :disabled="filtrosActivos || esPrimeraFila(slotProps.data) || moviendoId !== null"
+              :loading="moviendoId === slotProps.data.id"
+              @click="moverFila(slotProps.data, -1)"
+            />
+            <Button
+              icon="pi pi-chevron-down" class="p-button-sm p-button-text"
+              style="padding:0.15rem;width:1.8rem;height:1.4rem;"
+              :disabled="filtrosActivos || esUltimaFila(slotProps.data) || moviendoId !== null"
+              @click="moverFila(slotProps.data, 1)"
+            />
+          </div>
+        </template>
+      </Column>
       <Column headerStyle="width: 3rem">
         <template #header>&nbsp;</template>
         <template #body="slotProps">
@@ -105,6 +124,26 @@
           <span>
             {{ slotProps.data.folio  }}
           </span>
+        </template>
+      </Column>
+      <Column header="IMEI(s)">
+        <template #body="slotProps">
+          <div style="white-space:pre-line;">{{ imeisDeReporte(slotProps.data).join('\n') || '-' }}</div>
+        </template>
+      </Column>
+      <Column header="Teléfono GPS">
+        <template #body="slotProps">
+          <span v-if="textoPlataforma(slotProps.data, 'telefono')">{{ textoPlataforma(slotProps.data, 'telefono') }}</span>
+          <Button
+            v-else icon="pi pi-phone" label="Consultar" class="p-button-sm p-button-text"
+            :loading="consultandoId === slotProps.data.id" @click="consultarUnaFila(slotProps.data)"
+          />
+        </template>
+      </Column>
+      <Column header="Cuenta">
+        <template #body="slotProps">
+          <span v-if="textoPlataforma(slotProps.data, 'cuenta')">{{ textoPlataforma(slotProps.data, 'cuenta') }}</span>
+          <span v-else style="color:var(--color-border,#ccc);">—</span>
         </template>
       </Column>
       <Column header="Vendedor">
@@ -225,6 +264,10 @@
           <div class="form-group">
             <label>Tipo de Servicio</label>
             <InputText v-model="reporteEditando.tipo_servicio" class="w-full" />
+          </div>
+          <div class="form-group">
+            <label>Fecha</label>
+            <input type="date" v-model="fechaEditandoStr" class="w-full" />
           </div>
           <div class="form-group">
             <label>Vendedor</label>
@@ -687,6 +730,57 @@ const filtroIMEI = ref('');
 const filtroSimSerie = ref('');
 const filtroPagado = ref('');
 
+const filtrosActivos = computed(() => !!(
+  filtroCliente.value || filtroSO.value || filtroVendedor.value || filtroFecha.value ||
+  filtroTecnico.value || filtroIMEI.value || filtroSimSerie.value || filtroPagado.value !== ''
+));
+
+// Orden manual (drag & drop) — orden_manual es null hasta que se guarda un
+// orden por primera vez; las filas sin valor conservan su orden original
+// (por fecha/id, como venía del backend) al final del criterio.
+const reportesOrdenados = computed(() => {
+  const arr = [...reportes.value];
+  arr.sort((a, b) => {
+    const oa = a.orden_manual, ob = b.orden_manual;
+    if (oa != null && ob != null) return oa - ob;
+    if (oa != null) return -1;
+    if (ob != null) return 1;
+    return 0;
+  });
+  return arr;
+});
+
+// Mover una fila un lugar arriba/abajo (adyacente en reportesOrdenados, no
+// en la vista filtrada — así el intercambio siempre es correcto sin importar
+// qué filtros haya puestos en pantalla) y guardar de inmediato. Sin modo
+// especial ni paginador apagado: la tabla nunca deja de paginar, así se
+// evita el problema de rendimiento del drag & drop libre.
+const moviendoId = ref(null);
+function esPrimeraFila(reporte) {
+  return reportesOrdenados.value[0]?.id === reporte.id;
+}
+function esUltimaFila(reporte) {
+  const lista = reportesOrdenados.value;
+  return lista[lista.length - 1]?.id === reporte.id;
+}
+async function moverFila(reporte, direccion) {
+  const lista = [...reportesOrdenados.value];
+  const idx = lista.findIndex(r => r.id === reporte.id);
+  const destino = idx + direccion;
+  if (idx === -1 || destino < 0 || destino >= lista.length) return;
+  [lista[idx], lista[destino]] = [lista[destino], lista[idx]];
+
+  moviendoId.value = reporte.id;
+  try {
+    const orden = lista.map((r, i) => ({ id: r.id, orden: i }));
+    await axios.put(`${API_URL}/reordenar`, { orden });
+    reportes.value = lista.map((r, i) => ({ ...r, orden_manual: i }));
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo mover la fila.', life: 3500 });
+  }
+  moviendoId.value = null;
+}
+
 function valorIncluyeBusqueda(value, needle) {
   if (!needle) return true;
   if (value == null) return false;
@@ -744,7 +838,7 @@ function coincideSimEnReporte(reporte, needle) {
 }
 
 const reportesFiltrados = computed(() => {
-  let lista = reportes.value;
+  let lista = reportesOrdenados.value;
   // Si es técnico y NO es admin, filtra solo sus reportes
   if (user.value && user.value.perfil === 'Tecnico') {
     lista = lista.filter(r => {
@@ -841,6 +935,46 @@ function imeisDeReporte(r) {
   return [...imeis];
 }
 
+// Teléfono/cuenta del dispositivo en IOP/Tracksolid — el bot de WhatsApp ya
+// consulta la plataforma al crear el reporte (para nombre_cliente/usuario) y
+// guarda ese mismo resultado aquí de una vez (plataforma_telefono/
+// plataforma_cuenta/plataforma_consulta_estatus vía el PUT normal del
+// reporte) — por eso la mayoría de las filas ya llegan cacheadas en
+// /reportes-servicio-todos, sin pegarle a IOP/Tracksolid desde aquí.
+// Consultar 100 filas en vivo al abrir la página (una por una, con IOP/
+// Tracksolid tardando varios segundos cada una en el peor caso) tumbaba el
+// backend — por eso ya NO se dispara automático; solo botón manual por fila
+// para los pocos reportes viejos/sin plataforma que no quedaron cacheados.
+const ESTATUS_PLATAFORMA_TEXTO = {
+  vacio: 'No encontrado en plataforma',
+  error: 'Error al consultar',
+  sin_plataforma: 'Sin plataforma',
+  sin_imei: 'Sin IMEI',
+};
+function textoPlataforma(reporte, campo) {
+  const estatus = reporte.plataforma_consulta_estatus;
+  if (!estatus) return null; // nunca consultado -> botón "Consultar"
+  if (estatus === 'ok') return reporte[`plataforma_${campo}`] || 'Vacío en origen';
+  return ESTATUS_PLATAFORMA_TEXTO[estatus] || estatus;
+}
+
+const consultandoId = ref(null);
+async function consultarUnaFila(reporte) {
+  consultandoId.value = reporte.id;
+  try {
+    const { data } = await axios.post(`${API_URL}/consultar-plataforma-datos`, { ids: [reporte.id] });
+    const res = (data.resultados || [])[0];
+    if (res) {
+      reportes.value = reportes.value.map(r => r.id === reporte.id
+        ? { ...r, plataforma_telefono: res.telefono, plataforma_cuenta: res.cuenta, plataforma_consulta_estatus: res.estatus }
+        : r);
+    }
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo consultar la plataforma.', life: 3500 });
+  }
+  consultandoId.value = null;
+}
+
 async function exportarSinNota() {
   exportandoSinNota.value = true;
   try {
@@ -916,6 +1050,11 @@ function abrirEditar(reporte) {
   reporteEditando.value = { ...reporte };
   showEditDialog.value = true;
 }
+
+const fechaEditandoStr = computed({
+  get: () => reporteEditando.value?.fecha ? String(reporteEditando.value.fecha).slice(0, 10) : '',
+  set: (val) => { if (reporteEditando.value) reporteEditando.value.fecha = val; },
+});
 
 async function guardarEdicion() {
   if (!reporteEditando.value) return;

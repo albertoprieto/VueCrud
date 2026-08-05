@@ -111,10 +111,20 @@
             </div>
           </div>
 
-          <Button
-            label="Timbrar" icon="pi pi-verified" class="p-button-success timbrar-btn"
-            :disabled="!listoParaTimbrar" :loading="timbrando" @click="confirmarTimbrar"
-          />
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
+            <Button
+              :label="item.facturapi_draft_id ? 'Regenerar prefactura' : 'Generar prefactura'" icon="pi pi-file-edit"
+              class="p-button-outlined" :disabled="!datosFiscalesListos" :loading="generandoPrefactura" @click="generarPrefactura"
+            />
+            <Button
+              v-if="item.facturapi_draft_id" label="Ver PDF (borrador)" icon="pi pi-file-pdf"
+              class="p-button-outlined p-button-warning" @click="verPrefacturaPdf"
+            />
+            <Button
+              label="Timbrar" icon="pi pi-verified" class="p-button-success timbrar-btn"
+              :disabled="!listoParaTimbrar" :loading="timbrando" @click="confirmarTimbrar"
+            />
+          </div>
         </template>
       </div>
 
@@ -133,16 +143,55 @@
         <div v-if="item.timbrado_por" class="detalle-row"><strong>Timbrada por:</strong> {{ item.timbrado_por }}</div>
         <div v-if="item.status === 'Cancelado'" class="detalle-row"><strong>Motivo cancelación:</strong> {{ item.cfdi_cancelacion_motivo || '-' }}</div>
         <div v-if="item.status === 'Cancelado' && item.cancelado_por" class="detalle-row"><strong>Cancelada por:</strong> {{ item.cancelado_por }}</div>
+        <div v-if="item.status === 'Cancelado'" class="detalle-row">
+          <strong>Estatus ante el SAT:</strong>
+          <span :class="'badge badge-' + estatusCancelacionBadge(item.cfdi_cancelacion_estatus)" style="margin-left:0.5rem;">
+            {{ estatusCancelacionTexto(item.cfdi_cancelacion_estatus) }}
+          </span>
+        </div>
         <div v-if="item.cfdi_uuid" style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap;">
           <Button icon="pi pi-file" label="XML" class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_xml_path)" />
           <Button icon="pi pi-file-pdf" label="PDF" class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_pdf_path)" />
           <Button v-if="item.status === 'Timbrado'" icon="pi pi-send" label="Enviar por correo" class="p-button-sm p-button-outlined" @click="abrirEnviarDialog" />
         </div>
+
+        <div v-if="item.status === 'Cancelado'" class="acuse-section">
+          <h4><i class="pi pi-verified" /> Acuse de cancelación</h4>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+            <Button
+              icon="pi pi-refresh" label="Verificar estatus" class="p-button-sm p-button-outlined"
+              :loading="verificandoCancelacion" @click="verificarCancelacion"
+            />
+            <Button
+              v-if="item.cfdi_acuse_cancelacion_xml_path" icon="pi pi-file" label="Acuse XML"
+              class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_acuse_cancelacion_xml_path)"
+            />
+            <Button
+              v-if="item.cfdi_acuse_cancelacion_pdf_path" icon="pi pi-file-pdf" label="Acuse PDF"
+              class="p-button-sm p-button-outlined" @click="abrirArchivoCfdi(item.cfdi_acuse_cancelacion_pdf_path)"
+            />
+            <small v-if="!item.cfdi_acuse_cancelacion_xml_path && !item.cfdi_acuse_cancelacion_pdf_path" style="color:var(--color-border);">
+              Aún no disponible — el SAT puede tardar en aceptar la cancelación. Usa "Verificar estatus".
+            </small>
+          </div>
+        </div>
       </div>
+
+      <Dialog v-model:visible="prefacturaPdfVisible" header="Prefactura (borrador sin timbrar)" :modal="true" :style="{ width: '85vw' }" :draggable="false">
+        <iframe v-if="prefacturaPdfUrl" :src="prefacturaPdfUrl" style="width:100%;height:80vh;border:none;" />
+      </Dialog>
 
       <!-- Comprobantes de pago -->
       <div class="comprobante-section">
-        <h3>Comprobantes de pago</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+          <h3 style="margin:0;">Comprobantes de pago</h3>
+          <Button
+            v-if="item.reporte_ids && item.reporte_ids.length"
+            label="Sincronizar de reportes" icon="pi pi-sync"
+            class="p-button-sm p-button-outlined"
+            :loading="sincronizandoComprobantes" @click="sincronizarComprobantes"
+          />
+        </div>
         <div v-if="item.comprobantes && item.comprobantes.length" class="comprobantes-lista">
           <div v-for="(comp, idx) in item.comprobantes" :key="idx" class="comprobante-item">
             <i class="pi pi-file" style="color:var(--color-primary);margin-right:0.5rem;"></i>
@@ -276,10 +325,11 @@ import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
 import {
   getFacturaById, actualizarLugarPagoFactura, actualizarObservacionesFactura,
-  subirComprobanteFactura, eliminarComprobanteFactura,
+  subirComprobanteFactura, eliminarComprobanteFactura, sincronizarComprobantesFactura,
   agregarReportesFactura, quitarReportesFactura,
-  timbrarFactura, cancelarFactura, enviarCfdiFactura, getNotas, getFacturas,
+  timbrarFactura, cancelarFactura, verificarCancelacionFactura, enviarCfdiFactura, getNotas, getFacturas,
   actualizarPagadoFactura,
+  generarPrefacturaFactura, getPrefacturaPdfUrl,
 } from '@/services/pagosService';
 import { getClientes, addCliente, updateCliente } from '@/services/clientesService';
 import { generarReporteServicioPDF } from '@/components/GeneraReporteServicioPDF.js';
@@ -311,7 +361,8 @@ function badgeClass(status) {
 function urlComprobante(path) {
   if (!path) return '';
   const p = path.startsWith('/') ? path : `/${path}`;
-  return `${API_URL}${p}`;
+  const encoded = p.split('/').map(seg => encodeURIComponent(seg)).join('/');
+  return `${API_URL}${encoded}`;
 }
 function nombreArchivo(path) { return path ? path.split('/').pop() : 'comprobante'; }
 function abrirArchivoCfdi(path) { if (path) window.open(urlComprobante(path), '_blank', 'noopener'); }
@@ -475,34 +526,60 @@ watch(publicoGeneral, (activo) => {
   if (activo) timbrarForm.value.uso_cfdi = 'S01';
 });
 
-const listoParaTimbrar = computed(() => {
+const datosFiscalesListos = computed(() => {
   if (!(!!timbrarForm.value.uso_cfdi && !!timbrarForm.value.forma_pago && !!timbrarForm.value.metodo_pago)) return false;
   if (publicoGeneral.value) return true;
   return datosFiscalesCompletos.value && RFC_REGEX.test(clienteFiscal.value?.rfc || '');
 });
 
+const listoParaTimbrar = computed(() => datosFiscalesListos.value);
+
+function datosFiscalesPayload() {
+  return publicoGeneral.value ? {
+    rfc_cliente: RFC_PUBLICO_GENERAL,
+    uso_cfdi: 'S01',
+    forma_pago: timbrarForm.value.forma_pago,
+    metodo_pago: timbrarForm.value.metodo_pago,
+  } : {
+    rfc_cliente: clienteFiscal.value.rfc,
+    uso_cfdi: timbrarForm.value.uso_cfdi,
+    forma_pago: timbrarForm.value.forma_pago,
+    metodo_pago: timbrarForm.value.metodo_pago,
+    domicilio_fiscal_receptor: clienteFiscal.value.codigo_postal,
+    regimen_fiscal_receptor: clienteFiscal.value.regimen_fiscal,
+  };
+}
+
 async function confirmarTimbrar() {
   timbrando.value = true;
   try {
-    await timbrarFactura(id.value, publicoGeneral.value ? {
-      rfc_cliente: RFC_PUBLICO_GENERAL,
-      uso_cfdi: 'S01',
-      forma_pago: timbrarForm.value.forma_pago,
-      metodo_pago: timbrarForm.value.metodo_pago,
-    } : {
-      rfc_cliente: clienteFiscal.value.rfc,
-      uso_cfdi: timbrarForm.value.uso_cfdi,
-      forma_pago: timbrarForm.value.forma_pago,
-      metodo_pago: timbrarForm.value.metodo_pago,
-      domicilio_fiscal_receptor: clienteFiscal.value.codigo_postal,
-      regimen_fiscal_receptor: clienteFiscal.value.regimen_fiscal,
-    });
+    await timbrarFactura(id.value, datosFiscalesPayload());
     toast.add({ severity: 'success', summary: 'Timbrada', detail: 'CFDI generado y timbrado correctamente.', life: 4000 });
     await cargarDetalle();
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error al timbrar', detail: e?.response?.data?.detail || 'No se pudo timbrar la factura.', life: 6000 });
   }
   timbrando.value = false;
+}
+
+const generandoPrefactura = ref(false);
+async function generarPrefactura() {
+  generandoPrefactura.value = true;
+  try {
+    await generarPrefacturaFactura(id.value, datosFiscalesPayload());
+    await cargarDetalle();
+    toast.add({ severity: 'success', summary: 'Prefactura generada', detail: 'Ya puedes ver el PDF del borrador antes de timbrar.', life: 4000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo generar la prefactura.', life: 5000 });
+  }
+  generandoPrefactura.value = false;
+}
+
+const prefacturaPdfVisible = ref(false);
+const prefacturaPdfUrl = ref('');
+async function verPrefacturaPdf() {
+  prefacturaPdfUrl.value = await getPrefacturaPdfUrl(id.value);
+  prefacturaPdfVisible.value = true;
 }
 
 // ── Comprobantes ──
@@ -536,6 +613,23 @@ async function eliminarComprobanteFile(path) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar.', life: 4000 });
   }
   eliminandoComprobante.value = null;
+}
+
+const sincronizandoComprobantes = ref(false);
+async function sincronizarComprobantes() {
+  sincronizandoComprobantes.value = true;
+  try {
+    const res = await sincronizarComprobantesFactura(id.value);
+    if (res.agregados > 0) {
+      toast.add({ severity: 'success', summary: 'Sincronizado', detail: `Se agregaron ${res.agregados} comprobante(s) de los reportes ligados.`, life: 4000 });
+    } else {
+      toast.add({ severity: 'info', summary: 'Sin novedades', detail: 'No hay comprobantes nuevos en los reportes ligados.', life: 3500 });
+    }
+    await cargarDetalle();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo sincronizar.', life: 4000 });
+  }
+  sincronizandoComprobantes.value = false;
 }
 
 // ── Observaciones ──
@@ -695,6 +789,38 @@ async function confirmarCancelar() {
   cancelando.value = false;
 }
 
+// ── Acuse de cancelación ──
+const ESTATUS_CANCELACION = {
+  accepted: { texto: 'Aceptada por el SAT', badge: 'success' },
+  pending: { texto: 'Pendiente de aceptación', badge: 'warning' },
+  verifying: { texto: 'En verificación por el SAT', badge: 'warning' },
+  rejected: { texto: 'Rechazada por el SAT', badge: 'danger' },
+};
+function estatusCancelacionTexto(estatus) {
+  if (!estatus) return 'Desconocido';
+  return ESTATUS_CANCELACION[estatus]?.texto || estatus;
+}
+function estatusCancelacionBadge(estatus) {
+  return ESTATUS_CANCELACION[estatus]?.badge || 'warning';
+}
+
+const verificandoCancelacion = ref(false);
+async function verificarCancelacion() {
+  verificandoCancelacion.value = true;
+  try {
+    const res = await verificarCancelacionFactura(id.value);
+    await cargarDetalle();
+    toast.add({
+      severity: 'success', summary: 'Estatus actualizado',
+      detail: `Estatus: ${estatusCancelacionTexto(res.estatus)}${res.acuse_xml_path || res.acuse_pdf_path ? ' — acuse disponible.' : ''}`,
+      life: 4000
+    });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo verificar el estatus.', life: 5000 });
+  }
+  verificandoCancelacion.value = false;
+}
+
 async function cargarDetalle() {
   loading.value = true;
   try {
@@ -775,6 +901,8 @@ onMounted(() => {
 .fiscal-field label { display: block; font-weight: 600; margin-bottom: 0.3rem; font-size: 0.85rem; }
 .fiscal-error { color: var(--color-error); }
 .timbrar-btn { margin-top: 1.25rem; width: 100%; }
+.acuse-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
+.acuse-section h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.75rem; color: var(--color-title); font-size: 0.95rem; }
 .publico-general-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; cursor: pointer; }
 .timbrar-form { display: flex; flex-direction: column; gap: 0.9rem; }
 
