@@ -33,7 +33,7 @@ import { ref } from 'vue';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
-import { buscarDispositivosPlataforma } from '@/services/plataformasService';
+import { buscarDispositivosPlataforma, extraerTelefonoContacto } from '@/services/plataformasService';
 
 const emit = defineEmits(['seleccionar', 'busqueda-resultado']);
 
@@ -55,9 +55,9 @@ const aplanarResultadoIOP = (item) => {
   if (item.account) {
     flat._account = item.account.accountName || '';
     flat._userName = item.account.userName || '';
-    flat._contactTel = item.account.contactTel || '';
     flat._email = item.account.email || '';
   }
+  flat._contactTel = extraerTelefonoContacto(item, 'iop');
   if (item.deviceBrief?.name && !flat.deviceName) flat.deviceName = item.deviceBrief.name;
   return flat;
 };
@@ -67,7 +67,7 @@ const aplanarResultadoTracksolid = (item) => {
   return {
     ...item,
     _userName: item.driverName || item._accountName || '',
-    _contactTel: item.driverPhone || '',
+    _contactTel: extraerTelefonoContacto(item, 'tracksolid'),
     _email: '',
     address: '',
   };

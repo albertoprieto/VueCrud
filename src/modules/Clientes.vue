@@ -1,58 +1,80 @@
 <template>
   <div class="clientes-page">
     <div class="clientes-header-card">
-      <h2 class="clientes-title">
-        <i class="pi pi-users icon-accent"></i>
-        Clientes
-      </h2>
+      <div class="clientes-title-row">
+        <h2 class="clientes-title">
+          <i class="pi pi-users icon-accent"></i>
+          Clientes
+        </h2>
+        <span class="clientes-subtitle">{{ clientes.length }} registrado{{ clientes.length === 1 ? '' : 's' }}</span>
+      </div>
       <div class="clientes-filtros">
-        <InputText
-          v-model="filtroNombre"
-          placeholder="Buscar por nombre..."
-          class="filtro-input"
-          clearable
-        >
-          <template #prepend>
-            <i class="pi pi-search icon-inline"></i>
-          </template>
-        </InputText>
-        <AutoComplete
-          v-model="filtroUsuario"
-          :suggestions="usuariosFiltrados"
-          @complete="buscarUsuario"
-          optionLabel="label"
-          placeholder="Filtrar por usuario"
-          class="filtro-autocomplete"
-          :dropdown="true"
-          forceSelection
-          @item-select="e => filtroUsuario = e.value.label"
-        >
-          <template #prepend>
-            <i class="pi pi-user icon-inline"></i>
-          </template>
-        </AutoComplete>
-        <AutoComplete
-          v-model="filtroTelefono"
-          :suggestions="telefonosFiltrados"
-          @complete="buscarTelefono"
-          optionLabel="label"
-          placeholder="Filtrar por teléfono"
-          class="filtro-autocomplete"
-          :dropdown="true"
-          forceSelection
-          @item-select="e => filtroTelefono = e.value.label"
-        >
-          <template #prepend>
-            <i class="pi pi-phone icon-inline"></i>
-          </template>
-        </AutoComplete>
-        <Button label="Limpiar" icon="pi pi-times" class="clientes-btn" @click="limpiarFiltros" />
-        <Button label="Agregar Cliente" icon="pi pi-plus" @click="openModal" class="clientes-btn" />
+        <span class="p-input-icon-left filtro-input">
+          <i class="pi pi-search"></i>
+          <InputText v-model="filtroNombre" placeholder="Buscar por nombre..." class="w-full" />
+        </span>
+        <span class="p-input-icon-left filtro-autocomplete">
+          <i class="pi pi-user"></i>
+          <AutoComplete
+            v-model="filtroUsuario"
+            :suggestions="usuariosFiltrados"
+            @complete="buscarUsuario"
+            optionLabel="label"
+            placeholder="Filtrar por usuario"
+            class="w-full"
+            :dropdown="true"
+            forceSelection
+            @item-select="e => filtroUsuario = e.value.label"
+          />
+        </span>
+        <span class="p-input-icon-left filtro-autocomplete">
+          <i class="pi pi-phone"></i>
+          <AutoComplete
+            v-model="filtroTelefono"
+            :suggestions="telefonosFiltrados"
+            @complete="buscarTelefono"
+            optionLabel="label"
+            placeholder="Filtrar por teléfono"
+            class="w-full"
+            :dropdown="true"
+            forceSelection
+            @item-select="e => filtroTelefono = e.value.label"
+          />
+        </span>
+        <Button label="Limpiar" icon="pi pi-times" class="p-button-sm p-button-outlined" @click="limpiarFiltros" />
+        <Button label="Agregar Cliente" icon="pi pi-plus" class="p-button-sm" @click="openModal" />
       </div>
     </div>
     <div class="clientes-table-card">
-      <DataTable :value="clientesFiltrados" stripedRows responsiveLayout="scroll" class="clientes-table">
-        <Column field="nombre" header="Nombre" />
+      <DataTable
+        :value="clientesFiltrados"
+        :loading="loading"
+        stripedRows
+        responsiveLayout="scroll"
+        class="clientes-table"
+        :paginator="clientesFiltrados.length > 10"
+        :rows="10"
+        :rowsPerPageOptions="[10, 20, 50, 100]"
+        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+        currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords}"
+      >
+        <template #loading>
+          <DataTableLoader text="Cargando clientes..." />
+        </template>
+        <template #empty>
+          <div class="clientes-empty">
+            <i class="pi pi-users"></i>
+            <span>{{ filtroNombre || filtroUsuario || filtroTelefono ? 'Sin resultados para estos filtros.' : 'Aún no hay clientes registrados.' }}</span>
+          </div>
+        </template>
+        <Column header="Nombre">
+          <template #body="slotProps">
+            <div class="cliente-nombre-cell">
+              <span class="cliente-avatar">{{ inicialesDe(slotProps.data.nombre) }}</span>
+              <span>{{ slotProps.data.nombre }}</span>
+            </div>
+          </template>
+        </Column>
         <Column field="telefono" header="Teléfonos">
           <template #body="slotProps">
             <div class="chip-list">
@@ -84,8 +106,8 @@
         </Column>
         <Column header="Acciones" body-class="acciones-col">
           <template #body="slotProps">
-            <Button icon="pi pi-pencil" class="clientes-btn" @click="editCliente(slotProps.data)" />
-            <Button icon="pi pi-trash" class="clientes-btn" @click="handleDeleteCliente(slotProps.data.id)" />
+            <Button icon="pi pi-pencil" class="p-button-sm p-button-rounded p-button-text" @click="editCliente(slotProps.data)" />
+            <Button icon="pi pi-trash" class="p-button-sm p-button-rounded p-button-text p-button-danger" @click="handleDeleteCliente(slotProps.data.id)" />
           </template>
         </Column>
       </DataTable>
@@ -228,6 +250,7 @@ import InputText from 'primevue/inputtext';
 import AutoComplete from 'primevue/autocomplete';
 import Dropdown from 'primevue/dropdown';
 import { useToast } from 'primevue/usetoast';
+import DataTableLoader from '@/components/DataTableLoader.vue';
 import { getClientes, addCliente, updateCliente, deleteCliente, uploadConstanciaCliente, extractRfcFromPdf } from '@/services/clientesService';
 import { useLoginStore } from '@/stores/loginStore';
 import { useRouter } from 'vue-router';
@@ -239,6 +262,7 @@ const atendidoPor = ref(loginStore.user?.username || '');
 
 const archivoConstancia = ref(null);
 const showModal = ref(false);
+const loading = ref(false);
 const clientes = ref([]);
 const form = ref({
   id: null,
@@ -371,7 +395,20 @@ const onConstanciaFileChange = async (event) => {
 };
 
 const loadClientes = async () => {
-  clientes.value = await getClientes();
+  loading.value = true;
+  try {
+    clientes.value = await getClientes();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los clientes.', life: 4000 });
+  }
+  loading.value = false;
+};
+
+// Iniciales para el avatar de la columna Nombre (ej. "José Torres" -> "JT")
+const inicialesDe = (nombre) => {
+  const partes = (nombre || '').trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return '?';
+  return (partes[0][0] + (partes[1]?.[0] || '')).toUpperCase();
 };
 
 onMounted(loadClientes);
@@ -534,19 +571,43 @@ watch(() => form.value.nombre, (nuevoNombre) => {
   flex-direction: column;
   align-items: flex-start;
 }
+.clientes-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.8em;
+}
 .clientes-title {
   font-size: 2em;
   font-weight: 700;
   color: var(--color-primary, var(--color-title));
   display: flex;
   align-items: center;
-  margin-bottom: 0.5em;
+  margin: 0;
+}
+.clientes-subtitle {
+  font-size: 0.85rem;
+  color: var(--color-text);
+  opacity: 0.65;
+  font-weight: 500;
 }
 .clientes-filtros {
   display: flex;
   gap: 1.2rem;
   margin-bottom: 0.5em;
   flex-wrap: wrap;
+  align-items: center;
+}
+.filtro-input,
+.filtro-autocomplete {
+  flex: 1 1 220px;
+  min-width: 190px;
+}
+.filtro-input :deep(input),
+.filtro-autocomplete :deep(input) {
+  width: 100%;
+  border-radius: 10px;
 }
 .clientes-btn {
   border-radius: 8px;
@@ -565,6 +626,48 @@ watch(() => form.value.nombre, (nuevoNombre) => {
   font-size: 1em;
   border-radius: 12px;
   background: transparent;
+}
+.clientes-table :deep(th) {
+  background: var(--color-bg-light, transparent);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text);
+}
+.clientes-table :deep(tr:hover td) {
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+.cliente-nombre-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.cliente-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.clientes-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 2.5rem 1rem;
+  color: var(--color-text);
+  opacity: 0.7;
+}
+.clientes-empty i {
+  font-size: 2rem;
+  color: var(--color-primary);
+  opacity: 0.6;
 }
 .chip {
   display: inline-flex;
@@ -585,23 +688,20 @@ watch(() => form.value.nombre, (nuevoNombre) => {
 .chip i {
   font-size: 1em;
   margin-right: 0.32em;
-  color: #888;
+  color: var(--color-text);
   opacity: 0.7;
 }
 .chip-usuario {
   background: var(--color-bg-light);
   color: color-mix(in oklab, var(--color-text) 65%, var(--color-primary));
-  /* border-color: #b2ebf2; */ /* Eliminado el borde */
 }
 .chip-plataforma {
   background: var(--color-bg-light);
   color: color-mix(in oklab, var(--color-text) 70%, var(--color-primary));
-  /* border-color: #ffe082; */ /* Eliminado el borde */
 }
 .chip-telefono {
   background: var(--color-bg-light);
   color: color-mix(in oklab, var(--color-text) 60%, var(--color-primary));
-  /* border-color: #e1bee7; */ /* Eliminado el borde */
   font-weight: 500;
   border-radius: 12px;
   padding: 0.2em 0.7em;

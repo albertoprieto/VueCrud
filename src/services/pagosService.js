@@ -141,6 +141,16 @@ export async function eliminarComprobanteFactura(id, path) {
   return res.data;
 }
 
+export async function sincronizarComprobantesFactura(id) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${id}/sincronizar-comprobantes`);
+  return res.data;
+}
+
+export async function sincronizarComprobantesTodas() {
+  const res = await axios.post(`${API_URL}/facturas-pago/sincronizar-comprobantes`);
+  return res.data;
+}
+
 export async function agregarReportesFactura(id, reporte_ids) {
   const res = await axios.put(`${API_URL}/facturas-pago/${id}/agregar-reportes`, { reporte_ids });
   return res.data;
@@ -151,6 +161,15 @@ export async function quitarReportesFactura(id, reporte_ids) {
   return res.data;
 }
 
+export async function generarPrefacturaFactura(id, payload) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${id}/generar-prefactura`, payload);
+  return res.data;
+}
+
+export async function getPrefacturaPdfUrl(id) {
+  return `${API_URL}/facturas-pago/${id}/prefactura-pdf`;
+}
+
 export async function timbrarFactura(id, payload) {
   const res = await axios.post(`${API_URL}/facturas-pago/${id}/timbrar`, payload);
   return res.data;
@@ -158,6 +177,11 @@ export async function timbrarFactura(id, payload) {
 
 export async function cancelarFactura(id, payload) {
   const res = await axios.post(`${API_URL}/facturas-pago/${id}/cancelar`, payload);
+  return res.data;
+}
+
+export async function verificarCancelacionFactura(id) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${id}/verificar-cancelacion`);
   return res.data;
 }
 

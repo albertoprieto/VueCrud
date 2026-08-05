@@ -148,6 +148,56 @@ def _sw_authenticate(sw_base: str, pac_user: str, pac_pass: str) -> str:
     return auth_data["data"]["token"]
 
 
+def _sw_cancelar_cfdi(uuid_: str, motivo: str, folio_sustitucion: str = None) -> dict:
+    """Cancela un CFDI ya timbrado ante el SAT vía SW Sapien (método CSD)."""
+    import requests
+
+    RFC = os.getenv("CSD_RFC", "RAQÑ7701212M3")
+    PAC_USER = os.getenv("PAC_USER")
+    PAC_PASS = os.getenv("PAC_PASS")
+    PAC_ENV = os.getenv("PAC_ENV", "TEST")
+    sw_base = _sw_base_url(PAC_ENV)
+
+    if not (PAC_USER and PAC_PASS):
+        raise HTTPException(status_code=500, detail="PAC no configurado (PAC_USER/PAC_PASS)")
+
+    token = _sw_authenticate(sw_base, PAC_USER, PAC_PASS)
+
+    cancel_url = f"{sw_base}/cfdi33/cancel/{RFC}/{uuid_}/{motivo}"
+    if motivo == "01":
+        cancel_url += f"/{folio_sustitucion}"
+
+    try:
+        cancel_resp = requests.post(
+            cancel_url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        cancel_data = cancel_resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con SW (cancelación): {e}")
+    if cancel_data.get("status") != "success":
+        raise HTTPException(status_code=502, detail=f"Error al cancelar con SW: {cancel_data.get('message') or cancel_data.get('messageDetail') or cancel_data}")
+
+    estatus = (cancel_data.get("data", {}).get("uuid", {}) or {}).get(uuid_.upper()) \
+        or (cancel_data.get("data", {}).get("uuid", {}) or {}).get(uuid_)
+
+    acuse_xml_path = None
+    acuse_b64 = (cancel_data.get("data", {}) or {}).get("acuse")
+    if acuse_b64:
+        try:
+            import base64
+            folder = os.path.join("uploads", "facturas")
+            os.makedirs(folder, exist_ok=True)
+            acuse_xml_path = os.path.join(folder, f"{uuid_}_acuse_cancelacion.xml").replace("\\", "/")
+            with open(acuse_xml_path, "wb") as f:
+                f.write(base64.b64decode(acuse_b64))
+        except Exception:
+            acuse_xml_path = None
+
+    return {"estatus": estatus, "acuse_xml_path": acuse_xml_path, "acuse_pdf_path": None}
+
+
 def _sw_construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
                                productos, serie="A", folio=None,
                                domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None):
@@ -487,12 +537,276 @@ def _fiscalapi_construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, m
     }
 
 
-# Switch de proveedor — en Render: PAC_PROVIDER=fiscalapi (default: sw, sin
-# cambios hasta que se activen credenciales de FiscalAPI a propósito).
+def _facturapi_base_url() -> str:
+    return os.getenv("FACTURAPI_BASE_URL", "https://www.facturapi.io/v2").strip().rstrip("/")
+
+
+def _facturapi_headers() -> dict:
+    api_key = os.getenv("FACTURAPI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Facturapi no configurado (FACTURAPI_API_KEY)")
+    return {"Authorization": f"Bearer {api_key}"}
+
+
+def _facturapi_crear_borrador(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
+                               productos, serie="A", folio=None,
+                               domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None):
+    """Crea el borrador (status='draft') en Facturapi — no timbra, no toca al
+    SAT. Sirve para previsualizar el PDF antes de timbrar. El CSD
+    vive en el dashboard de Facturapi (Organización > Certificados), nunca
+    se manda aquí."""
+    import requests
+
+    LUGAR_EXPEDICION = os.getenv("CSD_LUGAR_EXPEDICION", "64000")
+
+    if rfc_cliente == RFC_PUBLICO_GENERAL:
+        uso_cfdi = "S01"
+        domicilio_receptor = LUGAR_EXPEDICION
+        regimen_receptor = "616"
+    else:
+        domicilio_receptor = domicilio_fiscal_receptor or LUGAR_EXPEDICION
+        regimen_receptor = regimen_fiscal_receptor or os.getenv("CSD_REGIMEN_FISCAL", "601")
+
+    items = [
+        {
+            "quantity": p.Cantidad,
+            "product": {
+                "description": p.Descripcion,
+                "product_key": p.ClaveProdServ,
+                "unit_key": p.ClaveUnidad,
+                "unit_name": p.Unidad,
+                "price": float(p.ValorUnitario),
+                "tax_included": False,
+                "taxability": "02",
+                "taxes": [{"type": "IVA", "rate": 0.16}],
+            }
+        } for p in productos
+    ]
+
+    payload = {
+        "customer": {
+            "legal_name": nombre_cliente,
+            "tax_id": rfc_cliente,
+            "tax_system": regimen_receptor,
+            "address": {"zip": domicilio_receptor},
+        },
+        "items": items,
+        "use": uso_cfdi,
+        "payment_form": forma_pago,
+        "payment_method": metodo_pago,
+        "type": "I",
+        "series": serie or "A",
+        "status": "draft",
+    }
+    if folio:
+        try:
+            payload["folio_number"] = int(folio)
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        draft_resp = requests.post(
+            f"{_facturapi_base_url()}/invoices",
+            json=payload,
+            headers=_facturapi_headers(),
+            timeout=30,
+        )
+        draft_data = draft_resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con Facturapi (borrador): {e}")
+    if not draft_resp.ok:
+        detalle = draft_data.get('message') or draft_data
+        if draft_data.get('errors'):
+            detalle = f"{detalle} — {draft_data['errors']}"
+        raise HTTPException(status_code=502, detail=f"Error al crear el borrador en Facturapi: {detalle}")
+
+    return {
+        "draft_id": draft_data["id"],
+        "is_ready_to_stamp": draft_data.get("is_ready_to_stamp", True),
+        "uso_cfdi": uso_cfdi,
+        "domicilio_receptor": domicilio_receptor,
+        "regimen_receptor": regimen_receptor,
+    }
+
+
+def _facturapi_obtener_pdf_borrador(draft_id: str) -> bytes:
+    """PDF de un borrador sin timbrar — Facturapi lo genera aunque el
+    borrador todavía no se haya mandado al SAT (para revisión previa)."""
+    import requests
+    resp = requests.get(f"{_facturapi_base_url()}/invoices/{draft_id}/pdf", headers=_facturapi_headers(), timeout=30)
+    if not resp.ok:
+        raise HTTPException(status_code=502, detail=f"No se pudo obtener el PDF del borrador: HTTP {resp.status_code}")
+    return resp.content
+
+
+def _facturapi_timbrar_borrador(draft_id: str) -> dict:
+    """Timbra un borrador ya existente (POST /invoices/{id}/stamp) y baja XML/PDF."""
+    import requests
+    from satcfdi.cfdi import CFDI
+    from satcfdi.render import pdf_write
+
+    try:
+        stamp_resp = requests.post(
+            f"{_facturapi_base_url()}/invoices/{draft_id}/stamp",
+            headers=_facturapi_headers(),
+            timeout=30,
+        )
+        resp_data = stamp_resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con Facturapi (timbrado): {e}")
+    if not stamp_resp.ok:
+        detalle = resp_data.get('message') or resp_data
+        if resp_data.get('errors'):
+            detalle = f"{detalle} — {resp_data['errors']}"
+        raise HTTPException(status_code=502, detail=f"Error al timbrar con Facturapi: {detalle}")
+
+    uuid_ = resp_data["uuid"]
+
+    xml_resp = requests.get(f"{_facturapi_base_url()}/invoices/{draft_id}/xml", headers=_facturapi_headers(), timeout=30)
+    if not xml_resp.ok:
+        raise HTTPException(status_code=502, detail=f"Timbrado ok pero no se pudo descargar el XML de Facturapi: HTTP {xml_resp.status_code}")
+    xml_bytes = xml_resp.content
+    stamped_cfdi = CFDI.from_string(xml_bytes)
+
+    folder = os.path.join("uploads", "facturas")
+    os.makedirs(folder, exist_ok=True)
+    xml_path = os.path.join(folder, f"{uuid_}.xml")
+    with open(xml_path, "wb") as f:
+        f.write(xml_bytes)
+
+    pdf_path = os.path.join(folder, f"{uuid_}.pdf")
+    pdf_resp = requests.get(f"{_facturapi_base_url()}/invoices/{draft_id}/pdf", headers=_facturapi_headers(), timeout=30)
+    if pdf_resp.ok:
+        pdf_bytes = pdf_resp.content
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+    else:
+        # Fallback: generar el PDF nosotros con satcfdi, igual que SW/FiscalAPI,
+        # si la descarga directa del PDF de Facturapi falla.
+        pdf_write([stamped_cfdi], pdf_path)
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+    fecha_certificacion, no_certificado_sat, rfc_pac = _extraer_tfd(xml_bytes)
+
+    return {
+        "uuid": uuid_,
+        "xml_bytes": xml_bytes,
+        "pdf_bytes": pdf_bytes,
+        "xml_path": xml_path,
+        "pdf_path": pdf_path,
+        "fecha_certificacion": fecha_certificacion,
+        "no_certificado_sat": no_certificado_sat,
+        "rfc_pac": rfc_pac,
+    }
+
+
+def _facturapi_descargar_acuse_cancelacion(invoice_id: str):
+    """Descarga y guarda el acuse de cancelación (XML+PDF) de un CFDI ya
+    aceptado como cancelado por el SAT en Facturapi. Devuelve (xml_path, pdf_path);
+    cualquiera puede salir None si el acuse todavía no está listo (p.ej. SAT
+    sigue verificando) — no es fatal, se puede reintentar después."""
+    import requests
+
+    folder = os.path.join("uploads", "facturas")
+    os.makedirs(folder, exist_ok=True)
+
+    xml_path = None
+    pdf_path = None
+    try:
+        xml_resp = requests.get(
+            f"{_facturapi_base_url()}/invoices/{invoice_id}/cancellation_receipt/xml",
+            headers=_facturapi_headers(), timeout=30,
+        )
+        if xml_resp.ok:
+            xml_path = os.path.join(folder, f"{invoice_id}_acuse_cancelacion.xml").replace("\\", "/")
+            with open(xml_path, "wb") as f:
+                f.write(xml_resp.content)
+    except Exception:
+        pass
+    try:
+        pdf_resp = requests.get(
+            f"{_facturapi_base_url()}/invoices/{invoice_id}/cancellation_receipt/pdf",
+            headers=_facturapi_headers(), timeout=30,
+        )
+        if pdf_resp.ok:
+            pdf_path = os.path.join(folder, f"{invoice_id}_acuse_cancelacion.pdf").replace("\\", "/")
+            with open(pdf_path, "wb") as f:
+                f.write(pdf_resp.content)
+    except Exception:
+        pass
+    return xml_path, pdf_path
+
+
+def _facturapi_verificar_cancelacion(invoice_id: str) -> str:
+    """Vuelve a preguntarle a Facturapi el estatus de cancelación de un CFDI
+    (útil cuando quedó en 'pending'/'verifying' al momento de cancelar,
+    ya que el SAT puede tardar en resolverla)."""
+    import requests
+    resp = requests.get(f"{_facturapi_base_url()}/invoices/{invoice_id}", headers=_facturapi_headers(), timeout=30)
+    if not resp.ok:
+        raise HTTPException(status_code=502, detail=f"No se pudo verificar la cancelación en Facturapi: HTTP {resp.status_code}")
+    return resp.json().get("cancellation_status") or ""
+
+
+def _facturapi_cancelar_cfdi(invoice_id: str, motivo: str, folio_sustitucion: str = None) -> dict:
+    """Cancela un CFDI ya timbrado en Facturapi (DELETE /invoices/{id}) y, si
+    el SAT la acepta de inmediato, descarga el acuse (XML+PDF) en el mismo paso."""
+    import requests
+
+    params = {"motive": motivo}
+    if motivo == "01" and folio_sustitucion:
+        params["substitution"] = folio_sustitucion
+
+    try:
+        resp = requests.delete(
+            f"{_facturapi_base_url()}/invoices/{invoice_id}",
+            params=params,
+            headers=_facturapi_headers(),
+            timeout=30,
+        )
+        data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con Facturapi (cancelación): {e}")
+    if not resp.ok:
+        detalle = data.get('message') or data
+        raise HTTPException(status_code=502, detail=f"Error al cancelar con Facturapi: {detalle}")
+
+    estatus = data.get("cancellation_status") or data.get("status") or ""
+
+    acuse_xml_path = None
+    acuse_pdf_path = None
+    if estatus == "accepted":
+        acuse_xml_path, acuse_pdf_path = _facturapi_descargar_acuse_cancelacion(invoice_id)
+
+    return {"estatus": estatus, "acuse_xml_path": acuse_xml_path, "acuse_pdf_path": acuse_pdf_path}
+
+
+def _facturapi_construir_y_timbrar_cfdi(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
+                                         productos, serie="A", folio=None,
+                                         domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None):
+    """Camino directo sin preview: crea el borrador y lo timbra en la misma
+    llamada. Lo sigue usando /api/facturar y facturas-pago cuando no se
+    generó una prefactura de antemano con /generar-prefactura."""
+    borrador = _facturapi_crear_borrador(
+        nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
+        productos, serie, folio, domicilio_fiscal_receptor, regimen_fiscal_receptor
+    )
+    if not borrador["is_ready_to_stamp"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El borrador se creó en Facturapi (id={borrador['draft_id']}) pero le faltan datos para timbrar. Revísalo en su dashboard."
+        )
+    return _facturapi_timbrar_borrador(borrador["draft_id"])
+
+
+# Switch de proveedor — PAC_PROVIDER=sw (default) | fiscalapi | facturapi
 def _construir_y_timbrar_cfdi(*args, **kwargs):
     proveedor = os.getenv("PAC_PROVIDER", "sw").strip().lower()
     if proveedor == "fiscalapi":
         return _fiscalapi_construir_y_timbrar_cfdi(*args, **kwargs)
+    if proveedor == "facturapi":
+        return _facturapi_construir_y_timbrar_cfdi(*args, **kwargs)
     return _sw_construir_y_timbrar_cfdi(*args, **kwargs)
 
 
@@ -1397,6 +1711,73 @@ def add_cliente(cliente: Cliente):
     cursor.close()
     db.close()
     return {"message": "Cliente registrado exitosamente"}
+
+
+class ClienteFindOrCreateRequest(BaseModel):
+    nombre: str
+    usuario: Optional[str] = None
+    telefono: Optional[str] = None
+    plataforma: Optional[str] = None  # ya mapeado a lo que usa la tabla (ej. "Wanway"/"Tracksolidpro")
+
+
+@app.post("/clientes/find-or-create")
+def find_or_create_cliente(data: ClienteFindOrCreateRequest):
+    """Usado por el bot de WhatsApp: cuando crea un reporte ya consultó al
+    cliente en IOP/Tracksolid (nombre real, usuario/login, teléfono) — en vez
+    de descartar ese dato, lo aprovecha para tener/actualizar el cliente en
+    el CRM sin que nadie tenga que darlo de alta a mano después.
+    Busca primero por usuario, luego por teléfono; si existe, solo rellena lo
+    que le falte (no pisa nombre/correo/etc. ya capturados a mano). Si no
+    existe, crea un cliente nuevo con lo que se tenga (correo/dirección
+    quedan vacíos — eso el bot no lo sabe)."""
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+
+    cliente_id = None
+    if data.usuario:
+        cursor.execute("SELECT cliente_id FROM usuarios_cliente WHERE LOWER(usuario)=LOWER(%s) LIMIT 1", (data.usuario,))
+        row = cursor.fetchone()
+        if row:
+            cliente_id = row["cliente_id"]
+    if not cliente_id and data.telefono:
+        cursor.execute("SELECT cliente_id FROM telefonos_cliente WHERE telefono=%s LIMIT 1", (data.telefono,))
+        row = cursor.fetchone()
+        if row:
+            cliente_id = row["cliente_id"]
+
+    cursor2 = db.cursor()
+    if cliente_id:
+        if data.usuario:
+            cursor.execute("SELECT 1 FROM usuarios_cliente WHERE cliente_id=%s AND LOWER(usuario)=LOWER(%s)", (cliente_id, data.usuario))
+            if not cursor.fetchone():
+                cursor2.execute("INSERT INTO usuarios_cliente (cliente_id, usuario) VALUES (%s, %s)", (cliente_id, data.usuario))
+        if data.telefono:
+            cursor.execute("SELECT 1 FROM telefonos_cliente WHERE cliente_id=%s AND telefono=%s", (cliente_id, data.telefono))
+            if not cursor.fetchone():
+                cursor2.execute("INSERT INTO telefonos_cliente (cliente_id, telefono) VALUES (%s, %s)", (cliente_id, data.telefono))
+        if data.plataforma:
+            cursor.execute("SELECT 1 FROM plataformas_cliente WHERE cliente_id=%s AND plataforma=%s", (cliente_id, data.plataforma))
+            if not cursor.fetchone():
+                cursor2.execute("INSERT INTO plataformas_cliente (cliente_id, plataforma) VALUES (%s, %s)", (cliente_id, data.plataforma))
+        db.commit()
+        cursor2.close(); cursor.close(); db.close()
+        return {"cliente_id": cliente_id, "creado": False}
+
+    cursor.close()
+    cursor2.execute("INSERT INTO clientes (nombre, correo, direccion) VALUES (%s, %s, %s)", (data.nombre, "", ""))
+    nuevo_id = cursor2.lastrowid
+    if data.usuario:
+        cursor2.execute("INSERT INTO usuarios_cliente (cliente_id, usuario) VALUES (%s, %s)", (nuevo_id, data.usuario))
+    if data.telefono:
+        cursor2.execute("INSERT INTO telefonos_cliente (cliente_id, telefono) VALUES (%s, %s)", (nuevo_id, data.telefono))
+    if data.plataforma:
+        cursor2.execute("INSERT INTO plataformas_cliente (cliente_id, plataforma) VALUES (%s, %s)", (nuevo_id, data.plataforma))
+    db.commit()
+    cursor2.close(); db.close()
+    return {"cliente_id": nuevo_id, "creado": True}
+
 
 @app.put("/clientes/{cliente_id}")
 def update_cliente(cliente_id: int, cliente: Cliente):
@@ -2492,6 +2873,49 @@ def get_reportes_servicio_todos():
             rep["vendedor"] = ""
     return reportes
 
+class ReordenarReportesRequest(BaseModel):
+    orden: List[dict]  # [{id: int, orden: int}, ...]
+
+
+@app.put("/reportes-servicio/reordenar")
+def reordenar_reportes_servicio(data: ReordenarReportesRequest):
+    """Guarda el orden manual de la lista de reportes (flechas subir/bajar) —
+    orden_manual bajo, aparece primero. Filas sin valor (nunca reordenadas)
+    conservan su orden original. Registrado ANTES de la ruta con parámetro
+    {reporte_id} — Starlette machea rutas en orden de registro y, sin
+    convertidor de tipo explícito, {reporte_id} acepta cualquier string
+    incluyendo 'reordenar', por lo que si quedara después nunca se alcanzaría."""
+    if not data.orden:
+        raise HTTPException(status_code=400, detail="Se requiere 'orden'")
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE reportes_servicio ADD COLUMN orden_manual INT NULL")
+    except Exception:
+        pass
+
+    pares = [(item.get("id"), item.get("orden")) for item in data.orden
+             if item.get("id") is not None and item.get("orden") is not None]
+    if not pares:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Sin pares id/orden válidos")
+
+    # Un solo UPDATE con CASE en vez de un round-trip por fila — con cientos
+    # de reportes el loop anterior tardaba varios segundos, esto es uno solo.
+    ids = [rid for rid, _ in pares]
+    case_sql = " ".join("WHEN %s THEN %s" for _ in pares)
+    case_params = [v for par in pares for v in par]
+    placeholders = ",".join(["%s"] * len(ids))
+    sql = f"UPDATE reportes_servicio SET orden_manual = CASE id {case_sql} END WHERE id IN ({placeholders})"
+    cursor.execute(sql, (*case_params, *ids))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Orden actualizado", "total": len(pares)}
+
+
 @app.put("/reportes-servicio/{reporte_id}")
 def update_reporte_servicio(reporte_id: int, reporte: dict):
     db = mysql.connector.connect(
@@ -2501,13 +2925,28 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor()
+    for _col_sql in (
+        "ALTER TABLE reportes_servicio ADD COLUMN plataforma_telefono VARCHAR(50) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN plataforma_cuenta VARCHAR(100) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN plataforma_consulta_estatus VARCHAR(20) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN plataforma_consulta_fecha DATETIME NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
     # Lista de columnas válidas según DESCRIBE reportes_servicio
     valid_columns = [
         "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos", "vendedor",
         # nuevas columnas para comprobantes
         "comprobante_path", "comprobante_estado", "aprobado_por", "aprobado_fecha",
         # NUEVO: columnas JSON
-        "imeis_articulos", "sim_series"
+        "imeis_articulos", "sim_series",
+        # Teléfono/cuenta de IOP/Tracksolid, cacheados al vuelo por el bot de
+        # WhatsApp al crear el reporte (ya consulta la plataforma para
+        # nombre_cliente/usuario) — evita que el frontend tenga que volver a
+        # pegarle a IOP/Tracksolid por cada reporte.
+        "plataforma_telefono", "plataforma_cuenta", "plataforma_consulta_estatus"
     ]
 
     vendedor_update = reporte.get("vendedor", None) if isinstance(reporte, dict) else None
@@ -2525,6 +2964,8 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
                     pass
             campos.append(f"{k}=%s")
             valores.append(v)
+            if k == "plataforma_consulta_estatus":
+                campos.append("plataforma_consulta_fecha=NOW()")
 
     if not campos and not incluye_vendedor:
         cursor.close()
@@ -2551,6 +2992,143 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
     cursor.close()
     db.close()
     return {"message": "Reporte actualizado"}
+
+
+def _primer_imei_reporte(r: dict) -> Optional[str]:
+    """Mismo criterio que imeisDeReporte() del frontend: imei suelto primero,
+    si no hay busca en imeis_articulos[].imeis — a diferencia de
+    _identificadores_reporte() esto NO mezcla SIMs, porque aquí se necesita
+    específicamente un IMEI para consultar la plataforma (IOP/Tracksolid)."""
+    imei = (r.get('imei') or '').strip()
+    if imei:
+        return imei
+    ia = r.get('imeis_articulos')
+    if isinstance(ia, (str, bytes)):
+        try:
+            ia = json.loads(ia)
+        except Exception:
+            ia = None
+    if isinstance(ia, list):
+        for grupo in ia:
+            for im in (grupo.get('imeis') or []):
+                if im:
+                    return im.strip()
+    return None
+
+
+def _extraer_telefono_dispositivo(item: dict, plataforma: str) -> str:
+    """IOP y Tracksolid guardan el teléfono en lugares distintos — mismo
+    criterio que extraerTelefonoContacto() del frontend (plataformasService.js):
+    IOP: item.account.contactTel · Tracksolid: item.sim (driverPhone
+    siempre viene vacío en la práctica)."""
+    if not item:
+        return ''
+    if plataforma == 'iop':
+        account = item.get('account') if isinstance(item.get('account'), dict) else {}
+        return account.get('contactTel') or ''
+    if plataforma == 'tracksolid':
+        return item.get('sim') or item.get('driverPhone') or ''
+    return ''
+
+
+def _extraer_cuenta_dispositivo(item: dict, plataforma: str) -> str:
+    """Mismo criterio que extraerCuentaDispositivo() del frontend: IOP trae
+    la cuenta anidada en account.accountName, Tracksolid la trae plana en account."""
+    if not item:
+        return ''
+    if plataforma == 'iop':
+        account = item.get('account') if isinstance(item.get('account'), dict) else {}
+        return account.get('accountName') or ''
+    if plataforma == 'tracksolid':
+        return item.get('account') or ''
+    return ''
+
+
+class ConsultarPlataformaDatosRequest(BaseModel):
+    ids: List[int]
+
+
+@app.post("/reportes-servicio/consultar-plataforma-datos")
+def consultar_plataforma_datos_reportes(data: ConsultarPlataformaDatosRequest):
+    """Teléfono/cuenta del dispositivo en IOP/Tracksolid — no vive en el
+    reporte (solo en la plataforma), así que la PRIMERA vez que se pide un
+    reporte se consulta en vivo y se cachea en su propia fila; de ahí en
+    adelante sale directo de la BD, sin volver a pegarle a IOP/Tracksolid.
+    Se distinguen 4 estatus: 'ok' (encontrado, telefono/cuenta pueden venir
+    vacíos si así vienen del origen), 'vacio' (la plataforma no encontró el
+    dispositivo), 'error' (falló la consulta), 'sin_plataforma'/'sin_imei'
+    (el reporte no trae datos suficientes para intentar)."""
+    if not data.ids:
+        raise HTTPException(status_code=400, detail="Se requiere 'ids'")
+
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    for _col_sql in (
+        "ALTER TABLE reportes_servicio ADD COLUMN plataforma_telefono VARCHAR(50) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN plataforma_cuenta VARCHAR(100) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN plataforma_consulta_estatus VARCHAR(20) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN plataforma_consulta_fecha DATETIME NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+
+    placeholders = ','.join(['%s'] * len(data.ids))
+    cursor.execute(
+        f"SELECT id, imei, imeis_articulos, plataforma, plataforma_telefono, plataforma_cuenta, "
+        f"plataforma_consulta_estatus FROM reportes_servicio WHERE id IN ({placeholders})",
+        tuple(data.ids)
+    )
+    reportes = cursor.fetchall()
+    cursor.close()
+
+    resultados = []
+    for r in reportes:
+        if r.get('plataforma_consulta_estatus'):
+            resultados.append({
+                "id": r['id'], "telefono": r.get('plataforma_telefono') or '',
+                "cuenta": r.get('plataforma_cuenta') or '', "estatus": r['plataforma_consulta_estatus'],
+            })
+            continue
+
+        plataforma = (r.get('plataforma') or '').strip().lower()
+        if plataforma not in ('iop', 'tracksolid'):
+            estatus, telefono, cuenta = 'sin_plataforma', '', ''
+        else:
+            imei = _primer_imei_reporte(r)
+            if not imei:
+                estatus, telefono, cuenta = 'sin_imei', '', ''
+            else:
+                try:
+                    if plataforma == 'iop':
+                        devices = _get_iop_client().search_devices(imei)
+                    else:
+                        devices = _get_tracksolid_client().search_devices(imei)
+                except Exception:
+                    devices = None
+                if devices is None:
+                    estatus, telefono, cuenta = 'error', '', ''
+                elif not devices:
+                    estatus, telefono, cuenta = 'vacio', '', ''
+                else:
+                    telefono = _extraer_telefono_dispositivo(devices[0], plataforma)
+                    cuenta = _extraer_cuenta_dispositivo(devices[0], plataforma)
+                    estatus = 'ok'
+
+        cur2 = db.cursor()
+        cur2.execute(
+            "UPDATE reportes_servicio SET plataforma_telefono=%s, plataforma_cuenta=%s, "
+            "plataforma_consulta_estatus=%s, plataforma_consulta_fecha=NOW() WHERE id=%s",
+            (telefono or None, cuenta or None, estatus, r['id'])
+        )
+        cur2.close()
+        resultados.append({"id": r['id'], "telefono": telefono, "cuenta": cuenta, "estatus": estatus})
+
+    db.commit()
+    db.close()
+    return {"resultados": resultados}
+
 
 @app.delete("/reportes-servicio/{reporte_id}")
 def delete_reporte_servicio(reporte_id: int):
@@ -5456,6 +6034,54 @@ def get_factura_pago(factura_id: int):
         raise HTTPException(status_code=404, detail="Factura no encontrada")
     return row
 
+def _fusionar_comprobantes_de_reportes(factura_id: int, reporte_ids: list, comprobantes_actuales: list) -> list:
+    """Copia (no mueve) el comprobante de cada reporte_servicio ligado hacia
+    la carpeta de comprobantes de la factura y lo agrega a su lista —
+    queda realmente disponible/editable ahí (se ve, se puede abrir/borrar,
+    cuenta como comprobante de la factura), no solo referenciado. No marca
+    la factura como pagada; eso sigue siendo criterio humano."""
+    if not reporte_ids:
+        return comprobantes_actuales
+
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    placeholders = ','.join(['%s'] * len(reporte_ids))
+    cursor.execute(
+        f"SELECT id, folio, comprobante_path FROM reportes_servicio "
+        f"WHERE id IN ({placeholders}) AND comprobante_path IS NOT NULL AND comprobante_path<>''",
+        tuple(reporte_ids)
+    )
+    reps = cursor.fetchall()
+    cursor.close()
+    db.close()
+    if not reps:
+        return comprobantes_actuales
+
+    import shutil
+    nuevos = list(comprobantes_actuales)
+    nombres_existentes = {os.path.basename(p) for p in nuevos}
+    base_dir = os.path.join("uploads", "pagos", "facturas", str(factura_id))
+    os.makedirs(base_dir, exist_ok=True)
+
+    for rep in reps:
+        origen = rep["comprobante_path"]
+        if not origen or not os.path.exists(origen):
+            continue
+        folio_safe = ''.join(c for c in (rep.get("folio") or f"reporte_{rep['id']}") if c.isalnum() or c in ('-', '_'))
+        nombre_destino = f"{folio_safe}_{os.path.basename(origen)}"
+        if nombre_destino in nombres_existentes:
+            continue
+        destino = os.path.join(base_dir, nombre_destino)
+        try:
+            shutil.copyfile(origen, destino)
+        except Exception:
+            continue
+        nuevos.append(destino.replace("\\", "/"))
+        nombres_existentes.add(nombre_destino)
+
+    return nuevos
+
+
 @app.post("/facturas-pago")
 def crear_factura_pago(data: FacturaPagoCreate):
     db = mysql.connector.connect(
@@ -5490,9 +6116,175 @@ def crear_factura_pago(data: FacturaPagoCreate):
     )
     db.commit()
     new_id = cursor.lastrowid
+
+    if data.reporte_ids:
+        comprobantes = _fusionar_comprobantes_de_reportes(new_id, data.reporte_ids, [])
+        if comprobantes:
+            cursor.execute("UPDATE facturas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(comprobantes), new_id))
+            db.commit()
     cursor.close()
     db.close()
-    return {"message": "Factura creada exitosamente", "id": new_id}
+    return {"message": "Prefactura creada exitosamente", "id": new_id}
+
+
+def _identificadores_reporte(r: dict) -> list:
+    """IMEIs/SIMs de un reporte_servicio, en el mismo orden en que se capturaron
+    (imei/sim_serie primero, luego lo agrupado en imeis_articulos/sim_series),
+    sin duplicados. Mismo criterio de extracción que ya usa eliminar_reporte_servicio."""
+    vistos = set()
+    identificadores = []
+
+    def agregar(v):
+        vv = (v or '').strip()
+        if vv and vv not in vistos:
+            vistos.add(vv)
+            identificadores.append(vv)
+
+    agregar(r.get('imei'))
+    agregar(r.get('sim_serie'))
+
+    ia = r.get('imeis_articulos')
+    if isinstance(ia, (str, bytes)):
+        try:
+            ia = json.loads(ia)
+        except Exception:
+            ia = None
+    if isinstance(ia, list):
+        for li in ia:
+            try:
+                for im in (li.get('imeis') or []):
+                    agregar(im)
+                for s in (li.get('sims') or []):
+                    agregar(s)
+            except Exception:
+                continue
+
+    ss = r.get('sim_series')
+    if isinstance(ss, (str, bytes)):
+        try:
+            ss = json.loads(ss)
+        except Exception:
+            ss = None
+    if isinstance(ss, list):
+        for s in ss:
+            agregar(s)
+
+    return identificadores
+
+
+def _producto_desde_reporte(r: dict) -> "Producto":
+    """Arma un concepto de factura a partir de un reporte_servicio, agrupando
+    todos sus IMEIs/SIMs en una sola línea (Cantidad = # de identificadores,
+    ValorUnitario = total base repartido entre ellos) — mismo formato que las
+    facturas de renovación reales (ej. 'RENOVACION 1AÑO - imei1 imei2 imei3')."""
+    tipo = (r.get('tipo_servicio') or '').strip()
+    total_base = round(float(r.get('total') or 0) / 1.16, 2)
+    identificadores = _identificadores_reporte(r)
+
+    es_renovacion_o_migracion = 'renovacion' in tipo.lower() or 'migracion' in tipo.lower()
+    clave_prod_serv = "81112501" if es_renovacion_o_migracion else "81112100"
+
+    if identificadores:
+        cantidad = len(identificadores)
+        valor_unitario = round(total_base / cantidad, 2)
+        descripcion = f"{tipo.upper()} - {' '.join(identificadores)}" if tipo else ' '.join(identificadores)
+    else:
+        cantidad = 1
+        valor_unitario = total_base
+        descripcion = tipo or f"Servicio {r.get('folio') or r.get('id')}"
+
+    return Producto(
+        ClaveProdServ=clave_prod_serv,
+        ClaveUnidad="E48",
+        Unidad="Servicio",
+        Descripcion=descripcion,
+        ValorUnitario=valor_unitario,
+        Importe=round(valor_unitario * cantidad, 2),
+        Cantidad=cantidad
+    )
+
+
+def _productos_de_factura(factura: dict) -> list:
+    """Arma la lista de Producto de una factura_pago, ya sea desde sus
+    reportes_servicio ligados o desde productos_manual — mismo criterio que
+    usaba timbrar_factura_pago() inline, ahora compartido con
+    generar_prefactura_factura_pago()."""
+    reporte_ids = factura.get('reporte_ids')
+    if isinstance(reporte_ids, str):
+        try:
+            reporte_ids = json.loads(reporte_ids)
+        except Exception:
+            reporte_ids = []
+    reporte_ids = reporte_ids or []
+
+    productos_manual = factura.get('productos_manual')
+    if isinstance(productos_manual, str):
+        try:
+            productos_manual = json.loads(productos_manual)
+        except Exception:
+            productos_manual = None
+    productos_manual = productos_manual or []
+
+    if not reporte_ids and not productos_manual:
+        raise HTTPException(status_code=400, detail="La factura no tiene reportes de servicio ni productos asociados")
+
+    if reporte_ids:
+        db = _get_db()
+        cursor = db.cursor(dictionary=True)
+        placeholders = ','.join(['%s'] * len(reporte_ids))
+        cursor.execute(
+            f"SELECT id, tipo_servicio, total, folio, imei, sim_serie, imeis_articulos, sim_series "
+            f"FROM reportes_servicio WHERE id IN ({placeholders})",
+            tuple(reporte_ids)
+        )
+        reportes = cursor.fetchall()
+        cursor.close()
+        db.close()
+        if not reportes:
+            raise HTTPException(status_code=400, detail="No se encontraron los reportes de servicio asociados a esta factura")
+        # r['total'] ya incluye IVA (16%); el PAC vuelve a calcular el IVA sobre
+        # el importe que le mandemos, así que aquí se manda la base sin IVA.
+        return [_producto_desde_reporte(r) for r in reportes]
+
+    return [
+        Producto(
+            ClaveProdServ=p.get('ClaveProdServ') or "81112100",
+            ClaveUnidad=p.get('ClaveUnidad') or "E48",
+            Unidad=p.get('Unidad') or "Servicio",
+            Descripcion=p.get('Descripcion') or "Servicio",
+            ValorUnitario=round(float(p.get('ValorUnitario') or 0), 2),
+            Importe=round(float(p.get('ValorUnitario') or 0) * float(p.get('Cantidad') or 1), 2),
+            Cantidad=float(p.get('Cantidad') or 1)
+        ) for p in productos_manual
+    ]
+
+
+def _resolver_domicilio_regimen_receptor(factura: dict, domicilio_fiscal_receptor, regimen_fiscal_receptor, rfc_cliente):
+    """Si el frontend no mandó domicilio/régimen del receptor, NUNCA se debe
+    caer al domicilio/régimen del EMISOR (eso produciría un CFDI con los
+    datos fiscales de la propia empresa en el campo del cliente). En vez de
+    eso, se busca al cliente por nombre y se usan sus datos reales; si
+    tampoco existen ahí, se rechaza — mejor bloquear que timbrar mal."""
+    domicilio_receptor = domicilio_fiscal_receptor
+    regimen_receptor = regimen_fiscal_receptor
+    if (not domicilio_receptor or not regimen_receptor) and rfc_cliente != RFC_PUBLICO_GENERAL:
+        db2 = _get_db()
+        cur2 = db2.cursor(dictionary=True)
+        cur2.execute(
+            "SELECT codigo_postal, regimen_fiscal FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1",
+            (factura['cliente'],)
+        )
+        cliente_row = cur2.fetchone()
+        cur2.close()
+        db2.close()
+        domicilio_receptor = domicilio_receptor or (cliente_row or {}).get('codigo_postal')
+        regimen_receptor = regimen_receptor or (cliente_row or {}).get('regimen_fiscal')
+        if not domicilio_receptor or not regimen_receptor:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Faltan datos fiscales del cliente '{factura['cliente']}' (código postal y/o régimen fiscal). Complétalos antes de continuar."
+            )
+    return domicilio_receptor, regimen_receptor
 
 
 class TimbrarFacturaPagoRequest(BaseModel):
@@ -5502,6 +6294,108 @@ class TimbrarFacturaPagoRequest(BaseModel):
     metodo_pago: str
     domicilio_fiscal_receptor: Optional[str] = None
     regimen_fiscal_receptor: Optional[str] = None
+
+
+@app.post("/facturas-pago/{factura_id}/generar-prefactura")
+def generar_prefactura_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, current=Depends(get_current_user)):
+    """Crea el borrador en el PAC para poder previsualizar el PDF antes de
+    timbrar. Solo disponible con Facturapi — SW/FiscalAPI no
+    tienen modo borrador; ahí el PDF solo existe después de timbrar."""
+    proveedor = os.getenv("PAC_PROVIDER", "sw").strip().lower()
+    if proveedor != "facturapi":
+        raise HTTPException(
+            status_code=400,
+            detail="La vista previa de PDF antes de timbrar solo está disponible con Facturapi (PAC_PROVIDER=facturapi)"
+        )
+
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    for _col_sql in (
+        "ALTER TABLE facturas_pago ADD COLUMN facturapi_draft_id VARCHAR(50) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN domicilio_fiscal_receptor VARCHAR(10) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN rfc_cliente VARCHAR(20) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN uso_cfdi VARCHAR(5) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN forma_pago VARCHAR(5) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN metodo_pago VARCHAR(5) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN regimen_fiscal_receptor VARCHAR(3) NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+
+    cursor.execute("SELECT * FROM facturas_pago WHERE id=%s", (factura_id,))
+    factura = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not factura:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.get('status') != 'Pendiente timbre':
+        raise HTTPException(status_code=400, detail="Solo se puede generar la prefactura de una factura en estatus 'Pendiente timbre'")
+
+    productos = _productos_de_factura(factura)
+    domicilio_receptor, regimen_receptor = _resolver_domicilio_regimen_receptor(
+        factura, data.domicilio_fiscal_receptor, data.regimen_fiscal_receptor, data.rfc_cliente
+    )
+
+    borrador = _facturapi_crear_borrador(
+        nombre_cliente=factura['cliente'],
+        rfc_cliente=data.rfc_cliente,
+        uso_cfdi=data.uso_cfdi,
+        metodo_pago=data.metodo_pago,
+        forma_pago=data.forma_pago,
+        productos=productos,
+        serie="F",
+        folio=str(factura_id),
+        domicilio_fiscal_receptor=domicilio_receptor,
+        regimen_fiscal_receptor=regimen_receptor,
+    )
+
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        """UPDATE facturas_pago
+           SET facturapi_draft_id=%s, rfc_cliente=%s, uso_cfdi=%s, forma_pago=%s, metodo_pago=%s,
+               domicilio_fiscal_receptor=%s, regimen_fiscal_receptor=%s
+           WHERE id=%s""",
+        (borrador['draft_id'], data.rfc_cliente, borrador['uso_cfdi'], data.forma_pago, data.metodo_pago,
+         domicilio_receptor, regimen_receptor, factura_id)
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return {
+        "message": "Prefactura generada",
+        "id": factura_id,
+        "draft_id": borrador['draft_id'],
+        "is_ready_to_stamp": borrador['is_ready_to_stamp'],
+    }
+
+
+@app.get("/facturas-pago/{factura_id}/prefactura-pdf")
+def prefactura_pdf_factura_pago(factura_id: int):
+    """PDF del borrador generado con /generar-prefactura, sin timbrar todavía."""
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT facturapi_draft_id FROM facturas_pago WHERE id=%s", (factura_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if not row.get('facturapi_draft_id'):
+        raise HTTPException(status_code=400, detail="Todavía no se ha generado la prefactura. Usa 'Generar prefactura' primero.")
+
+    pdf_bytes = _facturapi_obtener_pdf_borrador(row['facturapi_draft_id'])
+    from fastapi.responses import Response
+    return Response(content=pdf_bytes, media_type="application/pdf")
 
 
 @app.post("/facturas-pago/{factura_id}/timbrar")
@@ -5527,6 +6421,7 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
         "ALTER TABLE facturas_pago ADD COLUMN regimen_fiscal_receptor VARCHAR(3) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN timbrado_por VARCHAR(100) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN timbrado_fecha DATETIME NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN facturapi_draft_id VARCHAR(50) NULL",
     ):
         try:
             cursor.execute(_col_sql)
@@ -5535,132 +6430,70 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
 
     cursor.execute("SELECT * FROM facturas_pago WHERE id=%s", (factura_id,))
     factura = cursor.fetchone()
+    cursor.close()
+    db.close()
     if not factura:
-        cursor.close()
-        db.close()
         raise HTTPException(status_code=404, detail="Factura no encontrada")
     if factura.get('status') == 'Timbrado':
-        cursor.close()
-        db.close()
         raise HTTPException(status_code=400, detail="La factura ya está timbrada")
     if factura.get('status') == 'Timbrando':
-        cursor.close()
-        db.close()
         raise HTTPException(status_code=409, detail="Esta factura ya se está timbrando (otra solicitud en curso). Espera unos segundos y refresca.")
 
-    reporte_ids = factura.get('reporte_ids')
-    if isinstance(reporte_ids, str):
-        try:
-            reporte_ids = json.loads(reporte_ids)
-        except Exception:
-            reporte_ids = []
-    reporte_ids = reporte_ids or []
+    proveedor = os.getenv("PAC_PROVIDER", "sw").strip().lower()
+    draft_id = factura.get('facturapi_draft_id') if proveedor == 'facturapi' else None
 
-    productos_manual = factura.get('productos_manual')
-    if isinstance(productos_manual, str):
-        try:
-            productos_manual = json.loads(productos_manual)
-        except Exception:
-            productos_manual = None
-    productos_manual = productos_manual or []
-
-    if not reporte_ids and not productos_manual:
-        cursor.close()
-        db.close()
-        raise HTTPException(status_code=400, detail="La factura no tiene reportes de servicio ni productos asociados")
-
-    reportes = []
-    if reporte_ids:
-        placeholders = ','.join(['%s'] * len(reporte_ids))
-        cursor.execute(f"SELECT id, tipo_servicio, total, folio FROM reportes_servicio WHERE id IN ({placeholders})", tuple(reporte_ids))
-        reportes = cursor.fetchall()
-
-        if not reportes:
-            cursor.close()
-            db.close()
-            raise HTTPException(status_code=400, detail="No se encontraron los reportes de servicio asociados a esta factura")
+    if not draft_id:
+        # Sin prefactura previa (SW/FiscalAPI, o Facturapi al que se le saltó
+        # el paso de /generar-prefactura): arma los productos y valida el
+        # domicilio/régimen del receptor antes de reservar el folio.
+        productos = _productos_de_factura(factura)
+        domicilio_receptor, regimen_receptor = _resolver_domicilio_regimen_receptor(
+            factura, data.domicilio_fiscal_receptor, data.regimen_fiscal_receptor, data.rfc_cliente
+        )
+    else:
+        # Ya se generó el borrador con /generar-prefactura — se timbra el
+        # mismo borrador que el usuario ya vio en el PDF de vista previa,
+        # con los mismos datos fiscales que se guardaron en ese momento.
+        productos = None
+        domicilio_receptor = factura.get('domicilio_fiscal_receptor')
+        regimen_receptor = factura.get('regimen_fiscal_receptor')
 
     # Reserva la factura antes de llamar al PAC: si dos solicitudes llegan casi
     # simultáneas (doble-click, reintento automático), la segunda ve status
     # 'Timbrando' y se rechaza en vez de generar dos CFDIs para el mismo folio.
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
     cursor.execute("UPDATE facturas_pago SET status='Timbrando' WHERE id=%s AND status='Pendiente timbre'", (factura_id,))
     db.commit()
-    if cursor.rowcount != 1:
-        cursor.close()
-        db.close()
-        raise HTTPException(status_code=409, detail="Esta factura ya se está timbrando o cambió de estatus. Refresca e intenta de nuevo.")
+    reservada = cursor.rowcount == 1
     cursor.close()
     db.close()
+    if not reservada:
+        raise HTTPException(status_code=409, detail="Esta factura ya se está timbrando o cambió de estatus. Refresca e intenta de nuevo.")
 
-    if reportes:
-        # r['total'] ya incluye IVA (16%); SW vuelve a calcular el IVA sobre el
-        # importe que le mandemos, así que aquí se manda la base sin IVA.
-        productos = [
-            Producto(
-                ClaveProdServ="81112100",
-                ClaveUnidad="E48",
-                Unidad="Servicio",
-                Descripcion=r.get('tipo_servicio') or f"Servicio {r.get('folio') or r['id']}",
-                ValorUnitario=round(float(r.get('total') or 0) / 1.16, 2),
-                Importe=round(float(r.get('total') or 0) / 1.16, 2),
-                Cantidad=1
-            ) for r in reportes
-        ]
-    else:
-        # Factura manual sin reportes de servicio: los productos vienen
-        # capturados a mano al crear la factura (ya sin IVA, base = ValorUnitario).
-        productos = [
-            Producto(
-                ClaveProdServ=p.get('ClaveProdServ') or "81112100",
-                ClaveUnidad=p.get('ClaveUnidad') or "E48",
-                Unidad=p.get('Unidad') or "Servicio",
-                Descripcion=p.get('Descripcion') or "Servicio",
-                ValorUnitario=round(float(p.get('ValorUnitario') or 0), 2),
-                Importe=round(float(p.get('ValorUnitario') or 0) * float(p.get('Cantidad') or 1), 2),
-                Cantidad=float(p.get('Cantidad') or 1)
-            ) for p in productos_manual
-        ]
+    rfc_cliente_final = factura.get('rfc_cliente') if draft_id else data.rfc_cliente
+    uso_cfdi_final = factura.get('uso_cfdi') if draft_id else data.uso_cfdi
+    forma_pago_final = factura.get('forma_pago') if draft_id else data.forma_pago
+    metodo_pago_final = factura.get('metodo_pago') if draft_id else data.metodo_pago
 
     try:
-        # Si el frontend no mandó domicilio/régimen del receptor, NUNCA se debe
-        # caer al domicilio/régimen del EMISOR (eso produciría un CFDI con los
-        # datos fiscales de la propia empresa en el campo del cliente). En vez
-        # de eso, se busca al cliente por nombre y se usan sus datos reales; si
-        # tampoco existen ahí, se rechaza — mejor bloquear que timbrar mal.
-        domicilio_receptor = data.domicilio_fiscal_receptor
-        regimen_receptor = data.regimen_fiscal_receptor
-        if (not domicilio_receptor or not regimen_receptor) and data.rfc_cliente != RFC_PUBLICO_GENERAL:
-            db2 = mysql.connector.connect(
-                host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+        if draft_id:
+            resultado = _facturapi_timbrar_borrador(draft_id)
+        else:
+            resultado = _construir_y_timbrar_cfdi(
+                nombre_cliente=factura['cliente'],
+                rfc_cliente=data.rfc_cliente,
+                uso_cfdi=data.uso_cfdi,
+                metodo_pago=data.metodo_pago,
+                forma_pago=data.forma_pago,
+                productos=productos,
+                serie="F",
+                folio=str(factura_id),
+                domicilio_fiscal_receptor=domicilio_receptor,
+                regimen_fiscal_receptor=regimen_receptor,
             )
-            cur2 = db2.cursor(dictionary=True)
-            cur2.execute(
-                "SELECT codigo_postal, regimen_fiscal FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1",
-                (factura['cliente'],)
-            )
-            cliente_row = cur2.fetchone()
-            cur2.close()
-            db2.close()
-            domicilio_receptor = domicilio_receptor or (cliente_row or {}).get('codigo_postal')
-            regimen_receptor = regimen_receptor or (cliente_row or {}).get('regimen_fiscal')
-            if not domicilio_receptor or not regimen_receptor:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Faltan datos fiscales del cliente '{factura['cliente']}' (código postal y/o régimen fiscal). Complétalos antes de timbrar."
-                )
-
-        resultado = _construir_y_timbrar_cfdi(
-            nombre_cliente=factura['cliente'],
-            rfc_cliente=data.rfc_cliente,
-            uso_cfdi=data.uso_cfdi,
-            metodo_pago=data.metodo_pago,
-            forma_pago=data.forma_pago,
-            productos=productos,
-            serie="F",
-            folio=str(factura_id),
-            domicilio_fiscal_receptor=domicilio_receptor,
-            regimen_fiscal_receptor=regimen_receptor,
-        )
     except Exception:
         # El PAC falló o faltaron datos: liberar la reserva 'Timbrando' para
         # que la factura vuelva a quedar disponible y se pueda reintentar.
@@ -5688,7 +6521,7 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
                cfdi_fecha_certificacion=%s, cfdi_no_certificado_sat=%s, cfdi_rfc_pac=%s,
                regimen_fiscal_receptor=%s, timbrado_por=%s, timbrado_fecha=NOW()
            WHERE id=%s""",
-        (data.rfc_cliente, data.uso_cfdi, data.forma_pago, data.metodo_pago,
+        (rfc_cliente_final, uso_cfdi_final, forma_pago_final, metodo_pago_final,
          resultado['uuid'], resultado['xml_path'], resultado['pdf_path'],
          resultado['fecha_certificacion'], resultado['no_certificado_sat'], resultado['rfc_pac'],
          regimen_receptor, current.get('username'), factura_id)
@@ -5714,7 +6547,7 @@ class CancelarFacturaPagoRequest(BaseModel):
 
 @app.post("/facturas-pago/{factura_id}/cancelar")
 def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, current=Depends(get_current_user)):
-    """Cancela un CFDI ya timbrado ante el SAT vía SW Sapien (método CSD, certificado en su cuenta)."""
+    """Cancela un CFDI ya timbrado ante el SAT. Usa el proveedor configurado en PAC_PROVIDER (sw | facturapi)."""
     if data.motivo not in ("01", "02", "03", "04"):
         raise HTTPException(status_code=400, detail="Motivo inválido. Valores: 01, 02, 03, 04")
     if data.motivo == "01" and not data.folio_sustitucion:
@@ -5736,16 +6569,19 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
 
     for _col_sql in (
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_motivo VARCHAR(2) NULL",
-        "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_estatus VARCHAR(10) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_estatus VARCHAR(20) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN cfdi_cancelacion_fecha DATETIME NULL",
         "ALTER TABLE facturas_pago ADD COLUMN cancelado_por VARCHAR(100) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_acuse_cancelacion_xml_path VARCHAR(500) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN cfdi_acuse_cancelacion_pdf_path VARCHAR(500) NULL",
+        "ALTER TABLE facturas_pago MODIFY COLUMN cfdi_cancelacion_estatus VARCHAR(20) NULL",
     ):
         try:
             cursor.execute(_col_sql)
         except Exception:
             pass
 
-    cursor.execute("SELECT id, status, cfdi_uuid FROM facturas_pago WHERE id=%s", (factura_id,))
+    cursor.execute("SELECT id, status, cfdi_uuid, facturapi_draft_id FROM facturas_pago WHERE id=%s", (factura_id,))
     factura = cursor.fetchone()
     if not factura:
         cursor.close(); db.close()
@@ -5759,37 +6595,15 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
     cursor.close()
     db.close()
 
-    RFC = os.getenv("CSD_RFC", "RAQÑ7701212M3")
-    PAC_USER = os.getenv("PAC_USER")
-    PAC_PASS = os.getenv("PAC_PASS")
-    PAC_ENV = os.getenv("PAC_ENV", "TEST")
-    sw_base = _sw_base_url(PAC_ENV)
-
-    if not (PAC_USER and PAC_PASS):
-        raise HTTPException(status_code=500, detail="PAC no configurado (PAC_USER/PAC_PASS)")
-
-    token = _sw_authenticate(sw_base, PAC_USER, PAC_PASS)
-
-    uuid_ = factura["cfdi_uuid"]
-    cancel_url = f"{sw_base}/cfdi33/cancel/{RFC}/{uuid_}/{data.motivo}"
-    if data.motivo == "01":
-        cancel_url += f"/{data.folio_sustitucion}"
-
-    import requests
-    try:
-        cancel_resp = requests.post(
-            cancel_url,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=30,
-        )
-        cancel_data = cancel_resp.json()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error conectando con SW (cancelación): {e}")
-    if cancel_data.get("status") != "success":
-        raise HTTPException(status_code=502, detail=f"Error al cancelar con SW: {cancel_data.get('message') or cancel_data.get('messageDetail') or cancel_data}")
-
-    estatus_uuid = (cancel_data.get("data", {}).get("uuid", {}) or {}).get(uuid_.upper()) \
-        or (cancel_data.get("data", {}).get("uuid", {}) or {}).get(uuid_)
+    proveedor = os.getenv("PAC_PROVIDER", "sw").strip().lower()
+    if proveedor == "facturapi":
+        if not factura.get("facturapi_draft_id"):
+            raise HTTPException(status_code=400, detail="La factura no tiene id de Facturapi; no se puede cancelar por esta vía")
+        resultado_cancel = _facturapi_cancelar_cfdi(factura["facturapi_draft_id"], data.motivo, data.folio_sustitucion)
+    elif proveedor == "fiscalapi":
+        raise HTTPException(status_code=501, detail="Cancelación no implementada para FiscalAPI")
+    else:
+        resultado_cancel = _sw_cancelar_cfdi(factura["cfdi_uuid"], data.motivo, data.folio_sustitucion)
 
     db = mysql.connector.connect(
         host="localhost",
@@ -5801,9 +6615,10 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
     cursor.execute(
         """UPDATE facturas_pago
            SET status='Cancelado', cfdi_cancelacion_motivo=%s, cfdi_cancelacion_estatus=%s, cfdi_cancelacion_fecha=NOW(),
-               cancelado_por=%s
+               cancelado_por=%s, cfdi_acuse_cancelacion_xml_path=%s, cfdi_acuse_cancelacion_pdf_path=%s
            WHERE id=%s""",
-        (data.motivo, estatus_uuid, user.get('username'), factura_id)
+        (data.motivo, resultado_cancel["estatus"], user.get('username'),
+         resultado_cancel["acuse_xml_path"], resultado_cancel["acuse_pdf_path"], factura_id)
     )
     db.commit()
     cursor.close()
@@ -5813,8 +6628,66 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
         "message": "Factura cancelada correctamente",
         "id": factura_id,
         "status": "Cancelado",
-        "estatus_uuid": estatus_uuid,
+        "estatus": resultado_cancel["estatus"],
+        "acuse_xml_path": resultado_cancel["acuse_xml_path"],
+        "acuse_pdf_path": resultado_cancel["acuse_pdf_path"],
     }
+
+
+@app.post("/facturas-pago/{factura_id}/verificar-cancelacion")
+def verificar_cancelacion_factura(factura_id: int, current=Depends(get_current_user)):
+    """Vuelve a consultar al PAC el estatus de una cancelación (útil cuando
+    quedó en 'pending'/'verifying' al cancelar) y descarga el acuse en
+    cuanto el SAT la acepte."""
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, status, facturapi_draft_id, cfdi_acuse_cancelacion_xml_path, cfdi_acuse_cancelacion_pdf_path "
+        "FROM facturas_pago WHERE id=%s", (factura_id,)
+    )
+    factura = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not factura:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.get("status") != "Cancelado":
+        raise HTTPException(status_code=400, detail="Solo aplica a facturas canceladas")
+
+    proveedor = os.getenv("PAC_PROVIDER", "sw").strip().lower()
+    if proveedor != "facturapi":
+        return {
+            "message": "Verificación en vivo solo disponible para Facturapi.",
+            "estatus": None,
+            "acuse_xml_path": factura.get("cfdi_acuse_cancelacion_xml_path"),
+            "acuse_pdf_path": factura.get("cfdi_acuse_cancelacion_pdf_path"),
+        }
+    if not factura.get("facturapi_draft_id"):
+        raise HTTPException(status_code=400, detail="La factura no tiene id de Facturapi")
+
+    estatus = _facturapi_verificar_cancelacion(factura["facturapi_draft_id"])
+
+    xml_path = factura.get("cfdi_acuse_cancelacion_xml_path")
+    pdf_path = factura.get("cfdi_acuse_cancelacion_pdf_path")
+    if estatus == "accepted" and not (xml_path and pdf_path):
+        nuevo_xml, nuevo_pdf = _facturapi_descargar_acuse_cancelacion(factura["facturapi_draft_id"])
+        xml_path = nuevo_xml or xml_path
+        pdf_path = nuevo_pdf or pdf_path
+
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute(
+        "UPDATE facturas_pago SET cfdi_cancelacion_estatus=%s, cfdi_acuse_cancelacion_xml_path=%s, cfdi_acuse_cancelacion_pdf_path=%s WHERE id=%s",
+        (estatus, xml_path, pdf_path, factura_id)
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return {"message": "Estatus actualizado", "estatus": estatus, "acuse_xml_path": xml_path, "acuse_pdf_path": pdf_path}
 
 
 class EnviarCfdiFacturaRequest(BaseModel):
@@ -6063,6 +6936,114 @@ def eliminar_factura_pago(factura_id: int):
     db.close()
     return {"message": "Factura eliminada"}
 
+@app.post("/facturas-pago/sincronizar-comprobantes")
+def sincronizar_comprobantes_todas():
+    """Corre /sincronizar-comprobantes sobre todas las prefacturas (status
+    'Pendiente timbre') de una sola vez — para ponerse al día con las que ya
+    existían antes de que la fusión automática se activara. Timbrado/Cancelado
+    quedan fuera: ya están cerradas, no tiene caso tocarlas."""
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, reporte_ids, comprobantes FROM facturas_pago WHERE status='Pendiente timbre'")
+    facturas = cursor.fetchall()
+    cursor.close()
+    db.close()
+
+    facturas_actualizadas = 0
+    comprobantes_agregados = 0
+
+    for factura in facturas:
+        reporte_ids = factura.get('reporte_ids')
+        if isinstance(reporte_ids, str):
+            try:
+                reporte_ids = json.loads(reporte_ids)
+            except Exception:
+                reporte_ids = []
+        reporte_ids = reporte_ids or []
+        if not reporte_ids:
+            continue
+
+        comprobantes_actuales = factura.get('comprobantes')
+        if isinstance(comprobantes_actuales, str):
+            try:
+                comprobantes_actuales = json.loads(comprobantes_actuales)
+            except Exception:
+                comprobantes_actuales = []
+        comprobantes_actuales = comprobantes_actuales or []
+
+        comprobantes = _fusionar_comprobantes_de_reportes(factura['id'], reporte_ids, comprobantes_actuales)
+        agregados = len(comprobantes) - len(comprobantes_actuales)
+        if agregados > 0:
+            db2 = mysql.connector.connect(
+                host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+            )
+            cur2 = db2.cursor()
+            cur2.execute("UPDATE facturas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(comprobantes), factura['id']))
+            db2.commit()
+            cur2.close()
+            db2.close()
+            facturas_actualizadas += 1
+            comprobantes_agregados += agregados
+
+    return {
+        "message": "Sincronización masiva completada",
+        "facturas_revisadas": len(facturas),
+        "facturas_actualizadas": facturas_actualizadas,
+        "comprobantes_agregados": comprobantes_agregados,
+    }
+
+
+@app.post("/facturas-pago/{factura_id}/sincronizar-comprobantes")
+def sincronizar_comprobantes_factura(factura_id: int):
+    """Copia a la factura los comprobantes de sus reportes de servicio
+    ligados que todavía no se habían fusionado (facturas creadas antes de
+    que esto existiera, o reportes a los que se les subió el comprobante
+    después de ligarlos). Idempotente — no duplica lo que ya está."""
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, reporte_ids, comprobantes FROM facturas_pago WHERE id=%s", (factura_id,))
+    factura = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not factura:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+
+    reporte_ids = factura.get('reporte_ids')
+    if isinstance(reporte_ids, str):
+        try:
+            reporte_ids = json.loads(reporte_ids)
+        except Exception:
+            reporte_ids = []
+    reporte_ids = reporte_ids or []
+
+    comprobantes_actuales = factura.get('comprobantes')
+    if isinstance(comprobantes_actuales, str):
+        try:
+            comprobantes_actuales = json.loads(comprobantes_actuales)
+        except Exception:
+            comprobantes_actuales = []
+    comprobantes_actuales = comprobantes_actuales or []
+
+    comprobantes = _fusionar_comprobantes_de_reportes(factura_id, reporte_ids, comprobantes_actuales)
+    agregados = len(comprobantes) - len(comprobantes_actuales)
+
+    if agregados > 0:
+        db = mysql.connector.connect(
+            host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+        )
+        cursor = db.cursor()
+        cursor.execute("UPDATE facturas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(comprobantes), factura_id))
+        db.commit()
+        cursor.close()
+        db.close()
+
+    return {"message": "Sincronizado", "agregados": agregados, "comprobantes": comprobantes}
+
+
 @app.post("/facturas-pago/{factura_id}/comprobante")
 def subir_comprobante_factura(factura_id: int, archivo: UploadFile = File(...)):
     import shutil
@@ -6158,7 +7139,7 @@ def agregar_reportes_factura(factura_id: int, data: dict = Body(...)):
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT id, reporte_ids, status FROM facturas_pago WHERE id=%s", (factura_id,))
+    cursor.execute("SELECT id, reporte_ids, status, comprobantes FROM facturas_pago WHERE id=%s", (factura_id,))
     factura = cursor.fetchone()
     if not factura:
         cursor.close(); db.close()
@@ -6181,10 +7162,20 @@ def agregar_reportes_factura(factura_id: int, data: dict = Body(...)):
         reportes = cursor.fetchall()
         new_ordenes = [r['folio'] for r in reportes if r.get('folio')]
         new_total = sum(float(r['total'] or 0) for r in reportes)
+
+    comprobantes_actuales = factura.get('comprobantes')
+    if isinstance(comprobantes_actuales, str):
+        try:
+            comprobantes_actuales = json.loads(comprobantes_actuales)
+        except Exception:
+            comprobantes_actuales = []
+    comprobantes_actuales = comprobantes_actuales or []
+    comprobantes = _fusionar_comprobantes_de_reportes(factura_id, nuevos_ids, comprobantes_actuales)
+
     cursor2 = db.cursor()
     cursor2.execute(
-        "UPDATE facturas_pago SET reporte_ids=%s, ordenes=%s, total=%s WHERE id=%s",
-        (json.dumps(combined_ids), json.dumps(new_ordenes), new_total, factura_id)
+        "UPDATE facturas_pago SET reporte_ids=%s, ordenes=%s, total=%s, comprobantes=%s WHERE id=%s",
+        (json.dumps(combined_ids), json.dumps(new_ordenes), new_total, json.dumps(comprobantes), factura_id)
     )
     db.commit()
     cursor2.close(); cursor.close(); db.close()

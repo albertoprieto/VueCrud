@@ -3,7 +3,9 @@
     <h2 class="fact-title"><i class="pi pi-receipt" /> Facturación</h2>
 
     <div class="fact-nueva-bar">
-      <Button label="Nueva Factura" icon="pi pi-plus" class="p-button-sm" @click="abrirNuevaFactura" />
+      <Button label="Sincronizar comprobantes" icon="pi pi-sync" class="p-button-sm p-button-outlined" :loading="sincronizandoTodas" @click="sincronizarTodasComprobantes" />
+      <Button label="Exportar Excel" icon="pi pi-file-excel" class="p-button-sm p-button-outlined p-button-success" :disabled="!facturasFiltradas.length" @click="exportarExcel" />
+      <Button label="Nueva Prefactura" icon="pi pi-plus" class="p-button-sm" @click="abrirNuevaFactura" />
     </div>
 
     <div class="fact-toolbar">
@@ -34,6 +36,16 @@
         showClear
         class="fact-dropdown"
       />
+      <Calendar
+        v-model="mesFiltro"
+        view="month"
+        dateFormat="mm/yy"
+        placeholder="Todos los meses"
+        showIcon
+        iconDisplay="input"
+        showButtonBar
+        class="fact-dropdown"
+      />
       <div class="filtro-estado">
         <button
           v-for="op in opcionesEstado"
@@ -61,6 +73,9 @@
         </button>
       </div>
     </div>
+    <p class="fact-mes-aviso">
+      <i class="pi pi-info-circle" /> El filtro de mes solo aplica a facturas ya timbradas/canceladas — las prefacturas pendientes de timbrar siempre se muestran, sin importar su fecha.
+    </p>
 
     <div class="fact-table-card">
       <DataTable
@@ -68,31 +83,11 @@
         :value="facturasFiltradas"
         responsiveLayout="scroll"
         :loading="loading"
-        :paginator="facturasFiltradas.length > 15"
-        :rows="15"
+        :paginator="facturasFiltradas.length > 100"
+        :rows="100"
+        size="small"
       >
         <template #loading><DataTableLoader text="Cargando facturas..." /></template>
-        <Column field="id" header="ID" style="width:60px" />
-        <Column field="cliente" header="Cliente" />
-        <Column header="Órdenes">
-          <template #body="{ data }">{{ (data.ordenes || []).join(', ') || '—' }}</template>
-        </Column>
-        <Column header="IMEIs">
-          <template #body="{ data }">{{ getImeisUnicos(data).join(', ') || '—' }}</template>
-        </Column>
-        <Column header="Total">
-          <template #body="{ data }"><span class="celda-total">{{ formatTotal(data.total) }}</span></template>
-        </Column>
-        <Column header="Estatus">
-          <template #body="{ data }">
-            <span :class="'badge badge-' + badgeClass(data.status)">{{ data.status }}</span>
-          </template>
-        </Column>
-        <Column header="Pago">
-          <template #body="{ data }">
-            <span :class="'badge badge-' + (data.pagado ? 'success' : 'warning')">{{ data.pagado ? 'Pagada' : 'Pendiente pago' }}</span>
-          </template>
-        </Column>
         <Column header="Fecha">
           <template #body="{ data }">{{ formatFecha(data.fecha) }}</template>
         </Column>
@@ -104,7 +99,42 @@
             <span v-else class="celda-vacia">—</span>
           </template>
         </Column>
-        <Column header="Acciones" style="width:220px">
+        <Column field="cliente" header="Cliente" />
+        <Column header="Órdenes">
+          <template #body="{ data }">{{ (data.ordenes || []).join(', ') || '—' }}</template>
+        </Column>
+        <Column header="IMEIs">
+          <template #body="{ data }">{{ getImeisUnicos(data).join(', ') || '—' }}</template>
+        </Column>
+        <Column header="Total">
+          <template #body="{ data }"><span class="celda-total">{{ formatTotal(data.total) }}</span></template>
+        </Column>
+        <Column header="Timbre" style="text-align:center;">
+          <template #body="{ data }">
+            <span v-if="data.status === 'Cancelado'" class="texto-cancelada">🟠 Cancelada</span>
+            <span v-else-if="data.status === 'Timbrado'" class="emoji-check" title="Timbrada">✅</span>
+            <span v-else class="emoji-cross" title="Pendiente de timbrar">❌</span>
+          </template>
+        </Column>
+        <Column header="Pago" style="text-align:center;">
+          <template #body="{ data }">
+            <span v-if="data.pagado" class="emoji-check" title="Pagada">✅</span>
+            <span v-else class="emoji-cross" title="Pendiente de pago">❌</span>
+          </template>
+        </Column>
+        <Column header="Comprobante" style="text-align:center;">
+          <template #body="{ data }">
+            <div v-if="data.comprobantes && data.comprobantes.length" style="display:flex;justify-content:center;gap:0.4rem;">
+              <a
+                v-for="(comp, idx) in data.comprobantes" :key="idx"
+                href="#" @click.prevent="abrirArchivoCfdi(comp)"
+                :title="nombreArchivoComprobante(comp)"
+              ><i class="pi pi-image comprobante-icono"></i></a>
+            </div>
+            <span v-else class="celda-vacia">—</span>
+          </template>
+        </Column>
+        <Column header="Acciones" style="width:280px">
           <template #body="{ data }">
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
               <Button
@@ -114,6 +144,25 @@
                 @click="irDetalle(data.id)"
               />
               <Button v-else icon="pi pi-eye" label="Detalle" class="p-button-sm p-button-info" @click="irDetalle(data.id)" />
+              <Button
+                v-if="data.status === 'Timbrado' && data.cfdi_pdf_path"
+                icon="pi pi-file-pdf" label="PDF"
+                class="p-button-sm p-button-outlined"
+                @click="abrirArchivoCfdi(data.cfdi_pdf_path)"
+              />
+              <Button
+                v-if="data.status === 'Timbrado' && data.cfdi_xml_path"
+                icon="pi pi-file" label="XML"
+                class="p-button-sm p-button-outlined"
+                @click="abrirArchivoCfdi(data.cfdi_xml_path)"
+              />
+              <Button
+                v-if="data.status === 'Pendiente timbre'"
+                icon="pi pi-file-pdf" label="Prefactura"
+                class="p-button-sm p-button-outlined p-button-warning"
+                :loading="generandoPrefacturaId === data.id"
+                @click="abrirPrefactura(data)"
+              />
               <Button
                 icon="pi pi-trash" class="p-button-sm p-button-danger p-button-outlined"
                 v-if="data.status === 'Pendiente timbre'"
@@ -153,6 +202,10 @@
       </div>
     </div>
 
+    <Dialog v-model:visible="prefacturaPdfVisible" header="Prefactura (borrador sin timbrar)" :modal="true" :style="{ width: '85vw' }" :draggable="false">
+      <iframe v-if="prefacturaPdfUrl" :src="prefacturaPdfUrl" style="width:100%;height:80vh;border:none;" />
+    </Dialog>
+
     <Dialog v-model:visible="showConfirmDelete" header="Eliminar prefactura" :modal="true" :closable="false">
       <div style="padding:1rem;text-align:center;">
         <span>¿Eliminar esta prefactura? Los reportes de servicio quedarán libres para agregarse a otra.</span>
@@ -163,27 +216,14 @@
       </div>
     </Dialog>
 
-    <Dialog v-model:visible="showNuevaDialog" header="Nueva factura" :modal="true" :closable="false" style="width: 920px; max-width: 96vw;">
+    <Dialog v-model:visible="showNuevaDialog" header="Nueva prefactura" :modal="true" :closable="false" class="nueva-fact-dialog" style="width: 760px; max-width: 96vw;">
       <div class="nueva-fact-form">
         <div class="form-group">
           <label>Cliente</label>
           <InputText v-model="nuevaCliente" class="w-full" placeholder="Nombre del cliente (existente o nuevo)" />
           <small style="color:var(--color-text);opacity:0.7;">
-            Al ligar un reporte de servicio se autocompleta con su cliente (editable). Si el cliente no existe aún, se dará de alta con sus datos fiscales al momento de timbrar.
+            Si el cliente no existe aún, se dará de alta con sus datos fiscales al momento de timbrar. Los reportes de servicio se ligan después, desde el detalle de la prefactura.
           </small>
-        </div>
-
-        <div class="form-group">
-          <label>Órdenes / reportes de servicio (opcional)</label>
-          <InputText v-model="busquedaReporte" class="w-full" placeholder="Buscar por orden o cliente..." />
-          <div class="reportes-pick-list">
-            <div v-if="cargandoReportes" style="padding:0.75rem;text-align:center;"><i class="pi pi-spin pi-spinner" /></div>
-            <div v-else-if="!reportesFiltradosDisponibles.length" class="reportes-pick-empty">Sin reportes disponibles.</div>
-            <label v-for="r in reportesFiltradosDisponibles" :key="r.id" class="reportes-pick-item">
-              <input type="checkbox" :checked="reporteEstaSeleccionado(r)" @change="toggleReporteSeleccionado(r, $event.target.checked)" />
-              <span>{{ r.folio || r.id }} — {{ r.nombre_cliente || 'Sin cliente' }} — {{ formatTotal(r.total) }}</span>
-            </label>
-          </div>
         </div>
 
         <div class="form-group">
@@ -223,11 +263,12 @@
         </div>
 
         <div class="form-group">
-          <label>Productos / conceptos manuales (requerido si no hay reportes ni artículos ligados)</label>
+          <label>Productos / conceptos manuales (requerido si no hay artículos ligados)</label>
           <div v-for="(prod, idx) in productosManuales" :key="idx" class="producto-manual-row">
             <InputText v-model="prod.Descripcion" placeholder="Descripción" class="producto-desc" />
             <InputNumber v-model="prod.ValorUnitario" placeholder="Precio unitario" mode="currency" currency="MXN" locale="es-MX" class="producto-precio" />
             <InputNumber v-model="prod.Cantidad" placeholder="Cant." :min="1" class="producto-cant" />
+            <InputText v-model="prod.ClaveProdServ" placeholder="Clave SAT (ej. 81112501)" class="producto-clave" />
             <Button icon="pi pi-trash" class="p-button-sm p-button-danger p-button-text" @click="quitarProductoManual(idx)" v-if="productosManuales.length > 1" />
           </div>
           <Button icon="pi pi-plus" label="Agregar concepto" class="p-button-sm p-button-text" @click="agregarProductoManual" />
@@ -248,10 +289,12 @@
           </small>
         </div>
       </div>
-      <div class="modal-actions" style="display:flex;gap:1rem;justify-content:flex-end;padding-top:0.5rem;">
-        <Button label="Crear factura" icon="pi pi-check" :loading="creandoFactura" @click="confirmarNuevaFactura" />
-        <Button label="Cancelar" class="p-button-secondary" @click="showNuevaDialog = false" />
-      </div>
+      <template #footer>
+        <div class="modal-actions">
+          <Button label="Cancelar" class="p-button-secondary" @click="showNuevaDialog = false" />
+          <Button label="Generar prefactura" icon="pi pi-check" :loading="creandoFactura" @click="confirmarNuevaFactura" />
+        </div>
+      </template>
     </Dialog>
   </div>
 </template>
@@ -259,6 +302,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
+import * as XLSX from 'xlsx';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -266,19 +310,29 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Dropdown from 'primevue/dropdown';
+import Calendar from 'primevue/calendar';
 import DataTableLoader from '@/components/DataTableLoader.vue';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
-import { getFacturas, eliminarFactura, crearFactura, getNotas } from '@/services/pagosService';
-import { getTodosReportes } from '@/services/reportesServicio';
+import { getFacturas, eliminarFactura, crearFactura, generarPrefacturaFactura, getPrefacturaPdfUrl, sincronizarComprobantesTodas } from '@/services/pagosService';
 import { getTodosArticulos, sincronizarStockArticulos } from '@/services/articulosService';
 import { updateIMEI } from '@/services/imeiService';
 import { getUbicaciones, getImeisPorUbicacion } from '@/services/ubicacionesService';
+import { getClientes } from '@/services/clientesService';
 
 const router = useRouter();
 const toast = useToast();
 const loginStore = useLoginStore();
 const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+function urlComprobante(path) {
+  if (!path) return '';
+  const p = path.startsWith('/') ? path : `/${path}`;
+  const encoded = p.split('/').map(seg => encodeURIComponent(seg)).join('/');
+  return `${API_URL}${encoded}`;
+}
+function abrirArchivoCfdi(path) { if (path) window.open(urlComprobante(path), '_blank', 'noopener'); }
+function nombreArchivoComprobante(path) { return path ? decodeURIComponent(path.split('/').pop()) : 'comprobante'; }
 
 const facturas = ref([]);
 const loading = ref(true);
@@ -291,6 +345,7 @@ const filtroVendedor = ref('');
 const filtroLugarPago = ref('');
 const filtroEstado = ref('todos');
 const filtroPago = ref('todos');
+const mesFiltro = ref(null);
 
 const lugaresPago = [
   'ASP Renovaciones',
@@ -309,7 +364,7 @@ const opcionesEstado = [
 ];
 
 const opcionesPago = [
-  { value: 'todos', label: 'Cualquier pago' },
+  { value: 'con_comprobante', label: 'Con comprobante' },
   { value: 'pagadas', label: 'Pagadas' },
   { value: 'pendientes', label: 'Pendiente pago' },
 ];
@@ -320,7 +375,7 @@ function contarPorEstado(valor) {
 }
 
 function contarPorPago(valor) {
-  if (valor === 'todos') return facturas.value.length;
+  if (valor === 'con_comprobante') return facturas.value.filter(f => f.comprobantes && f.comprobantes.length).length;
   if (valor === 'pagadas') return facturas.value.filter(f => f.pagado).length;
   return facturas.value.filter(f => !f.pagado).length;
 }
@@ -344,8 +399,19 @@ const facturasFiltradas = computed(() => {
     if (inst && !(f.instalador || '').toLowerCase().includes(inst)) return false;
     if (vend && !(f.vendedor || '').toLowerCase().includes(vend)) return false;
     if (filtroLugarPago.value && (f.lugar_pago || '') !== filtroLugarPago.value) return false;
+    if (filtroPago.value === 'con_comprobante' && !(f.comprobantes && f.comprobantes.length)) return false;
     if (filtroPago.value === 'pagadas' && !f.pagado) return false;
     if (filtroPago.value === 'pendientes' && f.pagado) return false;
+    // El mes solo filtra facturas ya resueltas (Timbrado/Cancelado) — las
+    // prefacturas pendientes de timbrar siempre se muestran, sin importar
+    // qué tan viejas sean, para no perderlas de vista por accidente.
+    if (mesFiltro.value && f.status !== 'Pendiente timbre') {
+      const fecha = f.fecha ? new Date(f.fecha) : null;
+      const mismoMes = fecha
+        && fecha.getMonth() === mesFiltro.value.getMonth()
+        && fecha.getFullYear() === mesFiltro.value.getFullYear();
+      if (!mismoMes) return false;
+    }
     return true;
   });
 });
@@ -365,6 +431,102 @@ function badgeClass(status) {
 
 function irDetalle(id) {
   router.push({ name: 'detalle-factura', params: { id } });
+}
+
+function timbreTexto(status) {
+  if (status === 'Timbrado') return 'Timbrada';
+  if (status === 'Cancelado') return 'Cancelada';
+  return 'Pendiente';
+}
+
+function stamp() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${y}${m}${day}_${hh}${mm}`;
+}
+
+const sincronizandoTodas = ref(false);
+async function sincronizarTodasComprobantes() {
+  sincronizandoTodas.value = true;
+  try {
+    const res = await sincronizarComprobantesTodas();
+    toast.add({
+      severity: 'success', summary: 'Sincronización completada',
+      detail: `${res.facturas_actualizadas} prefactura(s) actualizadas, ${res.comprobantes_agregados} comprobante(s) agregados.`,
+      life: 5000
+    });
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo sincronizar.', life: 4000 });
+  }
+  sincronizandoTodas.value = false;
+}
+
+function exportarExcel() {
+  if (!facturasFiltradas.value.length) return;
+
+  const filas = facturasFiltradas.value.map(f => ({
+    Fecha: formatFecha(f.fecha),
+    Antigüedad: f.status === 'Pendiente timbre' ? `${diasPendiente(f.fecha)} día(s)` : '',
+    Cliente: f.cliente || '',
+    Órdenes: (f.ordenes || []).join(', '),
+    IMEIs: getImeisUnicos(f).join(', '),
+    Total: Number(f.total) || 0,
+    Timbre: timbreTexto(f.status),
+    Pago: f.pagado ? 'Pagada' : 'Pendiente de pago',
+    'Lugar de pago': f.lugar_pago || '',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'facturacion');
+  XLSX.writeFile(wb, `facturacion_${stamp()}.xlsx`);
+}
+
+const prefacturaPdfVisible = ref(false);
+const prefacturaPdfUrl = ref('');
+const generandoPrefacturaId = ref(null);
+
+async function abrirPrefactura(row) {
+  if (row.facturapi_draft_id) {
+    prefacturaPdfUrl.value = await getPrefacturaPdfUrl(row.id);
+    prefacturaPdfVisible.value = true;
+    return;
+  }
+
+  generandoPrefacturaId.value = row.id;
+  try {
+    const clientes = await getClientes();
+    const cliente = clientes.find(c => (c.nombre || '').trim().toLowerCase() === (row.cliente || '').trim().toLowerCase());
+    if (!cliente?.rfc || !cliente?.codigo_postal || !cliente?.regimen_fiscal) {
+      toast.add({
+        severity: 'warn', summary: 'Faltan datos fiscales',
+        detail: 'Completa el RFC / código postal / régimen fiscal del cliente desde el detalle de la factura antes de generar la prefactura.',
+        life: 6000
+      });
+      irDetalle(row.id);
+      return;
+    }
+
+    await generarPrefacturaFactura(row.id, {
+      rfc_cliente: cliente.rfc,
+      uso_cfdi: 'G03',
+      forma_pago: '03',
+      metodo_pago: 'PUE',
+      domicilio_fiscal_receptor: cliente.codigo_postal,
+      regimen_fiscal_receptor: cliente.regimen_fiscal,
+    });
+    await cargar();
+    prefacturaPdfUrl.value = await getPrefacturaPdfUrl(row.id);
+    prefacturaPdfVisible.value = true;
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo generar la prefactura.', life: 5000 });
+  }
+  generandoPrefacturaId.value = null;
 }
 
 const showConfirmDelete = ref(false);
@@ -417,12 +579,7 @@ const showNuevaDialog = ref(false);
 const nuevaCliente = ref('');
 const nuevaTotal = ref(0);
 const nuevaPagada = ref(false);
-const busquedaReporte = ref('');
-const cargandoReportes = ref(false);
-const reportesTodos = ref([]);
-const reportesSeleccionados = ref([]);
-const reportesAsignadosIds = ref(new Set());
-const productosManuales = ref([{ Descripcion: '', ValorUnitario: 0, Cantidad: 1 }]);
+const productosManuales = ref([{ Descripcion: '', ValorUnitario: 0, Cantidad: 1, ClaveProdServ: '' }]);
 const creandoFactura = ref(false);
 
 const articulosTodos = ref([]);
@@ -458,40 +615,13 @@ const imeisDisponiblesFiltrados = computed(() => {
   );
 });
 
-const reportesDisponibles = computed(() =>
-  reportesTodos.value.filter(r => !reportesAsignadosIds.value.has(r.id))
-);
-const reportesFiltradosDisponibles = computed(() => {
-  const q = busquedaReporte.value.trim().toLowerCase();
-  if (!q) return reportesDisponibles.value;
-  return reportesDisponibles.value.filter(r =>
-    String(r.folio || '').toLowerCase().includes(q) ||
-    String(r.nombre_cliente || '').toLowerCase().includes(q)
-  );
-});
-
-function reporteEstaSeleccionado(r) {
-  return reportesSeleccionados.value.some(s => s.id === r.id);
-}
 function recalcularTotal() {
-  const totalReportes = reportesSeleccionados.value.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
   const totalArticulos = articulosVendidos.value.reduce((sum, a) => sum + (Number(a.precioVenta) || 0), 0);
-  nuevaTotal.value = totalReportes + totalArticulos;
-}
-function toggleReporteSeleccionado(r, checked) {
-  if (checked) {
-    reportesSeleccionados.value = [...reportesSeleccionados.value, r];
-  } else {
-    reportesSeleccionados.value = reportesSeleccionados.value.filter(s => s.id !== r.id);
-  }
-  recalcularTotal();
-  if (reportesSeleccionados.value.length) {
-    nuevaCliente.value = reportesSeleccionados.value[0]?.nombre_cliente || nuevaCliente.value;
-  }
+  nuevaTotal.value = totalArticulos;
 }
 
 function agregarProductoManual() {
-  productosManuales.value.push({ Descripcion: '', ValorUnitario: 0, Cantidad: 1 });
+  productosManuales.value.push({ Descripcion: '', ValorUnitario: 0, Cantidad: 1, ClaveProdServ: '' });
 }
 function quitarProductoManual(idx) {
   productosManuales.value.splice(idx, 1);
@@ -535,32 +665,22 @@ async function abrirNuevaFactura() {
   nuevaCliente.value = '';
   nuevaTotal.value = 0;
   nuevaPagada.value = false;
-  busquedaReporte.value = '';
-  reportesSeleccionados.value = [];
-  productosManuales.value = [{ Descripcion: '', ValorUnitario: 0, Cantidad: 1 }];
+  productosManuales.value = [{ Descripcion: '', ValorUnitario: 0, Cantidad: 1, ClaveProdServ: '' }];
   ubicacionSeleccionada.value = null;
   imeisUbicacion.value = [];
   busquedaArticuloImei.value = '';
   articulosVendidos.value = [];
   showNuevaDialog.value = true;
 
-  cargandoReportes.value = true;
   try {
-    const [reportes, notas, articulos, ubis] = await Promise.all([getTodosReportes(), getNotas(), getTodosArticulos(), getUbicaciones()]);
-    reportesTodos.value = reportes;
+    const [articulos, ubis] = await Promise.all([getTodosArticulos(), getUbicaciones()]);
     articulosTodos.value = articulos;
     ubicaciones.value = ubis;
-    const asignados = new Set();
-    for (const n of notas) for (const rid of (n.reporte_ids || [])) asignados.add(rid);
-    for (const f of facturas.value) for (const rid of (f.reporte_ids || [])) asignados.add(rid);
-    reportesAsignadosIds.value = asignados;
   } catch {
-    reportesTodos.value = [];
     articulosTodos.value = [];
     ubicaciones.value = [];
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los reportes/artículos/ubicaciones.', life: 4000 });
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los artículos/ubicaciones.', life: 4000 });
   }
-  cargandoReportes.value = false;
 }
 
 async function confirmarNuevaFactura() {
@@ -576,7 +696,12 @@ async function confirmarNuevaFactura() {
   }
   const conceptosManuales = productosManuales.value
     .filter(p => p.Descripcion?.trim() && Number(p.ValorUnitario) > 0)
-    .map(p => ({ Descripcion: p.Descripcion.trim(), ValorUnitario: Number(p.ValorUnitario), Cantidad: Number(p.Cantidad) || 1 }));
+    .map(p => ({
+      Descripcion: p.Descripcion.trim(),
+      ValorUnitario: Number(p.ValorUnitario),
+      Cantidad: Number(p.Cantidad) || 1,
+      ClaveProdServ: p.ClaveProdServ?.trim() || undefined
+    }));
   const conceptosArticulos = articulosVendidos.value.map(a => ({
     Descripcion: `${a.articulo_nombre} (IMEI ${a.imei})`,
     ValorUnitario: Number(a.precioVenta) || 0,
@@ -588,19 +713,19 @@ async function confirmarNuevaFactura() {
   }));
   const todosLosConceptos = [...conceptosManuales, ...conceptosArticulos];
 
-  if (!reportesSeleccionados.value.length && !todosLosConceptos.length) {
-    toast.add({ severity: 'warn', summary: 'Faltan conceptos', detail: 'Agrega al menos un concepto, artículo o liga un reporte de servicio.', life: 4500 });
+  if (!todosLosConceptos.length) {
+    toast.add({ severity: 'warn', summary: 'Faltan conceptos', detail: 'Agrega al menos un concepto o artículo.', life: 4500 });
     return;
   }
 
   creandoFactura.value = true;
   try {
     await crearFactura({
-      ordenes: reportesSeleccionados.value.map(r => r.folio),
+      ordenes: [],
       cliente,
       total,
       status: 'Pendiente timbre',
-      reporte_ids: reportesSeleccionados.value.map(r => r.id),
+      reporte_ids: [],
       productos_manual: todosLosConceptos.length ? todosLosConceptos : null,
       pagado: nuevaPagada.value
     });
@@ -612,15 +737,15 @@ async function confirmarNuevaFactura() {
         ));
         await sincronizarStockArticulos();
       } catch {
-        toast.add({ severity: 'warn', summary: 'Factura creada, stock pendiente', detail: 'La factura se creó pero no se pudo actualizar el stock/IMEIs. Actualízalo manualmente.', life: 6000 });
+        toast.add({ severity: 'warn', summary: 'Prefactura creada, stock pendiente', detail: 'La prefactura se creó pero no se pudo actualizar el stock/IMEIs. Actualízalo manualmente.', life: 6000 });
       }
     }
 
-    toast.add({ severity: 'success', summary: 'Factura creada', detail: 'La prefactura se creó correctamente.', life: 3000 });
+    toast.add({ severity: 'success', summary: 'Prefactura creada', detail: 'Ya puedes generarla en el PAC y previsualizar el PDF antes de timbrar.', life: 3500 });
     showNuevaDialog.value = false;
     await cargar();
   } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo crear la factura.', life: 4000 });
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo crear la prefactura.', life: 4000 });
   }
   creandoFactura.value = false;
 }
@@ -646,11 +771,17 @@ onBeforeUnmount(() => window.removeEventListener('resize', setViewportMode));
 }
 .fact-title .pi { color: var(--color-primary); }
 
-.fact-nueva-bar { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+.fact-nueva-bar { display: flex; justify-content: flex-end; gap: 0.6rem; margin-bottom: 1rem; }
 
+.nueva-fact-dialog :deep(.p-dialog-content) { padding-bottom: 0; }
+.nueva-fact-form {
+  max-height: 65vh; overflow-y: auto; overflow-x: hidden;
+  padding-right: 0.5rem; margin-right: -0.5rem;
+}
 .nueva-fact-form .form-group { margin-bottom: 1.1rem; }
 .nueva-fact-form label { display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.85rem; }
 .pago-toggle-label { display: flex !important; align-items: center; gap: 0.5rem; cursor: pointer; }
+.modal-actions { display: flex; gap: 1rem; justify-content: flex-end; }
 .reportes-pick-list {
   margin-top: 0.5rem; max-height: 200px; overflow-y: auto;
   border: 1px solid var(--color-border); border-radius: 10px; padding: 0.4rem 0.6rem;
@@ -666,6 +797,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', setViewportMode));
 .producto-desc { flex: 2; min-width: 160px; }
 .producto-precio { flex: 1; min-width: 120px; }
 .producto-cant { width: 90px; }
+.producto-clave { width: 150px; }
 .articulo-pick-row { margin-top: 0.5rem; }
 .articulos-vendidos-lista { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
 .articulo-vendido-item {
@@ -706,6 +838,16 @@ onBeforeUnmount(() => window.removeEventListener('resize', setViewportMode));
   background: color-mix(in srgb, currentColor 16%, transparent);
   padding: 0.05rem 0.45rem; border-radius: 999px;
 }
+
+.fact-mes-aviso {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.85rem; color: var(--color-text); opacity: 0.75;
+  margin: -0.75rem 0 1rem;
+}
+
+.emoji-check, .emoji-cross { font-size: 1.1rem; line-height: 1; }
+.comprobante-icono { font-size: 1.15rem; color: var(--color-primary); }
+.texto-cancelada { color: var(--color-warning) !important; font-weight: 700; font-size: 0.82rem; }
 
 .fact-table-card {
   background: var(--color-card); border: 1px solid var(--color-border);
