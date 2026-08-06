@@ -29,6 +29,10 @@
         <i class="pi pi-user" />
         <InputText v-model="filtroVendedor" placeholder="Buscar por vendedor..." />
       </div>
+      <div class="fact-search">
+        <i class="pi pi-id-card" />
+        <InputText v-model="filtroCuenta" placeholder="Buscar por cuenta..." />
+      </div>
       <Dropdown
         v-model="filtroLugarPago"
         :options="lugaresPago"
@@ -100,6 +104,7 @@
           </template>
         </Column>
         <Column field="cliente" header="Cliente" />
+        <Column field="cuenta" header="Cuenta" />
         <Column header="Órdenes">
           <template #body="{ data }">{{ (data.ordenes || []).join(', ') || '—' }}</template>
         </Column>
@@ -191,6 +196,7 @@
             <div class="mobile-card-grid">
               <div class="mobile-field"><span class="mobile-label">Total</span><span class="mobile-value">{{ formatTotal(item.total) }}</span></div>
               <div class="mobile-field"><span class="mobile-label">Fecha</span><span class="mobile-value">{{ formatFecha(item.fecha) }}</span></div>
+              <div class="mobile-field"><span class="mobile-label">Cuenta</span><span class="mobile-value">{{ item.cuenta || '—' }}</span></div>
               <div class="mobile-field mobile-field-full"><span class="mobile-label">IMEIs</span><span class="mobile-value">{{ getImeisUnicos(item).join(', ') || '—' }}</span></div>
               <div v-if="item.status === 'Pendiente timbre'" class="mobile-field">
                 <span class="mobile-label">Antigüedad</span>
@@ -342,6 +348,7 @@ const filtroOrden = ref('');
 const filtroImei = ref('');
 const filtroInstalador = ref('');
 const filtroVendedor = ref('');
+const filtroCuenta = ref('');
 const filtroLugarPago = ref('');
 const filtroEstado = ref('todos');
 const filtroPago = ref('todos');
@@ -353,7 +360,8 @@ const lugaresPago = [
   'BBVA PAU',
   'Tecnico',
   'Oficina',
-  'Mercadopago'
+  'Mercadopago',
+  'MercadoPago Eliseo'
 ];
 
 const opcionesEstado = [
@@ -391,6 +399,7 @@ const facturasFiltradas = computed(() => {
   const imei = filtroImei.value.trim();
   const inst = filtroInstalador.value.trim().toLowerCase();
   const vend = filtroVendedor.value.trim().toLowerCase();
+  const cuenta = filtroCuenta.value.trim().toLowerCase();
   return facturas.value.filter(f => {
     if (filtroEstado.value !== 'todos' && f.status !== filtroEstado.value) return false;
     if (cl && !(f.cliente || '').toLowerCase().includes(cl)) return false;
@@ -398,6 +407,7 @@ const facturasFiltradas = computed(() => {
     if (imei && !getImeisUnicos(f).some(im => im.includes(imei))) return false;
     if (inst && !(f.instalador || '').toLowerCase().includes(inst)) return false;
     if (vend && !(f.vendedor || '').toLowerCase().includes(vend)) return false;
+    if (cuenta && !(f.cuenta || '').toLowerCase().includes(cuenta)) return false;
     if (filtroLugarPago.value && (f.lugar_pago || '') !== filtroLugarPago.value) return false;
     if (filtroPago.value === 'con_comprobante' && !(f.comprobantes && f.comprobantes.length)) return false;
     if (filtroPago.value === 'pagadas' && !f.pagado) return false;
@@ -473,6 +483,7 @@ function exportarExcel() {
     Fecha: formatFecha(f.fecha),
     Antigüedad: f.status === 'Pendiente timbre' ? `${diasPendiente(f.fecha)} día(s)` : '',
     Cliente: f.cliente || '',
+    Cuenta: f.cuenta || '',
     Órdenes: (f.ordenes || []).join(', '),
     IMEIs: getImeisUnicos(f).join(', '),
     Total: Number(f.total) || 0,

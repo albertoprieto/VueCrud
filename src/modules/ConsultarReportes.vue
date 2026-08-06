@@ -37,14 +37,15 @@
 
     <h2 class="consultar-reportes-title">Reportes de Servicio</h2>
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-      <InputText v-model="filtroCliente" placeholder="Filtrar por cliente" class="filtro-input" clearable />
-      <InputText v-model="filtroSO" placeholder="Filtrar por Orden de servicio" class="filtro-input" clearable />
-      <InputText v-model="filtroVendedor" placeholder="Filtrar por vendedor" class="filtro-input" clearable />
-      <InputText v-model="filtroFecha" placeholder="Filtrar por fecha (YYYY-MM-DD)" class="filtro-input" clearable />
-      <InputText v-model="filtroTecnico" placeholder="Filtrar por técnico" class="filtro-input" clearable />
-      <InputText v-model="filtroIMEI" placeholder="Filtrar por IMEI" class="filtro-input" clearable />
-      <InputText v-model="filtroSimSerie" placeholder="Filtrar por SIM Serie" class="filtro-input" clearable />
-      <Dropdown
+      <InputText v-model="filtroClienteInput" placeholder="Filtrar por cliente" class="filtro-input" clearable />
+      <InputText v-model="filtroSOInput" placeholder="Filtrar por Orden de servicio" class="filtro-input" clearable />
+      <InputText v-model="filtroVendedorInput" placeholder="Filtrar por vendedor" class="filtro-input" clearable />
+      <InputText v-model="filtroFechaInput" placeholder="Filtrar por fecha (YYYY-MM-DD)" class="filtro-input" clearable />
+      <InputText v-model="filtroTecnicoInput" placeholder="Filtrar por técnico" class="filtro-input" clearable />
+      <InputText v-model="filtroIMEIInput" placeholder="Filtrar por IMEI" class="filtro-input" clearable />
+      <InputText v-model="filtroSimSerieInput" placeholder="Filtrar por SIM Serie" class="filtro-input" clearable />
+      <InputText v-model="filtroCuentaInput" placeholder="Filtrar por cuenta" class="filtro-input" clearable />
+      <!-- <Dropdown
         v-model="filtroPagado"
         :options="[
           { label: 'Todos', value: '' },
@@ -56,7 +57,7 @@
         placeholder="¿Pagado?"
         class="filtro-input"
         showClear
-      />
+      /> -->
     </div>
     <DataTable
       :value="reportesFiltrados"
@@ -322,8 +323,8 @@
           </div>
         </div>
         <div class="modal-actions">
-          <Button label="Guardar" icon="pi pi-save" type="submit" />
-          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" @click="showEditDialog = false" type="button" />
+          <Button label="Guardar" icon="pi pi-save" type="submit" :loading="guardandoEdicion" :disabled="guardandoEdicion" />
+          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" @click="showEditDialog = false" type="button" :disabled="guardandoEdicion" />
         </div>
       </form>
     </Dialog>
@@ -465,7 +466,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import DataTable from 'primevue/datatable';
 import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
@@ -517,6 +518,7 @@ const exportandoSinNota = ref(false);
 const showDialog = ref(false);
 const showEditDialog = ref(false);
 const reporteEditando = ref(null);
+const guardandoEdicion = ref(false);
 
 const showConfirmDeleteDialog = ref(false);
 const reporteSeleccionado = ref(null);
@@ -721,18 +723,44 @@ const camposReporte = {
   requiere_factura: { label: '¿Requiere factura?', type: 'select' }
 };
 
-const filtroCliente = ref('');
-const filtroSO = ref('');
-const filtroVendedor = ref('');
-const filtroFecha = ref('');
-const filtroTecnico = ref('');
-const filtroIMEI = ref('');
-const filtroSimSerie = ref('');
+// Los inputs de filtro escriben aquí (instantáneo, sin costo) y por separado
+// se expone una versión con debounce (250ms) que es la que de verdad alimenta
+// reportesFiltrados — sin esto, cada tecla recalculaba el filtro sobre TODO
+// el array de reportes de forma síncrona antes de poder repintar el
+// carácter recién tecleado, y se sentía trabado para empezar a escribir.
+function debouncedRef(source, delay = 250) {
+  const debounced = ref(source.value);
+  let timer = null;
+  watch(source, (val) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { debounced.value = val; }, delay);
+  });
+  return debounced;
+}
+
+const filtroClienteInput = ref('');
+const filtroSOInput = ref('');
+const filtroVendedorInput = ref('');
+const filtroFechaInput = ref('');
+const filtroTecnicoInput = ref('');
+const filtroIMEIInput = ref('');
+const filtroSimSerieInput = ref('');
+const filtroCuentaInput = ref('');
+
+const filtroCliente = debouncedRef(filtroClienteInput);
+const filtroSO = debouncedRef(filtroSOInput);
+const filtroVendedor = debouncedRef(filtroVendedorInput);
+const filtroFecha = debouncedRef(filtroFechaInput);
+const filtroTecnico = debouncedRef(filtroTecnicoInput);
+const filtroIMEI = debouncedRef(filtroIMEIInput);
+const filtroSimSerie = debouncedRef(filtroSimSerieInput);
+const filtroCuenta = debouncedRef(filtroCuentaInput);
 const filtroPagado = ref('');
 
 const filtrosActivos = computed(() => !!(
   filtroCliente.value || filtroSO.value || filtroVendedor.value || filtroFecha.value ||
-  filtroTecnico.value || filtroIMEI.value || filtroSimSerie.value || filtroPagado.value !== ''
+  filtroTecnico.value || filtroIMEI.value || filtroSimSerie.value || filtroCuenta.value ||
+  filtroPagado.value !== ''
 ));
 
 // Orden manual (drag & drop) — orden_manual es null hasta que se guarda un
@@ -859,8 +887,9 @@ const reportesFiltrados = computed(() => {
       const tecnicoOk = !filtroTecnico.value || (r.nombre_instalador && r.nombre_instalador.toLowerCase().includes(filtroTecnico.value.toLowerCase()));
       const imeiOk = coincideImeiEnReporte(r, imeiNeedle);
       const simSerieOk = coincideSimEnReporte(r, simNeedle);
+      const cuentaOk = !filtroCuenta.value || (r.plataforma_cuenta && r.plataforma_cuenta.toLowerCase().includes(filtroCuenta.value.toLowerCase()));
       const pagadoOk = filtroPagado.value === '' || r.pagado === filtroPagado.value;
-      return clienteOk && soOk && vendedorOk && fechaOk && tecnicoOk && imeiOk && simSerieOk && pagadoOk;
+      return clienteOk && soOk && vendedorOk && fechaOk && tecnicoOk && imeiOk && simSerieOk && cuentaOk && pagadoOk;
     });
 });
 
@@ -1058,20 +1087,23 @@ const fechaEditandoStr = computed({
 
 async function guardarEdicion() {
   if (!reporteEditando.value) return;
-  loading.value = true;
+  guardandoEdicion.value = true;
   try {
     await axios.put(`${API_URL}/${reporteEditando.value.id}`, reporteEditando.value);
-    await cargarReportes();
+    // Actualiza la fila en memoria en vez de recargar TODOS los reportes del
+    // servidor (cargarReportes() vuelve a pegarle a /reportes-servicio-todos
+    // y remapea todo, lo que se siente como que la pantalla "parpadea" para
+    // un cambio de un solo campo) — mucho más ágil y el cambio se ve al toque.
+    const idx = reportes.value.findIndex(r => r.id === reporteEditando.value.id);
+    if (idx !== -1) {
+      reportes.value[idx] = { ...reportes.value[idx], ...reporteEditando.value };
+    }
     showEditDialog.value = false;
     toast.add({ severity: 'success', summary: 'Actualizado', detail: 'Reporte actualizado correctamente.', life: 3000 });
-    messageDialogText.value = 'Reporte actualizado correctamente.';
-    showMessageDialog.value = true;
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar los cambios.', life: 4000 });
-    messageDialogText.value = 'Error al guardar los cambios.';
-    showMessageDialog.value = true;
   }
-  loading.value = false;
+  guardandoEdicion.value = false;
 }
 
 function confirmarEliminarReporte(reporte) {
@@ -1600,15 +1632,7 @@ function irReporteRenovacionGlobal() {
   gap: 1rem;
   margin-top: 1.5rem;
 }
-.filtro-input {
-  flex: 1;
-  min-width: 150px;
-  /* background: #2c2f3e; */
-  color: #e4c8c8;
-  /* border: 1px solid #444851; */
-  border-radius: 8px;
-  padding: 0.5rem 1rem;
-}
+
 .seleccion-bar {
   display: flex;
   align-items: center;

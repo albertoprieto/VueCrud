@@ -38,6 +38,10 @@
         <InputText v-model="filtroVendedor" placeholder="Buscar por vendedor..." class="w-full" />
       </div>
       <div class="filtro-item">
+        <label>Cuenta</label>
+        <InputText v-model="filtroCuenta" placeholder="Buscar por cuenta..." class="w-full" />
+      </div>
+      <div class="filtro-item">
         <label>Pagado en</label>
         <Dropdown
           v-model="filtroLugarPago"
@@ -91,6 +95,7 @@
         </Column>
         <Column field="instalador" header="Instalador" />
         <Column field="vendedor" header="Vendedor" />
+        <Column field="cuenta" header="Cuenta" />
         <Column field="status" header="Estatus">
           <template #body="{ data }">
             <span :class="'badge badge-' + badgeClassNota(data.status)">{{ data.status }}</span>
@@ -162,6 +167,10 @@
               <div class="mobile-field">
                 <span class="mobile-label">Vendedor</span>
                 <span class="mobile-value">{{ item.vendedor || '—' }}</span>
+              </div>
+              <div class="mobile-field">
+                <span class="mobile-label">Cuenta</span>
+                <span class="mobile-value">{{ item.cuenta || '—' }}</span>
               </div>
               <div class="mobile-field mobile-field-full">
                 <span class="mobile-label">IMEIs</span>
@@ -243,11 +252,12 @@ const filtroOrden = ref('');
 const filtroImei = ref('');
 const filtroInstalador = ref('');
 const filtroVendedor = ref('');
+const filtroCuenta = ref('');
 const filtroLugarPago = ref('');
 const filtrosAbiertos = ref(false);
 
 const filtrosActivos = computed(() => {
-  return [filtroCliente.value, filtroOrden.value, filtroImei.value, filtroInstalador.value, filtroVendedor.value, filtroLugarPago.value]
+  return [filtroCliente.value, filtroOrden.value, filtroImei.value, filtroInstalador.value, filtroVendedor.value, filtroCuenta.value, filtroLugarPago.value]
     .filter(v => (v || '').trim()).length;
 });
 
@@ -258,7 +268,8 @@ const lugaresPago = [
  'BBVA PAU',
  'Tecnico',
  'Oficina',
- 'Mercadopago'
+ 'Mercadopago',
+ 'MercadoPago Eliseo'
 ];
 
 function parseImeis(value) {
@@ -291,6 +302,7 @@ function filtrarRegistros(rows) {
   const imei = filtroImei.value.trim();
   const inst = filtroInstalador.value.trim().toLowerCase();
   const vend = filtroVendedor.value.trim().toLowerCase();
+  const cuenta = filtroCuenta.value.trim().toLowerCase();
   if (cl) {
     result = result.filter(r => (r.cliente || '').toLowerCase().includes(cl));
   }
@@ -305,6 +317,9 @@ function filtrarRegistros(rows) {
   }
   if (vend) {
     result = result.filter(r => (r.vendedor || '').toLowerCase().includes(vend));
+  }
+  if (cuenta) {
+    result = result.filter(r => (r.cuenta || '').toLowerCase().includes(cuenta));
   }
   if (filtroLugarPago.value) {
     result = result.filter(r => (r.lugar_pago || '') === filtroLugarPago.value);

@@ -38,6 +38,21 @@ export const uploadConstanciaCliente = async (clienteId, file) => {
   return res.data;
 };
 
+export const sincronizarClienteFacturapi = async (clienteId) => {
+  const res = await axios.post(`${API_URL}/${clienteId}/facturapi/sincronizar`);
+  return res.data;
+};
+
+export const enviarLigaFiscalFacturapi = async (clienteId) => {
+  const res = await axios.post(`${API_URL}/${clienteId}/facturapi/enviar-liga`);
+  return res.data;
+};
+
+export const validarFiscalFacturapi = async (clienteId) => {
+  const res = await axios.get(`${API_URL}/${clienteId}/facturapi/validar-fiscal`);
+  return res.data;
+};
+
 export const extractRfcFromPdf = async (file) => {
   const formData = new FormData();
   formData.append('archivo', file);

@@ -548,13 +548,118 @@ def _facturapi_headers() -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
+# ── Clientes de Facturapi (recurso /customers, separado de /invoices) ──
+# Da de alta al cliente en Facturapi desde que se captura en nuestro CRM, sin
+# esperar a la primera factura — así se puede mandar la liga de auto-captura
+# (email-edit-link) y dejar que el cliente mismo corrija/complete su RFC,
+# domicilio y régimen fiscal antes de que nosotros necesitemos timbrarle nada.
+
+def _facturapi_mapear_cliente(nombre, rfc=None, regimen_fiscal=None, codigo_postal=None, correo=None, telefono=None) -> dict:
+    """Mapea un cliente del CRM al payload de Facturapi /customers.
+
+    tax_id, tax_system y address.zip son OBLIGATORIOS los tres para Facturapi
+    sin importar si el cliente ya tiene o no sus datos fiscales reales
+    (confirmado probando en vivo contra la API: omitir cualquiera de los tres
+    regresa 'campo requerido', nunca se puede crear un cliente "vacío").
+    Si el cliente todavía no tiene RFC/régimen capturado se manda el RFC
+    genérico de público en general (mismo placeholder que ya usa el resto
+    del sistema, ver RFC_PUBLICO_GENERAL) — el cliente lo corrige después
+    vía la liga de auto-captura. El CP usa el del cliente o, si no lo tiene,
+    el de la propia empresa (CSD_LUGAR_EXPEDICION) como placeholder."""
+    campos = {"legal_name": nombre}
+    if correo: campos["email"] = correo
+    if telefono: campos["phone"] = telefono
+    rfc_norm = (rfc or "").strip().upper() or None
+    campos["tax_id"] = rfc_norm if (rfc_norm and regimen_fiscal) else RFC_PUBLICO_GENERAL
+    campos["tax_system"] = regimen_fiscal if (rfc_norm and regimen_fiscal) else "616"
+    campos["address"] = {"zip": codigo_postal or os.getenv("CSD_LUGAR_EXPEDICION", "64000")}
+    return campos
+
+
+def _facturapi_crear_cliente(campos: dict) -> dict:
+    import requests
+    try:
+        resp = requests.post(f"{_facturapi_base_url()}/customers", json=campos, headers=_facturapi_headers(), timeout=30)
+        data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con Facturapi (crear cliente): {e}")
+    if not resp.ok:
+        detalle = data.get('message') or data
+        raise HTTPException(status_code=502, detail=f"Error al crear cliente en Facturapi: {detalle}")
+    return data
+
+
+def _facturapi_obtener_cliente(facturapi_id: str) -> dict:
+    """GET /customers/{id} — trae el estado actual del cliente en Facturapi,
+    incluyendo lo que el propio cliente haya corregido vía la liga de
+    auto-captura (self-service). Se usa para reflejar esos datos de vuelta
+    en el CRM, que de otro modo se queda con el placeholder de alta."""
+    import requests
+    resp = requests.get(f"{_facturapi_base_url()}/customers/{facturapi_id}", headers=_facturapi_headers(), timeout=30)
+    if not resp.ok:
+        raise HTTPException(status_code=502, detail=f"No se pudo obtener el cliente de Facturapi: HTTP {resp.status_code}")
+    return resp.json()
+
+
+def _facturapi_actualizar_cliente(facturapi_id: str, campos: dict) -> dict:
+    import requests
+    try:
+        resp = requests.put(f"{_facturapi_base_url()}/customers/{facturapi_id}", json=campos, headers=_facturapi_headers(), timeout=30)
+        data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con Facturapi (actualizar cliente): {e}")
+    if not resp.ok:
+        detalle = data.get('message') or data
+        raise HTTPException(status_code=502, detail=f"Error al actualizar cliente en Facturapi: {detalle}")
+    return data
+
+
+def _facturapi_enviar_liga_edicion(facturapi_id: str) -> dict:
+    """POST /customers/{id}/email-edit-link — Facturapi le manda un correo al
+    cliente con una liga hospedada por ellos donde captura/corrige sus propios
+    datos fiscales (RFC, domicilio, régimen). Resuelve el problema recurrente
+    de que nosotros tengamos que adivinar o perseguir esos datos."""
+    import requests
+    try:
+        resp = requests.post(f"{_facturapi_base_url()}/customers/{facturapi_id}/email-edit-link", headers=_facturapi_headers(), timeout=30)
+        data = resp.json() if resp.content else {}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con Facturapi (liga de edición): {e}")
+    if not resp.ok:
+        detalle = data.get('message') or data
+        raise HTTPException(status_code=502, detail=f"Error al enviar la liga de edición: {detalle}")
+    return data
+
+
+def _facturapi_validar_info_fiscal(facturapi_id: str) -> dict:
+    """GET /customers/{id}/tax-info-validation — checa contra el SAT si el
+    RFC/régimen/domicilio guardados en Facturapi para este cliente son válidos."""
+    import requests
+    try:
+        resp = requests.get(f"{_facturapi_base_url()}/customers/{facturapi_id}/tax-info-validation", headers=_facturapi_headers(), timeout=30)
+        data = resp.json() if resp.content else {}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con Facturapi (validación fiscal): {e}")
+    if not resp.ok:
+        detalle = data.get('message') or data
+        raise HTTPException(status_code=502, detail=f"Error al validar información fiscal: {detalle}")
+    return data
+
+
 def _facturapi_crear_borrador(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago, forma_pago,
                                productos, serie="A", folio=None,
-                               domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None):
+                               domicilio_fiscal_receptor=None, regimen_fiscal_receptor=None,
+                               facturapi_customer_id=None):
     """Crea el borrador (status='draft') en Facturapi — no timbra, no toca al
     SAT. Sirve para previsualizar el PDF antes de timbrar. El CSD
     vive en el dashboard de Facturapi (Organización > Certificados), nunca
-    se manda aquí."""
+    se manda aquí.
+
+    Si el cliente ya está dado de alta en Facturapi (facturapi_customer_id,
+    ver /clientes/{id}/facturapi/sincronizar) se referencia por id en vez de
+    mandar los datos fiscales inline — así el borrador siempre usa lo último
+    que el propio cliente confirmó vía la liga de auto-captura, no nuestra
+    copia local (que puede estar vieja o mal tecleada)."""
     import requests
 
     LUGAR_EXPEDICION = os.getenv("CSD_LUGAR_EXPEDICION", "64000")
@@ -583,13 +688,18 @@ def _facturapi_crear_borrador(nombre_cliente, rfc_cliente, uso_cfdi, metodo_pago
         } for p in productos
     ]
 
-    payload = {
-        "customer": {
+    if facturapi_customer_id and rfc_cliente != RFC_PUBLICO_GENERAL:
+        customer_field = facturapi_customer_id
+    else:
+        customer_field = {
             "legal_name": nombre_cliente,
             "tax_id": rfc_cliente,
             "tax_system": regimen_receptor,
             "address": {"zip": domicilio_receptor},
-        },
+        }
+
+    payload = {
+        "customer": customer_field,
         "items": items,
         "use": uso_cfdi,
         "payment_form": forma_pago,
@@ -1692,6 +1802,10 @@ def add_cliente(cliente: Cliente):
         cursor.execute("ALTER TABLE clientes ADD COLUMN regimen_fiscal VARCHAR(3) NULL")
     except Exception:
         pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN facturapi_customer_id VARCHAR(50) NULL")
+    except Exception:
+        pass
     cursor.execute(
         """INSERT INTO clientes
            (nombre, correo, direccion, atendidoPor, usuarioSesion, rfc, constancia_path,
@@ -1710,7 +1824,26 @@ def add_cliente(cliente: Cliente):
     db.commit()
     cursor.close()
     db.close()
-    return {"message": "Cliente registrado exitosamente"}
+
+    # Alta best-effort en Facturapi — si falla, el cliente ya quedó guardado
+    # en nuestro CRM de todos modos; se puede sincronizar después a mano
+    # desde /clientes/{id}/facturapi/sincronizar.
+    facturapi_customer_id = None
+    if os.getenv("PAC_PROVIDER", "sw").strip().lower() == "facturapi" and cliente.nombre:
+        try:
+            fp_data = _facturapi_crear_cliente(_facturapi_mapear_cliente(
+                nombre=cliente.nombre, rfc=cliente.rfc, regimen_fiscal=cliente.regimen_fiscal,
+                codigo_postal=cliente.codigo_postal, correo=cliente.correo,
+            ))
+            facturapi_customer_id = fp_data.get("id")
+            if facturapi_customer_id:
+                db2 = _get_db(); cur2 = db2.cursor()
+                cur2.execute("UPDATE clientes SET facturapi_customer_id=%s WHERE id=%s", (facturapi_customer_id, cliente_id))
+                db2.commit(); cur2.close(); db2.close()
+        except Exception:
+            pass
+
+    return {"message": "Cliente registrado exitosamente", "id": cliente_id, "facturapi_customer_id": facturapi_customer_id}
 
 
 class ClienteFindOrCreateRequest(BaseModel):
@@ -1820,6 +1953,10 @@ def update_cliente(cliente_id: int, cliente: Cliente):
         cursor.execute("ALTER TABLE clientes ADD COLUMN regimen_fiscal VARCHAR(3) NULL")
     except Exception:
         pass
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN facturapi_customer_id VARCHAR(50) NULL")
+    except Exception:
+        pass
     cursor.execute(
         """UPDATE clientes
            SET nombre=%s, correo=%s, direccion=%s, atendidoPor=%s, usuarioSesion=%s, rfc=%s, constancia_path=%s,
@@ -1837,9 +1974,35 @@ def update_cliente(cliente_id: int, cliente: Cliente):
     cursor.execute("DELETE FROM plataformas_cliente WHERE cliente_id=%s", (cliente_id,))
     for plataforma in cliente.plataformas or []:
         cursor.execute("INSERT INTO plataformas_cliente (cliente_id, plataforma) VALUES (%s, %s)", (cliente_id, plataforma))
+
+    cursor.execute("SELECT facturapi_customer_id FROM clientes WHERE id=%s", (cliente_id,))
+    row = cursor.fetchone()
+    facturapi_customer_id = row[0] if row else None
+
     db.commit()
     cursor.close()
     db.close()
+
+    # Igual que en la creación: mantiene sincronizado el cliente en Facturapi
+    # con lo que se acaba de editar aquí — best-effort, nunca tumba la edición.
+    if os.getenv("PAC_PROVIDER", "sw").strip().lower() == "facturapi" and cliente.nombre:
+        campos = _facturapi_mapear_cliente(
+            nombre=cliente.nombre, rfc=cliente.rfc, regimen_fiscal=cliente.regimen_fiscal,
+            codigo_postal=cliente.codigo_postal, correo=cliente.correo,
+        )
+        try:
+            if facturapi_customer_id:
+                _facturapi_actualizar_cliente(facturapi_customer_id, campos)
+            else:
+                fp_data = _facturapi_crear_cliente(campos)
+                nuevo_id = fp_data.get("id")
+                if nuevo_id:
+                    db2 = _get_db(); cur2 = db2.cursor()
+                    cur2.execute("UPDATE clientes SET facturapi_customer_id=%s WHERE id=%s", (nuevo_id, cliente_id))
+                    db2.commit(); cur2.close(); db2.close()
+        except Exception:
+            pass
+
     return {"message": "Cliente actualizado"}
 
 @app.delete("/clientes/{cliente_id}")
@@ -1856,6 +2019,123 @@ def delete_cliente(cliente_id: int):
     cursor.close()
     db.close()
     return {"message": "Cliente eliminado"}
+
+
+@app.post("/clientes/{cliente_id}/facturapi/sincronizar")
+def sincronizar_cliente_facturapi(cliente_id: int):
+    """Da de alta (o actualiza si ya existe) al cliente en Facturapi con lo
+    que tengamos capturado en nuestro CRM. Cubre clientes creados antes de
+    que esta sincronización existiera, o donde el alta automática falló."""
+    proveedor = os.getenv("PAC_PROVIDER", "sw").strip().lower()
+    if proveedor != "facturapi":
+        raise HTTPException(status_code=400, detail="Esta función solo aplica con PAC_PROVIDER=facturapi")
+
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN facturapi_customer_id VARCHAR(50) NULL")
+    except Exception:
+        pass
+    cursor.execute(
+        "SELECT id, nombre, correo, rfc, codigo_postal, regimen_fiscal, facturapi_customer_id FROM clientes WHERE id=%s",
+        (cliente_id,)
+    )
+    cliente = cursor.fetchone()
+    if not cliente:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    if not cliente.get("nombre"):
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="El cliente no tiene nombre — no se puede sincronizar")
+    cursor.close(); db.close()
+
+    campos = _facturapi_mapear_cliente(
+        nombre=cliente["nombre"], rfc=cliente.get("rfc"), regimen_fiscal=cliente.get("regimen_fiscal"),
+        codigo_postal=cliente.get("codigo_postal"), correo=cliente.get("correo"),
+    )
+
+    if cliente.get("facturapi_customer_id"):
+        fp_data = _facturapi_actualizar_cliente(cliente["facturapi_customer_id"], campos)
+        facturapi_id = cliente["facturapi_customer_id"]
+    else:
+        fp_data = _facturapi_crear_cliente(campos)
+        facturapi_id = fp_data.get("id")
+        db2 = _get_db(); cur2 = db2.cursor()
+        cur2.execute("UPDATE clientes SET facturapi_customer_id=%s WHERE id=%s", (facturapi_id, cliente_id))
+        db2.commit(); cur2.close(); db2.close()
+
+    return {"message": "Sincronizado con Facturapi", "facturapi_customer_id": facturapi_id, "facturapi": fp_data}
+
+
+@app.post("/clientes/{cliente_id}/facturapi/enviar-liga")
+def enviar_liga_captura_fiscal(cliente_id: int):
+    """Le manda al cliente, por correo vía Facturapi, la liga hospedada por
+    ellos para que capture/corrija sus propios datos fiscales — evita que
+    nosotros tengamos que adivinar RFC/domicilio/régimen. Sincroniza primero
+    si todavía no existe en Facturapi."""
+    sync = sincronizar_cliente_facturapi(cliente_id)
+    facturapi_id = sync["facturapi_customer_id"]
+    if not facturapi_id:
+        raise HTTPException(status_code=502, detail="No se pudo obtener el id de Facturapi del cliente")
+    resultado = _facturapi_enviar_liga_edicion(facturapi_id)
+    return {"message": "Liga de captura fiscal enviada", "facturapi": resultado}
+
+
+@app.get("/clientes/{cliente_id}/facturapi/validar-fiscal")
+def validar_fiscal_cliente_facturapi(cliente_id: int):
+    """Checa contra el SAT (vía Facturapi) si el RFC/régimen/domicilio que
+    tiene guardados el cliente en Facturapi son válidos. Igual que
+    enviar-liga, sincroniza primero si el cliente todavía no existe en
+    Facturapi — no tiene caso mandar al usuario a buscar un botón de
+    'sincronizar' que no existe en la UI.
+
+    Además persiste el resultado (facturapi_validado/facturapi_validado_fecha)
+    para que el datatable de Clientes muestre un indicador sin tener que
+    volver a preguntarle a Facturapi, y jala de vuelta el RFC/régimen/CP
+    reales que el cliente haya capturado por su cuenta vía la liga de
+    auto-captura — si no se hace esto el CRM se queda para siempre con el
+    RFC genérico placeholder que se manda al dar de alta."""
+    sync = sincronizar_cliente_facturapi(cliente_id)
+    facturapi_id = sync["facturapi_customer_id"]
+    if not facturapi_id:
+        raise HTTPException(status_code=502, detail="No se pudo obtener el id de Facturapi del cliente")
+    resultado = _facturapi_validar_info_fiscal(facturapi_id)
+    es_valido = bool(resultado.get("is_valid", resultado.get("valid")))
+
+    db = _get_db()
+    cursor = db.cursor()
+    for _col_sql in (
+        "ALTER TABLE clientes ADD COLUMN facturapi_validado TINYINT(1) NOT NULL DEFAULT 0",
+        "ALTER TABLE clientes ADD COLUMN facturapi_validado_fecha DATETIME NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+
+    try:
+        cliente_facturapi = _facturapi_obtener_cliente(facturapi_id)
+    except Exception:
+        cliente_facturapi = None
+
+    if cliente_facturapi and cliente_facturapi.get("tax_id") and cliente_facturapi["tax_id"] != RFC_PUBLICO_GENERAL:
+        zip_code = (cliente_facturapi.get("address") or {}).get("zip")
+        cursor.execute(
+            "UPDATE clientes SET rfc=%s, regimen_fiscal=%s, codigo_postal=%s, facturapi_validado=%s, facturapi_validado_fecha=NOW() WHERE id=%s",
+            (cliente_facturapi["tax_id"], cliente_facturapi.get("tax_system"), zip_code, int(es_valido), cliente_id)
+        )
+    else:
+        cursor.execute(
+            "UPDATE clientes SET facturapi_validado=%s, facturapi_validado_fecha=NOW() WHERE id=%s",
+            (int(es_valido), cliente_id)
+        )
+    db.commit()
+    cursor.close()
+    db.close()
+
+    resultado["facturapi_validado"] = es_valido
+    return resultado
+
 
 class DetalleVenta(BaseModel):
     articulo_id: int
@@ -2937,7 +3217,7 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
             pass
     # Lista de columnas válidas según DESCRIBE reportes_servicio
     valid_columns = [
-        "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos", "vendedor",
+        "asignacion_id", "tipo_servicio", "lugar_instalacion", "marca", "submarca", "modelo", "placas", "color", "numero_economico", "equipo_plan", "imei", "serie", "accesorios", "sim_proveedor", "sim_serie", "sim_instalador", "sim_telefono", "bateria", "ignicion", "corte", "ubicacion_corte", "observaciones", "plataforma", "usuario", "subtotal", "total", "forma_pago", "pagado", "nombre_cliente", "firma_cliente", "nombre_instalador", "firma_instalador", "fecha", "monto_tecnico", "viaticos", "vendedor",
         # nuevas columnas para comprobantes
         "comprobante_path", "comprobante_estado", "aprobado_por", "aprobado_fecha",
         # NUEVO: columnas JSON
@@ -5391,6 +5671,10 @@ def get_notas_pago():
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("ALTER TABLE reportes_servicio ADD COLUMN plataforma_cuenta VARCHAR(100) NULL")
+    except Exception:
+        pass
     cursor.execute("SELECT * FROM notas_pago ORDER BY id DESC")
     rows = cursor.fetchall()
     # Parsear ordenes JSON
@@ -5430,20 +5714,27 @@ def get_notas_pago():
                             if im:
                                 imeis_set.append(im)
             r['imeis'] = imeis_set
-        # Obtener instalador, vendedor y usuario desde reportes_servicio
+        # Obtener instalador, vendedor, usuario y cuenta de plataforma desde reportes_servicio
         r['instalador'] = ''
         r['vendedor'] = ''
         r['usuario'] = ''
+        r['cuenta'] = ''
         if rids:
             placeholders2 = ','.join(['%s'] * len(rids))
-            cursor.execute(f"SELECT nombre_instalador, vendedor, usuario FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
+            cursor.execute(f"SELECT nombre_instalador, vendedor, usuario, plataforma_cuenta FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
             reps2 = cursor.fetchall()
             instaladores = list({rep['nombre_instalador'] for rep in reps2 if rep.get('nombre_instalador')})
             vendedores_list = list({rep['vendedor'] for rep in reps2 if rep.get('vendedor')})
             usuarios_list = list({rep['usuario'] for rep in reps2 if rep.get('usuario')})
+            # Si el reporte no trae plataforma_cuenta (no se consultó la
+            # plataforma, o vino vacío en origen), cae al campo "usuario" del
+            # reporte — es el mismo dato que el PDF del reporte de servicio
+            # etiqueta como "Usuario", buena referencia de todos modos.
+            cuentas_list = list({(rep.get('plataforma_cuenta') or rep.get('usuario')) for rep in reps2 if (rep.get('plataforma_cuenta') or rep.get('usuario'))})
             r['instalador'] = ', '.join(instaladores)
             r['vendedor'] = ', '.join(vendedores_list)
             r['usuario'] = ', '.join(usuarios_list)
+            r['cuenta'] = ', '.join(cuentas_list)
         # Parsear comprobantes JSON (la lista completa vive en el detalle, aquí solo se
         # necesita saber si hay al menos uno para la reconciliación reportes-vs-comprobantes)
         if isinstance(r.get('comprobantes'), str):
@@ -5576,7 +5867,7 @@ def actualizar_status_nota(nota_id: int, data: dict = Body(...)):
 @app.put("/notas-pago/{nota_id}/lugar-pago")
 def actualizar_lugar_pago_nota(nota_id: int, data: dict = Body(...)):
     lugar_pago = data.get('lugar_pago', '').strip()
-    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago']
+    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago', 'MercadoPago Eliseo']
     if lugar_pago and lugar_pago not in lugares_validos:
         raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
     db = mysql.connector.connect(
@@ -5894,6 +6185,10 @@ def get_facturas_pago():
         database="nombre_de_tu_db"
     )
     cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("ALTER TABLE reportes_servicio ADD COLUMN plataforma_cuenta VARCHAR(100) NULL")
+    except Exception:
+        pass
     cursor.execute("SELECT * FROM facturas_pago ORDER BY id DESC")
     rows = cursor.fetchall()
     for r in rows:
@@ -5938,20 +6233,27 @@ def get_facturas_pago():
                             if im:
                                 imeis_set.append(im)
             r['imeis'] = imeis_set
-        # Obtener instalador, vendedor y usuario desde reportes_servicio
+        # Obtener instalador, vendedor, usuario y cuenta de plataforma desde reportes_servicio
         r['instalador'] = ''
         r['vendedor'] = ''
         r['usuario'] = ''
+        r['cuenta'] = ''
         if rids:
             placeholders2 = ','.join(['%s'] * len(rids))
-            cursor.execute(f"SELECT nombre_instalador, vendedor, usuario FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
+            cursor.execute(f"SELECT nombre_instalador, vendedor, usuario, plataforma_cuenta FROM reportes_servicio WHERE id IN ({placeholders2})", tuple(rids))
             reps2 = cursor.fetchall()
             instaladores = list({rep['nombre_instalador'] for rep in reps2 if rep.get('nombre_instalador')})
             vendedores_list = list({rep['vendedor'] for rep in reps2 if rep.get('vendedor')})
             usuarios_list = list({rep['usuario'] for rep in reps2 if rep.get('usuario')})
+            # Si el reporte no trae plataforma_cuenta (no se consultó la
+            # plataforma, o vino vacío en origen), cae al campo "usuario" del
+            # reporte — es el mismo dato que el PDF del reporte de servicio
+            # etiqueta como "Usuario", buena referencia de todos modos.
+            cuentas_list = list({(rep.get('plataforma_cuenta') or rep.get('usuario')) for rep in reps2 if (rep.get('plataforma_cuenta') or rep.get('usuario'))})
             r['instalador'] = ', '.join(instaladores)
             r['vendedor'] = ', '.join(vendedores_list)
             r['usuario'] = ', '.join(usuarios_list)
+            r['cuenta'] = ', '.join(cuentas_list)
         if isinstance(r.get('comprobantes'), str):
             try:
                 r['comprobantes'] = json.loads(r['comprobantes'])
@@ -6340,6 +6642,18 @@ def generar_prefactura_factura_pago(factura_id: int, data: TimbrarFacturaPagoReq
         factura, data.domicilio_fiscal_receptor, data.regimen_fiscal_receptor, data.rfc_cliente
     )
 
+    facturapi_customer_id = None
+    if data.rfc_cliente != RFC_PUBLICO_GENERAL:
+        try:
+            db_cli = _get_db()
+            cur_cli = db_cli.cursor(dictionary=True)
+            cur_cli.execute("SELECT facturapi_customer_id FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1", (factura['cliente'],))
+            row_cli = cur_cli.fetchone()
+            cur_cli.close(); db_cli.close()
+            facturapi_customer_id = (row_cli or {}).get('facturapi_customer_id')
+        except Exception:
+            facturapi_customer_id = None
+
     borrador = _facturapi_crear_borrador(
         nombre_cliente=factura['cliente'],
         rfc_cliente=data.rfc_cliente,
@@ -6351,6 +6665,7 @@ def generar_prefactura_factura_pago(factura_id: int, data: TimbrarFacturaPagoReq
         folio=str(factura_id),
         domicilio_fiscal_receptor=domicilio_receptor,
         regimen_fiscal_receptor=regimen_receptor,
+        facturapi_customer_id=facturapi_customer_id,
     )
 
     db = mysql.connector.connect(
@@ -6784,7 +7099,7 @@ def actualizar_status_factura_pago(factura_id: int, data: dict = Body(...)):
 @app.put("/facturas-pago/{factura_id}/lugar-pago")
 def actualizar_lugar_pago_factura(factura_id: int, data: dict = Body(...)):
     lugar_pago = data.get('lugar_pago', '').strip()
-    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago']
+    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago', 'MercadoPago Eliseo']
     if lugar_pago and lugar_pago not in lugares_validos:
         raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
     db = mysql.connector.connect(
