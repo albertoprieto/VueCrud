@@ -50,11 +50,11 @@
         :value="clientesFiltrados"
         :loading="loading"
         stripedRows
-        responsiveLayout="scroll"
         class="clientes-table"
         :paginator="clientesFiltrados.length > 10"
-        :rows="10"
-        :rowsPerPageOptions="[10, 20, 50, 100]"
+        :rows="50"
+        size="small"
+        :rowsPerPageOptions="[50, 100, 150, 200]"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
         currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords}"
       >
@@ -67,15 +67,25 @@
             <span>{{ filtroNombre || filtroUsuario || filtroTelefono ? 'Sin resultados para estos filtros.' : 'Aún no hay clientes registrados.' }}</span>
           </div>
         </template>
-        <Column header="Nombre">
+        <Column header="Nombre" :pt="{ bodyCell: { 'data-label': 'Nombre' } }">
           <template #body="slotProps">
             <div class="cliente-nombre-cell">
               <span class="cliente-avatar">{{ inicialesDe(slotProps.data.nombre) }}</span>
               <span>{{ slotProps.data.nombre }}</span>
+              <i
+                v-if="slotProps.data.facturapi_validado"
+                class="pi pi-verified facturapi-badge facturapi-badge-validado"
+                title="Datos fiscales validados ante el SAT"
+              ></i>
+              <i
+                v-else-if="slotProps.data.facturapi_customer_id"
+                class="pi pi-sync facturapi-badge facturapi-badge-sincronizado"
+                title="Sincronizado con Facturapi, datos fiscales sin validar"
+              ></i>
             </div>
           </template>
         </Column>
-        <Column field="telefono" header="Teléfonos">
+        <Column field="telefono" header="Teléfonos" :pt="{ bodyCell: { 'data-label': 'Teléfonos' } }">
           <template #body="slotProps">
             <div class="chip-list">
               <span v-for="(tel, idx) in slotProps.data.telefonos" :key="idx" class="chip chip-telefono">
@@ -84,9 +94,9 @@
             </div>
           </template>
         </Column>
-        <Column field="correo" header="Correo" />
-        <Column field="direccion" header="Ciudad" />
-        <Column header="Usuarios">
+        <Column field="correo" header="Correo" :pt="{ bodyCell: { 'data-label': 'Correo' } }" />
+        <Column field="direccion" header="Ciudad" :pt="{ bodyCell: { 'data-label': 'Ciudad' } }" />
+        <Column header="Usuarios" :pt="{ bodyCell: { 'data-label': 'Usuarios' } }">
           <template #body="slotProps">
             <div class="chip-list">
               <span v-for="(u, idx) in slotProps.data.usuarios" :key="idx" class="chip chip-usuario">
@@ -95,7 +105,7 @@
             </div>
           </template>
         </Column>
-        <Column header="Plataformas">
+        <Column header="Plataformas" :pt="{ bodyCell: { 'data-label': 'Plataformas' } }">
           <template #body="slotProps">
             <div class="chip-list">
               <span v-for="(p, idx) in slotProps.data.plataformas" :key="idx" class="chip chip-plataforma">
@@ -106,13 +116,33 @@
         </Column>
         <Column header="Acciones" body-class="acciones-col">
           <template #body="slotProps">
-            <Button icon="pi pi-pencil" class="p-button-sm p-button-rounded p-button-text" @click="editCliente(slotProps.data)" />
-            <Button icon="pi pi-trash" class="p-button-sm p-button-rounded p-button-text p-button-danger" @click="handleDeleteCliente(slotProps.data.id)" />
+            <Button icon="pi pi-pencil" class="p-button-sm p-button-rounded p-button-text" title="Editar" @click="editCliente(slotProps.data)" />
+            <Button
+              icon="pi pi-envelope" class="p-button-sm p-button-rounded p-button-text"
+              title="Enviar liga para que capture sus datos fiscales"
+              :loading="enviandoLigaId === slotProps.data.id"
+              @click="enviarLigaFiscal(slotProps.data)"
+            />
+            <Button
+              icon="pi pi-verified" class="p-button-sm p-button-rounded p-button-text"
+              title="Validar información fiscal ante el SAT"
+              :loading="validandoId === slotProps.data.id"
+              @click="validarFiscal(slotProps.data)"
+            />
+            <Button icon="pi pi-trash" class="p-button-sm p-button-rounded p-button-text p-button-danger" title="Eliminar" @click="handleDeleteCliente(slotProps.data.id)" />
           </template>
         </Column>
       </DataTable>
     </div>
-    <Dialog v-model:visible="showModal" :header="form.id ? 'Editar Cliente' : 'Nuevo Cliente'" :modal="true" :closable="true" class="clientes-dialog">
+    <Dialog
+      v-model:visible="showModal"
+      :header="form.id ? 'Editar Cliente' : 'Nuevo Cliente'"
+      :modal="true"
+      :closable="true"
+      class="clientes-dialog"
+      style="width: 640px"
+      :breakpoints="{ '768px': '92vw' }"
+    >
       <div class="clientes-dialog-content compact-form">
         <div class="formgrid grid grid-responsive">
           <div class="field col-12 md:col-6">
@@ -251,7 +281,10 @@ import AutoComplete from 'primevue/autocomplete';
 import Dropdown from 'primevue/dropdown';
 import { useToast } from 'primevue/usetoast';
 import DataTableLoader from '@/components/DataTableLoader.vue';
-import { getClientes, addCliente, updateCliente, deleteCliente, uploadConstanciaCliente, extractRfcFromPdf } from '@/services/clientesService';
+import {
+  getClientes, addCliente, updateCliente, deleteCliente, uploadConstanciaCliente, extractRfcFromPdf,
+  enviarLigaFiscalFacturapi, validarFiscalFacturapi,
+} from '@/services/clientesService';
 import { useLoginStore } from '@/stores/loginStore';
 import { useRouter } from 'vue-router';
 
@@ -527,6 +560,41 @@ const handleDeleteCliente = async (id) => {
   }
 };
 
+// Facturapi: liga de auto-captura fiscal — el cliente llena/corrige su RFC,
+// domicilio y régimen directamente en Facturapi, sin que nosotros tengamos
+// que adivinarlo. El backend sincroniza (crea si hace falta) antes de mandar.
+const enviandoLigaId = ref(null);
+const enviarLigaFiscal = async (cliente) => {
+  enviandoLigaId.value = cliente.id;
+  try {
+    await enviarLigaFiscalFacturapi(cliente.id);
+    toast.add({ severity: 'success', summary: 'Liga enviada', detail: `Se le mandó a ${cliente.correo || 'su correo'} la liga para capturar sus datos fiscales.`, life: 4500 });
+    await loadClientes();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo enviar la liga.', life: 4500 });
+  }
+  enviandoLigaId.value = null;
+};
+
+const validandoId = ref(null);
+const validarFiscal = async (cliente) => {
+  validandoId.value = cliente.id;
+  try {
+    const resultado = await validarFiscalFacturapi(cliente.id);
+    const valido = resultado?.is_valid ?? resultado?.valid;
+    toast.add({
+      severity: valido ? 'success' : 'warn',
+      summary: valido ? 'Datos fiscales válidos' : 'Datos fiscales con problemas',
+      detail: resultado?.message || (valido ? 'El SAT reconoce el RFC/régimen/domicilio capturados.' : 'Revisa el RFC/régimen/domicilio del cliente en Facturapi.'),
+      life: 5000,
+    });
+    await loadClientes();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo validar la información fiscal.', life: 4500 });
+  }
+  validandoId.value = null;
+};
+
 const addTelefono = () => form.value.telefonos.push('');
 const removeTelefono = (idx) => form.value.telefonos.splice(idx, 1);
 const addPlataforma = () => form.value.plataformas.push('');
@@ -655,6 +723,15 @@ watch(() => form.value.nombre, (nuevoNombre) => {
   font-size: 0.78rem;
   font-weight: 700;
 }
+.facturapi-badge {
+  font-size: 0.9rem;
+}
+.facturapi-badge-validado {
+  color: var(--color-success);
+}
+.facturapi-badge-sincronizado {
+  color: color-mix(in oklab, var(--color-text) 40%, var(--color-primary));
+}
 .clientes-empty {
   display: flex;
   flex-direction: column;
@@ -715,9 +792,9 @@ watch(() => form.value.nombre, (nuevoNombre) => {
 .chip-icon.usr { color: color-mix(in oklab, var(--color-text) 65%, var(--color-primary)); }
 .chip-icon.plat { color: color-mix(in oklab, var(--color-text) 70%, var(--color-primary)); }
 .acciones-col {
-  min-width: 120px;
+  min-width: 190px;
   display: flex;
-  gap: 0.5rem;
+  gap: 0.3rem;
   justify-content: center;
 }
 .input-row {
@@ -770,8 +847,76 @@ watch(() => form.value.nombre, (nuevoNombre) => {
   }
   .clientes-filtros {
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.4rem;
     align-items: stretch;
+  }
+  .clientes-filtros > * {
+    margin: 0;
+    min-width: 0;
+    width: 100%;
+  }
+  .filtro-autocomplete :deep(.p-autocomplete),
+  .filtro-autocomplete :deep(.p-autocomplete-input) {
+    width: 100%;
+  }
+  .clientes-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+  }
+}
+
+/* Mobile: la tabla deja de ser tabla y cada fila se vuelve una tarjeta
+   (misma técnica clásica de "responsive table": thead se oculta, cada td
+   se etiqueta con el nombre de su columna vía data-label + ::before). */
+@media (max-width: 768px) {
+  .clientes-table-card {
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+  }
+  .clientes-table :deep(.p-datatable-thead) {
+    display: none;
+  }
+  .clientes-table :deep(.p-datatable-tbody) > tr {
+    display: block;
+    background: var(--color-card) !important;
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    box-shadow: var(--shadow-1);
+    margin-bottom: 0.85rem;
+    padding: 0.85rem 1rem;
+  }
+  .clientes-table :deep(.p-datatable-tbody) > tr > td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.45rem 0;
+    border: none !important;
+    text-align: right;
+  }
+  .clientes-table :deep(.p-datatable-tbody) > tr > td:not(:last-child) {
+    border-bottom: 1px solid var(--color-border) !important;
+  }
+  .clientes-table :deep(.p-datatable-tbody) > tr > td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-text);
+    opacity: 0.55;
+    text-align: left;
+    flex-shrink: 0;
+  }
+  .clientes-table :deep(.p-datatable-tbody) > tr > td.acciones-col {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .clientes-table :deep(.p-paginator) {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 }
 .chip-list {

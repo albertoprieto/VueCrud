@@ -437,7 +437,8 @@ const lugaresDisponibles = [
   'BBVA PAU',
   'Tecnico',
   'Oficina',
-  'Mercadopago'
+  'Mercadopago',
+  'MercadoPago Eliseo'
 ];
 
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
