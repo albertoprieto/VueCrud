@@ -149,7 +149,8 @@ const ALIAS_PERSONA = {
     'Carlos': ['carlos lopez', 'carlosl', 'Carlos Lopez Estavillo'],
     'Eliseo': ['eliseo', 'eliseo 2'],
     'Ricardo': ['Ricardoa', 'Ricardo Arteaga Gomez'],
-    'Braulio': ['Braulio Ávila (CDMX)', 'Braulior']
+    'Braulio': ['Braulio Ávila (CDMX)', 'Braulior', 'BRAULIO'],
+    'Paulina Rivas': ['paulina']
   },
   nombre_instalador: {
     'Carlos': ['carlos lopez', 'carlosl'],

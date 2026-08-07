@@ -186,10 +186,10 @@
           <template #body="slotProps">
             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-start; align-items: center; min-width: 320px;">
               <Button
-                v-if="!slotProps.data.pagado"  
+                v-if="!slotProps.data.pagado && asignacionPagoMap[slotProps.data.id]?.tipo !== 'factura'"
                 icon="pi pi-pencil"
                 class="p-button-sm p-button-info"
-                
+
                 @click="abrirEditar(slotProps.data)"
               />
               <Button
@@ -488,7 +488,7 @@ import { useLoginStore } from '@/stores/loginStore';
 import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
 import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
-import { crearNota, crearFactura, getNotas, getFacturas } from '@/services/pagosService';
+import { crearNota, crearFactura, getNotas, getFacturas, actualizarCamposNota } from '@/services/pagosService';
 import { generarNotaServicioPDF } from '@/services/NotaServicioPdfService.js';
 import * as XLSX from 'xlsx';
 import NuevoReporteDeServicio from './NuevoReporteDeServicio.vue';
@@ -1093,7 +1093,22 @@ async function guardarEdicion() {
   if (!reporteEditando.value) return;
   guardandoEdicion.value = true;
   try {
+    const idxOriginal = reportes.value.findIndex(r => r.id === reporteEditando.value.id);
+    const totalOriginal = idxOriginal !== -1 ? reportes.value[idxOriginal].total : null;
     await axios.put(`${API_URL}/${reporteEditando.value.id}`, reporteEditando.value);
+
+    // Si el reporte tiene una nota asociada y cambió el total, refleja el
+    // mismo total en la nota — la factura no se toca (ese reporte ni
+    // siquiera llega aquí, el ícono de editar está oculto para ese caso).
+    const asignacion = asignacionPagoMap.value[reporteEditando.value.id];
+    if (asignacion?.tipo === 'nota' && Number(reporteEditando.value.total) !== Number(totalOriginal)) {
+      try {
+        await actualizarCamposNota(asignacion.id, { total: reporteEditando.value.total });
+      } catch (e) {
+        toast.add({ severity: 'warn', summary: 'Aviso', detail: 'El reporte se guardó, pero no se pudo actualizar el total de la nota asociada.', life: 4500 });
+      }
+    }
+
     // Actualiza la fila en memoria en vez de recargar TODOS los reportes del
     // servidor (cargarReportes() vuelve a pegarle a /reportes-servicio-todos
     // y remapea todo, lo que se siente como que la pantalla "parpadea" para
