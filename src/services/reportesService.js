@@ -40,3 +40,11 @@ export const quitarPermisoPendiente = async (reporteId) => {
   const response = await axios.delete(`https://api.gpsubicacionapi.com/reportes-servicio/${reporteId}/permiso-pendiente`);
   return response.data;
 };
+
+// Reasignar el vendedor/responsable de un reporte (ej. transferir un
+// pendiente de comprobante a otro vendedor) — no deja rastro del vendedor
+// original, el reporte pasa completo al nuevo.
+export const transferirVendedor = async (reporteId, vendedor) => {
+  const response = await axios.put(`https://api.gpsubicacionapi.com/reportes-servicio/${reporteId}`, { vendedor });
+  return response.data;
+};

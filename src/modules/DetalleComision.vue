@@ -115,6 +115,17 @@
             />
           </template>
         </Column>
+        <Column v-if="tipo === 'vendedor'" header="Transferir" style="width:60px">
+          <template #body="{ data }">
+            <Button
+              v-if="data.estado === 'sin_nota' || data.estado === 'sin_comprobante'"
+              icon="pi pi-send"
+              class="p-button-sm p-button-text btn-icon-only"
+              v-tooltip.top="'Transferir a otro vendedor'"
+              @click="abrirTransferir(data)"
+            />
+          </template>
+        </Column>
         <Column header="Detalle" style="width:60px">
           <template #body="{ data }">
             <Button
@@ -265,6 +276,40 @@
         </div>
       </div>
     </Dialog>
+
+    <!-- Dialog: transferir reporte a otro vendedor -->
+    <Dialog
+      v-model:visible="transferDialogVisible"
+      header="Transferir a otro vendedor"
+      :modal="true"
+      :style="{ width: '420px', maxWidth: '95vw' }"
+      :draggable="false"
+    >
+      <div v-if="reporteParaTransferir" class="permiso-dialog">
+        <p class="permiso-reporte-info">
+          {{ reporteParaTransferir.folio || `Reporte #${reporteParaTransferir.id}` }} — {{ reporteParaTransferir.nombre_cliente || '-' }}
+        </p>
+        <div class="field">
+          <label>Nuevo vendedor</label>
+          <Dropdown
+            v-model="nuevoVendedor"
+            :options="vendedoresDisponibles"
+            editable
+            placeholder="Selecciona o escribe un nombre"
+            class="w-full"
+          />
+        </div>
+        <div class="modal-actions">
+          <Button
+            label="Transferir" icon="pi pi-send"
+            :loading="transfiriendo"
+            :disabled="!nuevoVendedor.trim()"
+            @click="confirmarTransferir"
+          />
+          <Button label="Cancelar" class="p-button-secondary" @click="transferDialogVisible = false" type="button" />
+        </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -280,10 +325,10 @@ import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
-import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente } from '@/services/reportesService';
+import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente, transferirVendedor } from '@/services/reportesService';
 import { getNotas, getFacturas } from '@/services/pagosService';
 import {
-  indexarNotasFacturas, reportesDePersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS,
+  indexarNotasFacturas, reportesDePersona, agruparPorPersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS,
   limitePermisoPendiente, ventanaPermisoPendienteAbierta,
 } from '@/utils/comisiones';
 
@@ -535,6 +580,43 @@ async function quitarPermiso(reporte) {
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo quitar el permiso.', life: 4500 });
   }
+}
+
+// ── Transferir a otro vendedor — reasigna reportes.vendedor. Sin nota de
+// auditoría: el reporte pasa completo al nuevo vendedor. Solo aplica a
+// vendedor (no técnico, ahí no hay "responsable" a quien transferir). ──
+const transferDialogVisible = ref(false);
+const reporteParaTransferir = ref(null);
+const nuevoVendedor = ref('');
+const transfiriendo = ref(false);
+
+const vendedoresDisponibles = computed(() => {
+  if (tipo.value !== 'vendedor') return [];
+  return agruparPorPersona(reportes.value, indice.value, 'vendedor')
+    .map(p => p.nombre)
+    .filter(n => n && n !== nombre.value)
+    .sort((a, b) => a.localeCompare(b));
+});
+
+function abrirTransferir(reporte) {
+  reporteParaTransferir.value = reporte;
+  nuevoVendedor.value = '';
+  transferDialogVisible.value = true;
+}
+
+async function confirmarTransferir() {
+  const destino = (nuevoVendedor.value || '').trim();
+  if (!reporteParaTransferir.value || !destino) return;
+  transfiriendo.value = true;
+  try {
+    await transferirVendedor(reporteParaTransferir.value.id, destino);
+    toast.add({ severity: 'success', summary: 'Transferido', detail: `Reporte movido a ${destino}.`, life: 3500 });
+    transferDialogVisible.value = false;
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo transferir el reporte.', life: 4500 });
+  }
+  transfiriendo.value = false;
 }
 </script>
 
