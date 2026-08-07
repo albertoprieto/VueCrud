@@ -25,3 +25,18 @@ export async function getReportesNuevos() {
     ? reportes.filter(r => !r.pagado).length
     : 0;
 }
+
+// Excusa temporal para que un reporte no cuente como "pendiente" en
+// comisiones (ver utils/comisiones.js) — tipo: 'tecnico' | 'cliente'.
+export const marcarPermisoPendiente = async (reporteId, { tipo, fecha_compromiso, usuario }) => {
+  const response = await axios.put(
+    `https://api.gpsubicacionapi.com/reportes-servicio/${reporteId}/permiso-pendiente`,
+    { tipo, fecha_compromiso, usuario }
+  );
+  return response.data;
+};
+
+export const quitarPermisoPendiente = async (reporteId) => {
+  const response = await axios.delete(`https://api.gpsubicacionapi.com/reportes-servicio/${reporteId}/permiso-pendiente`);
+  return response.data;
+};

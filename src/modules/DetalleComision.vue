@@ -39,6 +39,10 @@
             <span class="resumen-label">Con nota, sin comprobante</span>
             <span class="resumen-valor sin">{{ totales.reportesSinComprobante }}</span>
           </div>
+          <div class="resumen-item">
+            <span class="resumen-label">Con permiso (excusado)</span>
+            <span class="resumen-valor con">{{ totales.reportesPermisoPendiente }}</span>
+          </div>
         </div>
       </div>
 
@@ -55,6 +59,7 @@
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'con_comprobante' }" @click="filtroEstado = 'con_comprobante'">Con comprobante ({{ totales.reportesConComprobante }})</button>
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'sin_comprobante' }" @click="filtroEstado = 'sin_comprobante'">Con nota, sin comprobante ({{ totales.reportesSinComprobante }})</button>
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'sin_nota' }" @click="filtroEstado = 'sin_nota'">Sin nota/factura ({{ totales.reportesSinNota }})</button>
+        <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'permiso_pendiente' }" @click="filtroEstado = 'permiso_pendiente'">Con permiso ({{ totales.reportesPermisoPendiente }})</button>
       </div>
 
       <DataTable :value="reportesFiltrados" responsiveLayout="scroll" :paginator="reportesFiltrados.length > 15" :rows="15">
@@ -88,6 +93,27 @@
         </Column>
         <Column header="Fecha" style="width:80px">
           <template #body="{ data }">{{ formatFechaCorta(data.fecha) }}</template>
+        </Column>
+        <Column header="Permiso" style="width:150px">
+          <template #body="{ data }">
+            <span
+              v-if="data.estado === 'permiso_pendiente'"
+              class="badge badge-permiso-vigente"
+              v-tooltip.top="`Hasta ${formatFechaCorta(data.permiso_pendiente_fecha)} — marcado por ${data.permiso_pendiente_por || '—'}. Clic para quitar.`"
+              style="cursor:pointer;"
+              @click="quitarPermiso(data)"
+            >{{ data.permiso_pendiente_tipo === 'tecnico' ? 'Técnico' : 'Cliente' }} <i class="pi pi-times" style="font-size:0.65rem;" /></span>
+            <span
+              v-else-if="data.permisoVencido"
+              class="badge badge-permiso-vencido"
+              v-tooltip.top="`Venció ${formatFechaCorta(data.permiso_pendiente_fecha)} — marcado por ${data.permiso_pendiente_por || '—'}`"
+            >Vencido</span>
+            <Button
+              v-if="data.estado === 'sin_comprobante' || data.estado === 'sin_nota'"
+              icon="pi pi-clock" label="Marcar" class="p-button-sm p-button-text btn-permiso"
+              @click="abrirMarcarPermiso(data)"
+            />
+          </template>
         </Column>
         <Column header="Detalle" style="width:60px">
           <template #body="{ data }">
@@ -198,6 +224,47 @@
         </div>
       </div>
     </Dialog>
+
+    <!-- Dialog: marcar permiso de pendiente (Técnico/Cliente) -->
+    <Dialog
+      v-model:visible="permisoDialogVisible"
+      header="Marcar permiso de pendiente"
+      :modal="true"
+      :style="{ width: '420px', maxWidth: '95vw' }"
+      :draggable="false"
+    >
+      <div v-if="reporteParaPermiso" class="permiso-dialog">
+        <p class="permiso-reporte-info">
+          {{ reporteParaPermiso.folio || `Reporte #${reporteParaPermiso.id}` }} — {{ reporteParaPermiso.nombre_cliente || '-' }}
+        </p>
+
+        <div v-if="!ventanaAbierta" class="permiso-ventana-cerrada">
+          <i class="pi pi-exclamation-triangle" />
+          Ya pasó el día 25 del mes — fuera de ventana para marcar permisos nuevos. Los pendientes de esta última semana deben resolverse para cerrar el mes.
+        </div>
+        <template v-else>
+          <div class="field">
+            <label>Motivo</label>
+            <Dropdown v-model="permisoTipo" :options="opcionesPermisoTipo" optionLabel="label" optionValue="value" placeholder="Selecciona motivo" class="w-full" />
+          </div>
+          <div class="field">
+            <label>Fecha compromiso (máximo día 25 de este mes)</label>
+            <Calendar v-model="permisoFecha" :minDate="hoyDate" :maxDate="limiteFechaPermiso" dateFormat="dd/mm/yy" showIcon class="w-full" />
+          </div>
+        </template>
+
+        <div class="modal-actions">
+          <Button
+            v-if="ventanaAbierta"
+            label="Guardar" icon="pi pi-check"
+            :loading="guardandoPermiso"
+            :disabled="!permisoTipo || !permisoFecha"
+            @click="guardarPermiso"
+          />
+          <Button label="Cancelar" class="p-button-secondary" @click="permisoDialogVisible = false" type="button" />
+        </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -209,10 +276,18 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import Dropdown from 'primevue/dropdown';
+import Calendar from 'primevue/calendar';
+import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
-import { getReportesServicioTodos } from '@/services/reportesService';
+import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente } from '@/services/reportesService';
 import { getNotas, getFacturas } from '@/services/pagosService';
-import { indexarNotasFacturas, reportesDePersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS } from '@/utils/comisiones';
+import {
+  indexarNotasFacturas, reportesDePersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS,
+  limitePermisoPendiente, ventanaPermisoPendienteAbierta,
+} from '@/utils/comisiones';
+
+const toast = useToast();
 
 const props = defineProps({
   tipo: { type: String, required: true },   // 'tecnico' | 'vendedor'
@@ -280,6 +355,7 @@ const totales = computed(() => {
     totalVendido: 0, totalConComprobante: 0, totalSinComprobante: 0, totalSinNota: 0,
     reportesConComprobante: 0, reportesSinComprobante: 0, reportesSinNota: 0,
     montoTecnicoConComprobante: 0, montoTecnicoSinComprobante: 0,
+    reportesPermisoPendiente: 0,
   };
   for (const r of reportesPersona.value) {
     const total = Number(r.total) || 0;
@@ -297,6 +373,8 @@ const totales = computed(() => {
       t.totalSinNota += total;
       t.reportesSinNota += 1;
       t.montoTecnicoSinComprobante += montoTecnico;
+    } else if (r.estado === ESTADOS.PERMISO_PENDIENTE) {
+      t.reportesPermisoPendiente += 1;
     }
   }
   return t;
@@ -397,6 +475,65 @@ function irAPago() {
     router.push({ name: 'detalle-factura', params: { id } });
   } else {
     router.push({ name: 'detalle-pago', params: { tipo: 'nota', id } });
+  }
+}
+
+// ── Permiso de pendiente (Técnico/Cliente) — excusa temporal para que un
+// reporte no cuente como pendiente real en la comisión, hasta una fecha
+// compromiso tope día 25 del mes en curso. Ver utils/comisiones.js. ──
+const permisoDialogVisible = ref(false);
+const reporteParaPermiso = ref(null);
+const permisoTipo = ref(null);
+const permisoFecha = ref(null);
+const guardandoPermiso = ref(false);
+
+const opcionesPermisoTipo = [
+  { label: 'Técnico', value: 'tecnico' },
+  { label: 'Cliente', value: 'cliente' },
+];
+
+const ventanaAbierta = computed(() => ventanaPermisoPendienteAbierta());
+const hoyDate = computed(() => new Date());
+const limiteFechaPermiso = computed(() => limitePermisoPendiente());
+
+function abrirMarcarPermiso(reporte) {
+  reporteParaPermiso.value = reporte;
+  permisoTipo.value = null;
+  permisoFecha.value = null;
+  permisoDialogVisible.value = true;
+}
+
+async function guardarPermiso() {
+  if (!reporteParaPermiso.value || !permisoTipo.value || !permisoFecha.value) return;
+  guardandoPermiso.value = true;
+  try {
+    const fechaStr = permisoFecha.value.toISOString().slice(0, 10);
+    await marcarPermisoPendiente(reporteParaPermiso.value.id, {
+      tipo: permisoTipo.value,
+      fecha_compromiso: fechaStr,
+      usuario: user.value.username || null,
+    });
+    Object.assign(reporteParaPermiso.value, {
+      permiso_pendiente_tipo: permisoTipo.value,
+      permiso_pendiente_fecha: fechaStr,
+      permiso_pendiente_por: user.value.username || null,
+    });
+    toast.add({ severity: 'success', summary: 'Permiso marcado', detail: 'El reporte ya no cuenta como pendiente hasta la fecha compromiso.', life: 3500 });
+    permisoDialogVisible.value = false;
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo marcar el permiso.', life: 4500 });
+  }
+  guardandoPermiso.value = false;
+}
+
+async function quitarPermiso(reporte) {
+  try {
+    await quitarPermisoPendiente(reporte.id);
+    toast.add({ severity: 'success', summary: 'Permiso quitado', life: 3000 });
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo quitar el permiso.', life: 4500 });
   }
 }
 </script>
@@ -631,5 +768,47 @@ function irAPago() {
     margin: 1rem auto;
     padding: 1rem 0.75rem;
   }
+}
+
+.badge-permiso-vigente { background: color-mix(in srgb, var(--color-primary) 18%, transparent); color: var(--color-primary); }
+.badge-permiso-vencido { background: color-mix(in srgb, var(--color-warning) 20%, transparent); color: var(--color-warning); }
+.btn-permiso :deep(.p-button-label) { font-size: 0.8rem; }
+
+.permiso-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.permiso-reporte-info {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-title);
+}
+.permiso-ventana-cerrada {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+  font-size: 0.88rem;
+}
+.permiso-dialog .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.permiso-dialog .field label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text);
+  opacity: 0.75;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 </style>

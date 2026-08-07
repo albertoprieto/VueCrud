@@ -764,15 +764,19 @@ const filtrosActivos = computed(() => !!(
 ));
 
 // Orden manual (drag & drop) — orden_manual es null hasta que se guarda un
-// orden por primera vez; las filas sin valor conservan su orden original
-// (por fecha/id, como venía del backend) al final del criterio.
+// orden por primera vez, y moverFila() lo asigna a TODOS los reportes
+// cargados en ese momento (no solo a los dos movidos). Un reporte creado
+// después de eso siempre tiene orden_manual null, es más nuevo que ese
+// snapshot y por eso va antes (arriba), no al final — si no, queda enterrado
+// bajo cientos de filas ya ordenadas y no aparece hasta filtrar (menos de
+// 100 resultados, cabe en la página 1 igual).
 const reportesOrdenados = computed(() => {
   const arr = [...reportes.value];
   arr.sort((a, b) => {
     const oa = a.orden_manual, ob = b.orden_manual;
     if (oa != null && ob != null) return oa - ob;
-    if (oa != null) return -1;
-    if (ob != null) return 1;
+    if (oa != null) return 1;
+    if (ob != null) return -1;
     return 0;
   });
   return arr;
