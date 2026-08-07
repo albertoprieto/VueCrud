@@ -3274,6 +3274,94 @@ def update_reporte_servicio(reporte_id: int, reporte: dict):
     return {"message": "Reporte actualizado"}
 
 
+class PermisoPendienteRequest(BaseModel):
+    tipo: str  # 'tecnico' | 'cliente'
+    fecha_compromiso: str  # 'YYYY-MM-DD'
+    usuario: Optional[str] = None
+
+
+@app.put("/reportes-servicio/{reporte_id}/permiso-pendiente")
+def marcar_permiso_pendiente(reporte_id: int, data: PermisoPendienteRequest):
+    """Excusa temporalmente a un reporte de contar como 'pendiente' en las
+    comisiones del vendedor (Comisiones.vue/DetalleComision.vue) — para
+    cuando el atraso en subir el comprobante no es culpa del vendedor
+    (Técnico no ha cobrado, o Cliente no ha pagado todavía).
+
+    Ventana de negocio: solo se puede solicitar hasta el día 25 de CADA mes
+    (tanto hoy como la fecha_compromiso elegida) — en la última semana del
+    mes los pendientes ya deben resolverse para poder cerrar bien, no seguir
+    pidiendo permisos nuevos. Al llegar la fecha_compromiso el reporte
+    vuelve solo a contar como pendiente (estadoDeReporte en comisiones.js lo
+    recalcula en vivo, sin cron) — pero queda marcado como 'permiso vencido'
+    para que se sepa que ya tuvo una excusa y se le venció."""
+    if data.tipo not in ("tecnico", "cliente"):
+        raise HTTPException(status_code=400, detail="tipo inválido. Valores: tecnico, cliente")
+
+    hoy = datetime.now(ZoneInfo("America/Mexico_City")).date()
+    if hoy.day > 25:
+        raise HTTPException(status_code=400, detail="Fuera de ventana: los permisos de pendiente solo se pueden solicitar hasta el día 25 de cada mes.")
+
+    try:
+        fecha_compromiso = datetime.strptime(data.fecha_compromiso, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="fecha_compromiso inválida, usa formato YYYY-MM-DD")
+
+    limite_mes = hoy.replace(day=25)
+    if fecha_compromiso < hoy or fecha_compromiso > limite_mes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"fecha_compromiso debe estar entre hoy ({hoy.isoformat()}) y el día 25 de este mes ({limite_mes.isoformat()})."
+        )
+
+    db = _get_db()
+    cursor = db.cursor()
+    for _col_sql in (
+        "ALTER TABLE reportes_servicio ADD COLUMN permiso_pendiente_tipo VARCHAR(20) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN permiso_pendiente_fecha DATE NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN permiso_pendiente_por VARCHAR(100) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN permiso_pendiente_marcado_fecha DATETIME NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+    cursor.execute(
+        """UPDATE reportes_servicio
+           SET permiso_pendiente_tipo=%s, permiso_pendiente_fecha=%s,
+               permiso_pendiente_por=%s, permiso_pendiente_marcado_fecha=NOW()
+           WHERE id=%s""",
+        (data.tipo, fecha_compromiso.isoformat(), data.usuario, reporte_id)
+    )
+    if cursor.rowcount == 0:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Permiso de pendiente marcado", "reporte_id": reporte_id, "tipo": data.tipo, "fecha_compromiso": fecha_compromiso.isoformat()}
+
+
+@app.delete("/reportes-servicio/{reporte_id}/permiso-pendiente")
+def quitar_permiso_pendiente(reporte_id: int):
+    """Deshace un permiso de pendiente marcado por error."""
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        """UPDATE reportes_servicio
+           SET permiso_pendiente_tipo=NULL, permiso_pendiente_fecha=NULL,
+               permiso_pendiente_por=NULL, permiso_pendiente_marcado_fecha=NULL
+           WHERE id=%s""",
+        (reporte_id,)
+    )
+    if cursor.rowcount == 0:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Permiso de pendiente quitado", "reporte_id": reporte_id}
+
+
 def _primer_imei_reporte(r: dict) -> Optional[str]:
     """Mismo criterio que imeisDeReporte() del frontend: imei suelto primero,
     si no hay busca en imeis_articulos[].imeis — a diferencia de
@@ -8162,6 +8250,44 @@ class TrackSolidClient:
             return self._send_post(params)
         return self._api_call(_do)
 
+    def list_instructions(self, imei_val):
+        """jimi.open.instruction.list — comandos soportados por el dispositivo."""
+        def _do():
+            params = {
+                "app_key": self.app_key, "v": "1.0",
+                "timestamp": _tracksolid_current_date(), "sign_method": "md5",
+                "format": "json", "method": "jimi.open.instruction.list",
+                "access_token": self._access_token, "imei": imei_val,
+            }
+            params["sign"] = _tracksolid_generate_sign(params, self.app_secret)
+            return self._send_post(params)
+        return self._api_call(_do)
+
+    def send_instruction(self, imei_val, order_id, inst_template, params_list, is_cover=True):
+        """jimi.open.instruction.send — manda uno de los comandos que trae
+        list_instructions() al dispositivo. inst_param_json va serializado
+        como JSON string con {inst_id, inst_template, params, is_cover},
+        donde inst_template es el orderContent tal cual lo dio
+        list_instructions() (ej. "{0}") y params sustituye sus placeholders
+        en orden."""
+        def _do():
+            inst_param_json = json.dumps({
+                "inst_id": str(order_id),
+                "inst_template": inst_template,
+                "params": params_list,
+                "is_cover": is_cover,
+            })
+            params = {
+                "app_key": self.app_key, "v": "1.0",
+                "timestamp": _tracksolid_current_date(), "sign_method": "md5",
+                "format": "json", "method": "jimi.open.instruction.send",
+                "access_token": self._access_token, "imei": imei_val, "orderId": order_id,
+                "inst_param_json": inst_param_json,
+            }
+            params["sign"] = _tracksolid_generate_sign(params, self.app_secret)
+            return self._send_post(params)
+        return self._api_call(_do)
+
     # --- Caché de dispositivos ---
     _device_cache = {}     # {imei: {device_info + _account + _accountName}}
     _cache_building = False
@@ -8484,6 +8610,34 @@ def detalle_dispositivo_plataforma(imei_val: str, plataforma: str = Query(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/plataformas/tracksolid/comandos/{imei_val}")
+def listar_comandos_tracksolid(imei_val: str):
+    """jimi.open.instruction.list — comandos que soporta ESE dispositivo
+    puntual (varía por modelo, no todos soportan lo mismo)."""
+    if not os.getenv("TRACKSOLID_APP_KEY"):
+        raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
+    client = _get_tracksolid_client()
+    return client.list_instructions(imei_val)
+
+
+@app.post("/api/plataformas/tracksolid/comandos/{imei_val}/enviar")
+def enviar_comando_tracksolid(imei_val: str, data: dict = Body(...)):
+    """jimi.open.instruction.send — disparo manual. body:
+    {"order_id": <id de la lista>, "inst_template": <orderContent tal cual
+    list_instructions(), ej "{0}">, "params": [<valores para los
+    placeholders en orden>], "is_cover": true}."""
+    if not os.getenv("TRACKSOLID_APP_KEY"):
+        raise HTTPException(status_code=400, detail="Credenciales Tracksolid no configuradas en .env")
+    order_id = data.get("order_id")
+    inst_template = data.get("inst_template")
+    params_list = data.get("params")
+    if not order_id or not inst_template or params_list is None:
+        raise HTTPException(status_code=400, detail="Se requiere 'order_id', 'inst_template' y 'params'")
+    is_cover = data.get("is_cover", True)
+    client = _get_tracksolid_client()
+    return client.send_instruction(imei_val, order_id, inst_template, params_list, is_cover)
 
 
 class UtilidadesConsultaRequest(BaseModel):

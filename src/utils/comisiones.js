@@ -15,6 +15,7 @@ export const ESTADOS = {
   SIN_COMPROBANTE: 'sin_comprobante',
   CON_COMPROBANTE: 'con_comprobante',
   CANCELADO: 'cancelado',
+  PERMISO_PENDIENTE: 'permiso_pendiente',
 };
 
 const LABELS_ESTADO = {
@@ -22,7 +23,46 @@ const LABELS_ESTADO = {
   [ESTADOS.SIN_COMPROBANTE]: 'Sin comprobante',
   [ESTADOS.CON_COMPROBANTE]: 'Con comprobante',
   [ESTADOS.CANCELADO]: 'Cancelado',
+  [ESTADOS.PERMISO_PENDIENTE]: 'Permiso (pendiente excusado)',
 };
+
+// ── Permiso de pendiente: excusa temporal (Técnico/Cliente) para que un
+// reporte no cuente como pendiente real hasta su fecha_compromiso — ver
+// PUT /reportes-servicio/{id}/permiso-pendiente en main.py. Solo se puede
+// solicitar hasta el día 25 de cada mes; al llegar la fecha_compromiso el
+// reporte vuelve solo (sin cron) a contar como pendiente, marcado como vencido.
+function hoyLocal() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Día 25 del mes en curso — tope tanto para pedir el permiso como para la
+// fecha_compromiso elegida.
+export function limitePermisoPendiente() {
+  const d = hoyLocal();
+  return new Date(d.getFullYear(), d.getMonth(), 25);
+}
+
+// false en los últimos días del mes (26+) — ahí ya no se aceptan permisos
+// nuevos, solo se resuelven los pendientes reales para cerrar el mes.
+export function ventanaPermisoPendienteAbierta() {
+  return hoyLocal().getDate() <= 25;
+}
+
+function permisoVigente(reporte) {
+  if (!reporte?.permiso_pendiente_fecha) return false;
+  const fc = new Date(reporte.permiso_pendiente_fecha);
+  if (isNaN(fc)) return false;
+  fc.setHours(0, 0, 0, 0);
+  return fc >= hoyLocal();
+}
+
+// true si el reporte tuvo un permiso marcado pero ya venció (informativo,
+// el reporte ya volvió a contar como pendiente normal).
+export function permisoVencido(reporte) {
+  return !!(reporte?.permiso_pendiente_tipo && reporte?.permiso_pendiente_fecha && !permisoVigente(reporte));
+}
 
 export function labelEstado(estado) {
   return LABELS_ESTADO[estado] || estado;
@@ -72,8 +112,15 @@ export function indexarNotasFacturas(notas, facturas) {
 
 export function estadoDeReporte(reporte, indice) {
   const match = indice.get(reporte.id);
-  if (!match) return { estado: ESTADOS.SIN_NOTA, referencia: null };
-  return { estado: match.estado, referencia: match };
+  const base = !match
+    ? { estado: ESTADOS.SIN_NOTA, referencia: null }
+    : { estado: match.estado, referencia: match };
+  // Un reporte con comprobante o cancelado no necesita excusa — el permiso
+  // solo aplica a lo que de otro modo contaría como pendiente real.
+  if (base.estado !== ESTADOS.CON_COMPROBANTE && base.estado !== ESTADOS.CANCELADO && permisoVigente(reporte)) {
+    return { ...base, estado: ESTADOS.PERMISO_PENDIENTE };
+  }
+  return base;
 }
 
 // Las renovaciones se procesan en bloque, sin técnico/vendedor real asignado
@@ -184,7 +231,7 @@ export function reportesDePersona(reportes, indice, campo, nombre) {
     .filter(r => !esRenovacion(r) && resolverNombre(campo, r[campo]).toLowerCase() === norm)
     .map(r => {
       const { estado, referencia } = estadoDeReporte(r, indice);
-      return { ...r, estado, referencia };
+      return { ...r, estado, referencia, permisoVencido: permisoVencido(r) };
     })
     .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 }
