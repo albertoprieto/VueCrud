@@ -262,14 +262,13 @@ const filtrosActivos = computed(() => {
 });
 
 const lugaresPago = [
-  // 'ASP Vianey',
+ 'ASP Vianey',
  'ASP Renovaciones',
  'Comercializadora',
  'BBVA PAU',
- 'Tecnico',
- 'Oficina',
- 'Mercadopago',
- 'MercadoPago Eliseo'
+ 'Mercadopago Victor',
+ 'MercadoLibre Eliseo',
+ 'Efectivo entregado oficina'
 ];
 
 function parseImeis(value) {

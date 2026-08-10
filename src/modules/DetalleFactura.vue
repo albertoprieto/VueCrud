@@ -369,7 +369,7 @@ function abrirArchivoCfdi(path) { if (path) window.open(urlComprobante(path), '_
 
 const esEditable = computed(() => item.value?.status === 'Pendiente timbre');
 
-const lugaresDisponibles = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago', 'MercadoPago Eliseo'];
+const lugaresDisponibles = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'MercadoLibre Eliseo', 'Efectivo entregado oficina'];
 const lugarPagoSeleccionado = ref(null);
 async function guardarLugarPago() {
   try {
