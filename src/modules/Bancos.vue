@@ -190,7 +190,7 @@ const toast = useToast();
 const loginStore = useLoginStore();
 const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
 
-const lugaresValidos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago', 'MercadoPago Eliseo'];
+const lugaresValidos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'MercadoLibre Eliseo', 'Efectivo entregado oficina'];
 
 const loading = ref(true);
 const notas = ref([]);

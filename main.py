@@ -5955,7 +5955,7 @@ def actualizar_status_nota(nota_id: int, data: dict = Body(...)):
 @app.put("/notas-pago/{nota_id}/lugar-pago")
 def actualizar_lugar_pago_nota(nota_id: int, data: dict = Body(...)):
     lugar_pago = data.get('lugar_pago', '').strip()
-    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago', 'MercadoPago Eliseo']
+    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'MercadoLibre Eliseo', 'Efectivo entregado oficina']
     if lugar_pago and lugar_pago not in lugares_validos:
         raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
     db = mysql.connector.connect(
@@ -7187,7 +7187,7 @@ def actualizar_status_factura_pago(factura_id: int, data: dict = Body(...)):
 @app.put("/facturas-pago/{factura_id}/lugar-pago")
 def actualizar_lugar_pago_factura(factura_id: int, data: dict = Body(...)):
     lugar_pago = data.get('lugar_pago', '').strip()
-    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Tecnico', 'Oficina', 'Mercadopago', 'MercadoPago Eliseo']
+    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'MercadoLibre Eliseo', 'Efectivo entregado oficina']
     if lugar_pago and lugar_pago not in lugares_validos:
         raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
     db = mysql.connector.connect(

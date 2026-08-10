@@ -435,10 +435,9 @@ const lugaresDisponibles = [
   'ASP Renovaciones',
   'Comercializadora',
   'BBVA PAU',
-  'Tecnico',
-  'Oficina',
-  'Mercadopago',
-  'MercadoPago Eliseo'
+  'Mercadopago Victor',
+  'MercadoLibre Eliseo',
+  'Efectivo entregado oficina'
 ];
 
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');

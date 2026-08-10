@@ -355,13 +355,13 @@ const filtroPago = ref('todos');
 const mesFiltro = ref(null);
 
 const lugaresPago = [
+  'ASP Vianey',
   'ASP Renovaciones',
   'Comercializadora',
   'BBVA PAU',
-  'Tecnico',
-  'Oficina',
-  'Mercadopago',
-  'MercadoPago Eliseo'
+  'Mercadopago Victor',
+  'MercadoLibre Eliseo',
+  'Efectivo entregado oficina'
 ];
 
 const opcionesEstado = [
