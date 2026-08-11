@@ -122,7 +122,6 @@
       </template>
     </Menubar>
     <router-view></router-view>
-    <informacion v-if="isHomeRoute" />
   </div>
 </template>
 
@@ -134,7 +133,6 @@ import Sidebar from 'primevue/sidebar';
 import OverlayPanel from 'primevue/overlaypanel';
 import Card from 'primevue/card';
 import { useRouter, useRoute } from 'vue-router';
-import informacion from './informacion.vue';
 import { useLoginStore } from '@/stores/loginStore';
 import Loader from '@/components/Loader.vue';
 import { getCotizacionesPendientes } from '@/services/quotationService';
@@ -152,8 +150,6 @@ const showSidebar = ref(false);
 const overlayRef = ref();
 const user = computed(() => loginStore.user || {});
 const esAdmin = computed(() => (user.value.perfil || '').toLowerCase() === 'admin');
-
-const isHomeRoute = computed(() => route.path === '/dashboard');
 
 const handleLogout = () => {
   loginStore.logout();

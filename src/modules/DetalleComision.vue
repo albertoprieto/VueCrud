@@ -179,6 +179,7 @@
             <div class="mini-row"><strong>Cliente:</strong> {{ reporteSeleccionado.nombre_cliente || '-' }}</div>
             <div class="mini-row"><strong>Fecha:</strong> {{ formatFechaCorta(reporteSeleccionado.fecha) }}</div>
             <div class="mini-row"><strong>Total:</strong> {{ formatTotal(reporteSeleccionado.total) }}</div>
+            <div class="mini-row"><strong>Forma de pago:</strong> {{ reporteSeleccionado.forma_pago || '-' }}</div>
             <div class="mini-row"><strong>Técnico:</strong> {{ reporteSeleccionado.nombre_instalador || '-' }}</div>
             <div class="mini-row"><strong>Vendedor:</strong> {{ reporteSeleccionado.vendedor || '-' }}</div>
             <div class="mini-row"><strong>Plataforma:</strong> {{ reporteSeleccionado.plataforma || '-' }}</div>
