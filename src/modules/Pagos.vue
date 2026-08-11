@@ -267,8 +267,9 @@ const lugaresPago = [
  'Comercializadora',
  'BBVA PAU',
  'Mercadopago Victor',
- 'MercadoLibre Eliseo',
- 'Efectivo entregado oficina'
+ 'Mercadopago Eliseo',
+ 'Efectivo oficina',
+ 'Efectivo tecnico'
 ];
 
 function parseImeis(value) {

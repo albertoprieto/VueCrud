@@ -528,7 +528,7 @@ function pareceErrorDeCsd(mensaje) {
   return PALABRAS_ERROR_CSD.some(p => m.includes(p));
 }
 
-const lugaresDisponibles = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'MercadoLibre Eliseo', 'Efectivo entregado oficina'];
+const lugaresDisponibles = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico'];
 const lugarPagoSeleccionado = ref(null);
 async function guardarLugarPago() {
   try {
