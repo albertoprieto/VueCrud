@@ -82,6 +82,16 @@
                 class="pi pi-sync facturapi-badge facturapi-badge-sincronizado"
                 title="Sincronizado con Facturapi, datos fiscales sin validar"
               ></i>
+              <i
+                v-else-if="datosFiscalesCapturados(slotProps.data)"
+                class="pi pi-check-circle facturapi-badge facturapi-badge-capturado"
+                title="Datos fiscales capturados, pendientes de sincronizar con Facturapi"
+              ></i>
+              <i
+                v-else
+                class="pi pi-user facturapi-badge facturapi-badge-generico"
+                title="Sin RFC propio capturado — se facturaría como público en general"
+              ></i>
             </div>
           </template>
         </Column>
@@ -190,7 +200,7 @@
           </div>
           <div class="field col-12 md:col-6">
             <label for="rfc"><i class="pi pi-id-card icon-inline"></i>RFC:</label>
-            <InputText id="rfc" v-model="form.rfc" class="w-full" placeholder="RFC del cliente" />
+            <InputText id="rfc" v-model="form.rfc" class="w-full" placeholder="Dejar vacío = público en general (XAXX010101000)" />
           </div>
           <div class="field col-12 md:col-6">
             <label for="calle_numero"><i class="pi pi-map icon-inline"></i>Calle y número:</label>
@@ -307,7 +317,7 @@ const form = ref({
   plataformas: [''],
   atendidoPor: '',
   usuarioSesion: '',
-  rfc: 'XAXX010101000',
+  rfc: '',
   constancia_path: null,
   calle_numero: '',
   colonia: '',
@@ -437,6 +447,14 @@ const loadClientes = async () => {
   loading.value = false;
 };
 
+const RFC_PUBLICO_GENERAL = 'XAXX010101000';
+// Distingue "cliente sin RFC propio" (facturaría como público en general)
+// de "sí tiene RFC/CP/régimen capturados, solo falta sincronizar/validar" —
+// antes ambos se veían igual porque el campo RFC traía el genérico prellenado.
+function datosFiscalesCapturados(cliente) {
+  return !!(cliente.rfc && cliente.rfc !== RFC_PUBLICO_GENERAL && cliente.codigo_postal && cliente.regimen_fiscal);
+}
+
 // Iniciales para el avatar de la columna Nombre (ej. "José Torres" -> "JT")
 const inicialesDe = (nombre) => {
   const partes = (nombre || '').trim().split(/\s+/).filter(Boolean);
@@ -459,7 +477,7 @@ const openModal = () => {
     plataformas: [''],
     atendidoPor: atendidoPor.value,
     usuarioSesion: usuarioSesion.value,
-    rfc: 'XAXX010101000',
+    rfc: '',
     constancia_path: null,
     calle_numero: '',
     colonia: '',
@@ -474,17 +492,23 @@ const closeModal = () => {
   showModal.value = false;
 };
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const saveCliente = async () => {
   // Validar todos los campos obligatorios
   const nombreOk = !!form.value.nombre && form.value.nombre.trim() !== '';
   const telefonosOk = Array.isArray(form.value.telefonos) && form.value.telefonos.length > 0 && form.value.telefonos.every(t => t && t.trim() !== '');
-  const correoOk = !!form.value.correo && form.value.correo.trim() !== '';
+  const correoOk = EMAIL_REGEX.test((form.value.correo || '').trim());
   const direccionOk = !!form.value.direccion && form.value.direccion.trim() !== '';
   const usuariosOk = Array.isArray(form.value.usuarios) && form.value.usuarios.length > 0 && form.value.usuarios.every(u => u && u.trim() !== '');
   const plataformasOk = Array.isArray(form.value.plataformas) && form.value.plataformas.length > 0 && form.value.plataformas.every(p => p && p.trim() !== '');
 
   if (!nombreOk || !telefonosOk || !correoOk || !direccionOk || !usuariosOk || !plataformasOk) {
-    toast.add({ severity: 'warn', summary: 'Campos obligatorios', detail: 'Completa todos los campos antes de guardar.', life: 4000 });
+    toast.add({
+      severity: 'warn', summary: 'Campos obligatorios',
+      detail: !correoOk && form.value.correo ? 'El correo no tiene un formato válido.' : 'Completa todos los campos antes de guardar.',
+      life: 4000
+    });
     return;
   }
   form.value.telefonos = form.value.telefonos.filter(t => t);
@@ -533,7 +557,7 @@ const oldEditCliente = (cliente) => {
     plataformas: cliente.plataformas?.length ? [...cliente.plataformas] : [''],
     atendidoPor: cliente.atendidoPor || atendidoPor.value,
     usuarioSesion: cliente.usuarioSesion || usuarioSesion.value,
-    rfc: cliente.rfc || 'XAXX010101000',
+    rfc: cliente.rfc || '',
     constancia_path: cliente.constancia_path || null,
     calle_numero: cliente.calle_numero || '',
     colonia: cliente.colonia || '',
@@ -731,6 +755,13 @@ watch(() => form.value.nombre, (nuevoNombre) => {
 }
 .facturapi-badge-sincronizado {
   color: color-mix(in oklab, var(--color-text) 40%, var(--color-primary));
+}
+.facturapi-badge-capturado {
+  color: var(--color-warning);
+}
+.facturapi-badge-generico {
+  color: var(--color-text);
+  opacity: 0.45;
 }
 .clientes-empty {
   display: flex;

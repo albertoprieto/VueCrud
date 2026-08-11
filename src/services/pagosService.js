@@ -189,3 +189,24 @@ export async function enviarCfdiFactura(id, correo) {
   const res = await axios.post(`${API_URL}/facturas-pago/${id}/enviar-cfdi`, { correo });
   return res.data;
 }
+
+// ── Complementos de pago (REP) — facturas PPD ──
+export async function getPagosPpd(facturaId) {
+  const res = await axios.get(`${API_URL}/facturas-pago/${facturaId}/pagos-ppd`);
+  return res.data;
+}
+
+export async function registrarPagoPpd(facturaId, payload) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${facturaId}/pagos-ppd`, payload);
+  return res.data;
+}
+
+export async function cancelarPagoPpd(facturaId, pagoId, motivo, folioSustitucion) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${facturaId}/pagos-ppd/${pagoId}/cancelar`, { motivo, folio_sustitucion: folioSustitucion || undefined });
+  return res.data;
+}
+
+export async function verificarCancelacionPagoPpd(facturaId, pagoId) {
+  const res = await axios.post(`${API_URL}/facturas-pago/${facturaId}/pagos-ppd/${pagoId}/verificar-cancelacion`);
+  return res.data;
+}

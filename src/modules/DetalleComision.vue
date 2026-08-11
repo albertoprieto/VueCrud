@@ -62,7 +62,20 @@
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'permiso_pendiente' }" @click="filtroEstado = 'permiso_pendiente'">Con permiso ({{ totales.reportesPermisoPendiente }})</button>
       </div>
 
-      <DataTable :value="reportesFiltrados" responsiveLayout="scroll" :paginator="reportesFiltrados.length > 15" :rows="15">
+      <div v-if="filasSeleccionadas.length" class="seleccion-bulk-bar">
+        <span>{{ filasSeleccionadas.length }} seleccionado{{ filasSeleccionadas.length === 1 ? '' : 's' }}</span>
+        <Button
+          icon="pi pi-clock" label="Marcar permiso a seleccionados" class="p-button-sm"
+          @click="abrirMarcarPermisoBulk"
+        />
+        <Button label="Quitar selección" class="p-button-sm p-button-text" @click="filasSeleccionadas = []" />
+      </div>
+
+      <DataTable
+        :value="reportesFiltrados" responsiveLayout="scroll" :paginator="reportesFiltrados.length > 15" :rows="15"
+        v-model:selection="filasSeleccionadas" dataKey="id"
+      >
+        <Column selectionMode="multiple" style="width:3rem" />
         <Column header="Reporte" style="width:64px">
           <template #body="{ data }">
             <Button
@@ -244,10 +257,16 @@
       :style="{ width: '420px', maxWidth: '95vw' }"
       :draggable="false"
     >
-      <div v-if="reporteParaPermiso" class="permiso-dialog">
-        <p class="permiso-reporte-info">
-          {{ reporteParaPermiso.folio || `Reporte #${reporteParaPermiso.id}` }} — {{ reporteParaPermiso.nombre_cliente || '-' }}
+      <div v-if="reportesParaPermiso.length" class="permiso-dialog">
+        <p v-if="reportesParaPermiso.length === 1" class="permiso-reporte-info">
+          {{ reportesParaPermiso[0].folio || `Reporte #${reportesParaPermiso[0].id}` }} — {{ reportesParaPermiso[0].nombre_cliente || '-' }}
         </p>
+        <template v-else>
+          <p class="permiso-reporte-info">{{ reportesParaPermiso.length }} reportes seleccionados:</p>
+          <ul class="permiso-lista-bulk">
+            <li v-for="r in reportesParaPermiso" :key="r.id">{{ r.folio || `Reporte #${r.id}` }} — {{ r.nombre_cliente || '-' }}</li>
+          </ul>
+        </template>
 
         <div v-if="!ventanaAbierta" class="permiso-ventana-cerrada">
           <i class="pi pi-exclamation-triangle" />
@@ -527,10 +546,11 @@ function irAPago() {
 // reporte no cuente como pendiente real en la comisión, hasta una fecha
 // compromiso tope día 25 del mes en curso. Ver utils/comisiones.js. ──
 const permisoDialogVisible = ref(false);
-const reporteParaPermiso = ref(null);
+const reportesParaPermiso = ref([]);
 const permisoTipo = ref(null);
 const permisoFecha = ref(null);
 const guardandoPermiso = ref(false);
+const filasSeleccionadas = ref([]);
 
 const opcionesPermisoTipo = [
   { label: 'Técnico', value: 'tecnico' },
@@ -542,33 +562,65 @@ const hoyDate = computed(() => new Date());
 const limiteFechaPermiso = computed(() => limitePermisoPendiente());
 
 function abrirMarcarPermiso(reporte) {
-  reporteParaPermiso.value = reporte;
+  reportesParaPermiso.value = [reporte];
+  permisoTipo.value = null;
+  permisoFecha.value = null;
+  permisoDialogVisible.value = true;
+}
+
+function abrirMarcarPermisoBulk() {
+  const elegibles = filasSeleccionadas.value.filter(r => r.estado === 'sin_comprobante' || r.estado === 'sin_nota');
+  if (!elegibles.length) {
+    toast.add({ severity: 'warn', summary: 'Nada que marcar', detail: 'Ningún reporte seleccionado admite permiso (ya tiene comprobante, ya tiene permiso, o está vencido).', life: 4500 });
+    return;
+  }
+  if (elegibles.length < filasSeleccionadas.value.length) {
+    toast.add({ severity: 'info', summary: 'Selección parcial', detail: `${elegibles.length} de ${filasSeleccionadas.value.length} seleccionados admiten permiso — el resto se ignora.`, life: 4500 });
+  }
+  reportesParaPermiso.value = elegibles;
   permisoTipo.value = null;
   permisoFecha.value = null;
   permisoDialogVisible.value = true;
 }
 
 async function guardarPermiso() {
-  if (!reporteParaPermiso.value || !permisoTipo.value || !permisoFecha.value) return;
+  if (!reportesParaPermiso.value.length || !permisoTipo.value || !permisoFecha.value) return;
   guardandoPermiso.value = true;
-  try {
-    const fechaStr = permisoFecha.value.toISOString().slice(0, 10);
-    await marcarPermisoPendiente(reporteParaPermiso.value.id, {
-      tipo: permisoTipo.value,
-      fecha_compromiso: fechaStr,
-      usuario: user.value.username || null,
-    });
-    Object.assign(reporteParaPermiso.value, {
-      permiso_pendiente_tipo: permisoTipo.value,
-      permiso_pendiente_fecha: fechaStr,
-      permiso_pendiente_por: user.value.username || null,
-    });
-    toast.add({ severity: 'success', summary: 'Permiso marcado', detail: 'El reporte ya no cuenta como pendiente hasta la fecha compromiso.', life: 3500 });
-    permisoDialogVisible.value = false;
-    await cargar();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo marcar el permiso.', life: 4500 });
+  const fechaStr = permisoFecha.value.toISOString().slice(0, 10);
+  let exitosos = 0;
+  let fallidos = 0;
+  for (const reporte of reportesParaPermiso.value) {
+    try {
+      await marcarPermisoPendiente(reporte.id, {
+        tipo: permisoTipo.value,
+        fecha_compromiso: fechaStr,
+        usuario: user.value.username || null,
+      });
+      Object.assign(reporte, {
+        permiso_pendiente_tipo: permisoTipo.value,
+        permiso_pendiente_fecha: fechaStr,
+        permiso_pendiente_por: user.value.username || null,
+      });
+      exitosos += 1;
+    } catch {
+      fallidos += 1;
+    }
   }
+  if (exitosos) {
+    toast.add({
+      severity: fallidos ? 'warn' : 'success',
+      summary: exitosos > 1 ? 'Permisos marcados' : 'Permiso marcado',
+      detail: fallidos
+        ? `${exitosos} marcados, ${fallidos} fallaron.`
+        : 'El reporte ya no cuenta como pendiente hasta la fecha compromiso.',
+      life: 4000
+    });
+  } else {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo marcar el permiso.', life: 4500 });
+  }
+  permisoDialogVisible.value = false;
+  filasSeleccionadas.value = [];
+  await cargar();
   guardandoPermiso.value = false;
 }
 
@@ -717,6 +769,26 @@ async function confirmarTransferir() {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
+}
+.seleccion-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.75rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+  font-size: 0.85rem;
+}
+.permiso-lista-bulk {
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0 0 0.75rem;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  opacity: 0.85;
 }
 .filtro-btn {
   padding: 0.4rem 1rem;
