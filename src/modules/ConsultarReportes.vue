@@ -644,6 +644,23 @@ async function confirmarCrearPago() {
     status: crearPagoStatus.value,
     reporte_ids: seleccionados.value.map(r => r.id)
   };
+  // El campo "cliente" del diálogo es texto libre (viene de nombre_cliente
+  // del reporte, capturado a mano por el técnico/bot) — sin cliente_id, el
+  // detalle de la factura solo puede buscar al cliente por nombre exacto y
+  // si no coincide exacto, dice "cliente no registrado" aunque sí exista con
+  // sus datos fiscales ya cargados. Se resuelve aquí, una sola vez, en vez
+  // de repetir la búsqueda difusa en cada pantalla que abra la factura.
+  if (crearPagoTipo.value === 'factura' && crearPagoCliente.value.trim()) {
+    try {
+      const clientes = await getClientes();
+      const nombreBuscado = crearPagoCliente.value.trim().toLowerCase();
+      const match = clientes.find(c => (c.nombre || '').trim().toLowerCase() === nombreBuscado);
+      if (match) payload.cliente_id = match.id;
+    } catch {
+      // Si falla la búsqueda de clientes, se sigue con el flujo normal
+      // (la factura queda sin cliente_id, como antes de este fix).
+    }
+  }
   try {
     if (crearPagoTipo.value === 'nota') {
       const notaResp = await crearNota(payload);

@@ -4,6 +4,9 @@
 
     <div class="fact-nueva-bar">
       <Button label="Sincronizar comprobantes" icon="pi pi-sync" class="p-button-sm p-button-outlined" :loading="sincronizandoTodas" @click="sincronizarTodasComprobantes" />
+      <Button label="Limpiar duplicados" icon="pi pi-filter-slash" class="p-button-sm p-button-outlined p-button-warning" :loading="limpiandoDuplicados" @click="limpiarDuplicados" />
+      <!-- TEMPORAL — un solo uso, quitar después de correrlo (ver marcar_pagadas_con_comprobante en main.py) -->
+      <!-- <Button label="Marcar pagadas c/comprobante" icon="pi pi-check-circle" class="p-button-sm p-button-outlined p-button-success" :loading="marcandoPagadas" @click="marcarPagadas" /> -->
       <Button label="Exportar Excel" icon="pi pi-file-excel" class="p-button-sm p-button-outlined p-button-success" :disabled="!facturasFiltradas.length" @click="exportarExcel" />
       <Button label="Nueva Prefactura" icon="pi pi-plus" class="p-button-sm" @click="router.push({ name: 'nueva-prefactura' })" />
     </div>
@@ -246,7 +249,7 @@ import Calendar from 'primevue/calendar';
 import DataTableLoader from '@/components/DataTableLoader.vue';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
-import { getFacturas, eliminarFactura, getPrefacturaPdfUrl, sincronizarComprobantesTodas } from '@/services/pagosService';
+import { getFacturas, eliminarFactura, getPrefacturaPdfUrl, sincronizarComprobantesTodas, limpiarComprobantesDuplicados, marcarPagadasConComprobante } from '@/services/pagosService';
 
 const router = useRouter();
 const toast = useToast();
@@ -399,6 +402,40 @@ async function sincronizarTodasComprobantes() {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo sincronizar.', life: 4000 });
   }
   sincronizandoTodas.value = false;
+}
+
+const limpiandoDuplicados = ref(false);
+async function limpiarDuplicados() {
+  limpiandoDuplicados.value = true;
+  try {
+    const res = await limpiarComprobantesDuplicados();
+    toast.add({
+      severity: 'success', summary: 'Limpieza completada',
+      detail: `${res.facturas_afectadas} factura(s) tenían comprobantes repetidos — ${res.archivos_duplicados_eliminados} archivo(s) duplicado(s) eliminados.`,
+      life: 5000
+    });
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo limpiar.', life: 4000 });
+  }
+  limpiandoDuplicados.value = false;
+}
+
+const marcandoPagadas = ref(false);
+async function marcarPagadas() {
+  marcandoPagadas.value = true;
+  try {
+    const res = await marcarPagadasConComprobante();
+    toast.add({
+      severity: 'success', summary: 'Listo',
+      detail: `${res.marcadas} factura(s) marcadas como pagadas.`,
+      life: 5000
+    });
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo marcar.', life: 4000 });
+  }
+  marcandoPagadas.value = false;
 }
 
 function exportarExcel() {

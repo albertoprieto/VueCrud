@@ -6615,8 +6615,17 @@ def _fusionar_comprobantes_de_reportes(factura_id: int, reporte_ids: list, compr
         if not origen or not os.path.exists(origen):
             continue
         folio_safe = ''.join(c for c in (rep.get("folio") or f"reporte_{rep['id']}") if c.isalnum() or c in ('-', '_'))
-        nombre_destino = f"{folio_safe}_{os.path.basename(origen)}"
-        if nombre_destino in nombres_existentes:
+        origen_basename = os.path.basename(origen)
+        nombre_destino = f"{folio_safe}_{origen_basename}"
+        # Si este mismo archivo del reporte ya está en la factura — sea con el
+        # nombre prefijado de siempre, o (facturas viejas) el nombre suelto de
+        # cuando esta función todavía no prefijaba con el folio — no se copia
+        # de nuevo. Sin este chequeo, correr "Sincronizar comprobantes" sobre
+        # una factura vieja duplicaba el mismo comprobante bajo el nombre nuevo.
+        ya_existe = nombre_destino in nombres_existentes or any(
+            n == origen_basename or n.endswith(f"_{origen_basename}") for n in nombres_existentes
+        )
+        if ya_existe:
             continue
         destino = os.path.join(base_dir, nombre_destino)
         try:
@@ -6725,36 +6734,126 @@ def _identificadores_reporte(r: dict) -> list:
     return identificadores
 
 
-def _producto_desde_reporte(r: dict) -> "Producto":
-    """Arma un concepto de factura a partir de un reporte_servicio, agrupando
-    todos sus IMEIs/SIMs en una sola línea (Cantidad = # de identificadores,
-    ValorUnitario = total base repartido entre ellos) — mismo formato que las
-    facturas de renovación reales (ej. 'RENOVACION 1AÑO - imei1 imei2 imei3')."""
-    tipo = (r.get('tipo_servicio') or '').strip()
-    total_base = round(float(r.get('total') or 0) / 1.16, 2)
-    identificadores = _identificadores_reporte(r)
+# Catálogo SAT c_ClaveUnidad — solo las que aparecen en /articulos de este
+# negocio (ver codigoUnidadSat/unidadSat en la tabla articulos); cualquier
+# otra clave cae al fallback genérico "Servicio".
+UNIDADES_SAT_LABELS = {
+    'H87': 'Pieza',
+    'E48': 'Unidad de servicio',
+    'pcs': 'Pieza',
+}
 
-    es_renovacion_o_migracion = 'renovacion' in tipo.lower() or 'migracion' in tipo.lower()
-    clave_prod_serv = "81112501" if es_renovacion_o_migracion else "81112100"
+
+def _articulos_catalogo() -> tuple:
+    """Trae /articulos completo y lo indexa por id y por nombre (lower) —
+    de ahí sale el codigoSat/unidadSat real de cada producto, en vez de
+    adivinarlo por palabras clave del tipo_servicio."""
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, nombre, codigoSat, unidadSat, codigoUnidadSat FROM articulos")
+    articulos = cursor.fetchall()
+    cursor.close()
+    db.close()
+    por_id = {a['id']: a for a in articulos if a.get('id') is not None}
+    por_nombre = {(a['nombre'] or '').strip().lower(): a for a in articulos if a.get('nombre')}
+    return por_id, por_nombre
+
+
+def _clave_unidad_desde_articulo(articulo: dict) -> tuple:
+    clave = (articulo.get('codigoUnidadSat') or articulo.get('unidadSat') or 'E48').strip() or 'E48'
+    return clave, UNIDADES_SAT_LABELS.get(clave, 'Servicio')
+
+
+def _productos_desde_reporte(r: dict, articulos_por_id: dict, articulos_por_nombre: dict) -> list:
+    """Arma los conceptos de factura de un reporte_servicio. Cada grupo de
+    imeis_articulos trae su propio articulo_id (el artículo real que se
+    vendió/instaló) — se usa para sacar el codigoSat/unidadSat verdadero del
+    catálogo en vez de adivinarlo por palabras clave del tipo_servicio, que
+    solo distinguía 'renovación/migración' de 'todo lo demás'. Si un grupo no
+    trae articulo_id (servicio manual, reportes viejos) se intenta matchear
+    su tipo_servicio contra el nombre del artículo; si tampoco hay match, cae
+    al criterio anterior como último recurso.
+
+    El precio por unidad se reparte parejo entre TODOS los identificadores
+    del reporte (mismo criterio que antes) — reportes_servicio solo trae un
+    total global, no un precio desglosado por artículo."""
+    tipo_reporte = (r.get('tipo_servicio') or '').strip()
+    total_base = round(float(r.get('total') or 0) / 1.16, 2)
+    total_identificadores = len(_identificadores_reporte(r)) or 1
+    valor_unitario = round(total_base / total_identificadores, 2)
+
+    def clave_fallback(tipo: str) -> str:
+        es_renovacion_o_migracion = 'renovacion' in tipo.lower() or 'migracion' in tipo.lower()
+        return "81112501" if es_renovacion_o_migracion else "81112100"
+
+    def resolver_articulo(articulo_id, tipo: str):
+        if articulo_id and articulo_id in articulos_por_id:
+            return articulos_por_id[articulo_id]
+        return articulos_por_nombre.get(tipo.strip().lower())
+
+    ia = r.get('imeis_articulos')
+    if isinstance(ia, (str, bytes)):
+        try:
+            ia = json.loads(ia)
+        except Exception:
+            ia = None
+
+    productos = []
+    if isinstance(ia, list) and ia:
+        for grupo in ia:
+            tipo = (grupo.get('tipo_servicio') or tipo_reporte).strip()
+            ids_grupo = [str(v).strip() for v in (grupo.get('imeis') or []) if str(v or '').strip()]
+            ids_grupo += [str(v).strip() for v in (grupo.get('sims') or []) if str(v or '').strip()]
+            cantidad = len(ids_grupo) or 1
+
+            articulo = resolver_articulo(grupo.get('articulo_id'), tipo)
+            if articulo and articulo.get('codigoSat'):
+                clave_prod_serv = articulo['codigoSat']
+                clave_unidad, unidad = _clave_unidad_desde_articulo(articulo)
+            else:
+                clave_prod_serv = clave_fallback(tipo)
+                clave_unidad, unidad = "E48", "Servicio"
+
+            descripcion = f"{tipo.upper()} - {' '.join(ids_grupo)}" if (tipo and ids_grupo) else (tipo or ' '.join(ids_grupo) or f"Servicio {r.get('folio') or r.get('id')}")
+
+            productos.append(Producto(
+                ClaveProdServ=clave_prod_serv,
+                ClaveUnidad=clave_unidad,
+                Unidad=unidad,
+                Descripcion=descripcion,
+                ValorUnitario=valor_unitario,
+                Importe=round(valor_unitario * cantidad, 2),
+                Cantidad=cantidad
+            ))
+        return productos
+
+    # Reportes sin imeis_articulos (viejos, o servicio 100% manual): un solo
+    # concepto con todos los identificadores sueltos, igual que antes.
+    identificadores = _identificadores_reporte(r)
+    articulo = articulos_por_nombre.get(tipo_reporte.strip().lower())
+    if articulo and articulo.get('codigoSat'):
+        clave_prod_serv = articulo['codigoSat']
+        clave_unidad, unidad = _clave_unidad_desde_articulo(articulo)
+    else:
+        clave_prod_serv = clave_fallback(tipo_reporte)
+        clave_unidad, unidad = "E48", "Servicio"
 
     if identificadores:
         cantidad = len(identificadores)
-        valor_unitario = round(total_base / cantidad, 2)
-        descripcion = f"{tipo.upper()} - {' '.join(identificadores)}" if tipo else ' '.join(identificadores)
+        descripcion = f"{tipo_reporte.upper()} - {' '.join(identificadores)}" if tipo_reporte else ' '.join(identificadores)
     else:
         cantidad = 1
-        valor_unitario = total_base
-        descripcion = tipo or f"Servicio {r.get('folio') or r.get('id')}"
+        descripcion = tipo_reporte or f"Servicio {r.get('folio') or r.get('id')}"
 
-    return Producto(
+    return [Producto(
         ClaveProdServ=clave_prod_serv,
-        ClaveUnidad="E48",
-        Unidad="Servicio",
+        ClaveUnidad=clave_unidad,
+        Unidad=unidad,
         Descripcion=descripcion,
-        ValorUnitario=valor_unitario,
-        Importe=round(valor_unitario * cantidad, 2),
+        ValorUnitario=valor_unitario if identificadores else total_base,
+        Importe=round((valor_unitario if identificadores else total_base) * cantidad, 2),
         Cantidad=cantidad
-    )
+    )]
 
 
 def _productos_de_factura(factura: dict) -> list:
@@ -6797,7 +6896,11 @@ def _productos_de_factura(factura: dict) -> list:
             raise HTTPException(status_code=400, detail="No se encontraron los reportes de servicio asociados a esta factura")
         # r['total'] ya incluye IVA (16%); el PAC vuelve a calcular el IVA sobre
         # el importe que le mandemos, así que aquí se manda la base sin IVA.
-        return [_producto_desde_reporte(r) for r in reportes]
+        articulos_por_id, articulos_por_nombre = _articulos_catalogo()
+        productos = []
+        for r in reportes:
+            productos.extend(_productos_desde_reporte(r, articulos_por_id, articulos_por_nombre))
+        return productos
 
     return [
         Producto(
@@ -7800,6 +7903,122 @@ def eliminar_factura_pago(factura_id: int):
     cursor.close()
     db.close()
     return {"message": "Factura eliminada"}
+
+@app.post("/facturas-pago/marcar-pagadas-con-comprobante")
+def marcar_pagadas_con_comprobante():
+    """Acción de un solo uso: marca pagado=1 en toda factura/prefactura que
+    ya tenga al menos un comprobante cargado y todavía no esté marcada como
+    pagada — para ponerse al día de una sola vez con el backlog que se fue
+    acumulando antes de que se cargara el comprobante en el momento. No toca
+    facturas Canceladas (no tiene sentido marcarlas pagadas) ni las que ya
+    estaban en pagado=1. Botón correspondiente en Facturacion.vue: quitar
+    después de usarlo una vez, no es parte del flujo normal."""
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, comprobantes FROM facturas_pago "
+        "WHERE pagado=0 AND status<>'Cancelado' AND comprobantes IS NOT NULL AND comprobantes<>'[]'"
+    )
+    candidatas = cursor.fetchall()
+    cursor.close()
+    db.close()
+
+    ids_a_marcar = []
+    for f in candidatas:
+        comprobantes = f.get('comprobantes')
+        if isinstance(comprobantes, str):
+            try:
+                comprobantes = json.loads(comprobantes)
+            except Exception:
+                comprobantes = []
+        if comprobantes:
+            ids_a_marcar.append(f['id'])
+
+    if not ids_a_marcar:
+        return {"message": "Nada que marcar", "marcadas": 0}
+
+    db = _get_db()
+    cursor = db.cursor()
+    placeholders = ','.join(['%s'] * len(ids_a_marcar))
+    cursor.execute(f"UPDATE facturas_pago SET pagado=1 WHERE id IN ({placeholders})", tuple(ids_a_marcar))
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return {"message": "Facturas marcadas como pagadas", "marcadas": len(ids_a_marcar), "ids": ids_a_marcar}
+
+
+@app.post("/facturas-pago/limpiar-comprobantes-duplicados")
+def limpiar_comprobantes_duplicados():
+    """Repara el efecto de la duplicación de comprobantes que traían las
+    facturas ya sincronizadas antes del fix en _fusionar_comprobantes_de_reportes
+    (ver ese comentario): mismo archivo copiado dos veces bajo dos nombres
+    distintos (uno prefijado con el folio, otro suelto). Detecta duplicados
+    por contenido real (hash), no por nombre — no se puede confiar en el
+    nombre porque es justo lo que causó el problema. Conserva un solo
+    archivo físico por contenido único y borra los sobrantes."""
+    import hashlib
+
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, comprobantes FROM facturas_pago WHERE comprobantes IS NOT NULL AND comprobantes<>'[]'")
+    facturas = cursor.fetchall()
+    cursor.close()
+    db.close()
+
+    facturas_afectadas = 0
+    archivos_eliminados = 0
+
+    for factura in facturas:
+        comprobantes = factura.get('comprobantes')
+        if isinstance(comprobantes, str):
+            try:
+                comprobantes = json.loads(comprobantes)
+            except Exception:
+                comprobantes = []
+        comprobantes = comprobantes or []
+        if len(comprobantes) < 2:
+            continue
+
+        vistos_hash = set()
+        conservados = []
+        eliminados_de_esta = 0
+        for path in comprobantes:
+            if not path or not os.path.exists(path):
+                continue
+            try:
+                with open(path, 'rb') as f:
+                    h = hashlib.md5(f.read()).hexdigest()
+            except Exception:
+                conservados.append(path)
+                continue
+            if h in vistos_hash:
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+                eliminados_de_esta += 1
+                continue
+            vistos_hash.add(h)
+            conservados.append(path)
+
+        if eliminados_de_esta:
+            db2 = _get_db()
+            cur2 = db2.cursor()
+            cur2.execute("UPDATE facturas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(conservados), factura['id']))
+            db2.commit()
+            cur2.close()
+            db2.close()
+            facturas_afectadas += 1
+            archivos_eliminados += eliminados_de_esta
+
+    return {
+        "message": "Limpieza completada",
+        "facturas_revisadas": len(facturas),
+        "facturas_afectadas": facturas_afectadas,
+        "archivos_duplicados_eliminados": archivos_eliminados,
+    }
+
 
 @app.post("/facturas-pago/sincronizar-comprobantes")
 def sincronizar_comprobantes_todas():
