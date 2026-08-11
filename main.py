@@ -9,6 +9,7 @@ from satcfdi.create.cfd.catalogos import RegimenFiscal, UsoCFDI, MetodoPago, Imp
 import base64
 import os
 import io
+import re
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
@@ -98,6 +99,44 @@ def crear_tabla_retiros_banco():
     db.close()
 
 
+@app.on_event("startup")
+def crear_tabla_pagos_ppd():
+    """Complementos de pago (REP) — obligatorios cuando una factura se
+    timbró con MetodoPago=PPD. Una factura puede tener varios (parcialidades),
+    cada uno es su propio CFDI tipo 'P' timbrado aparte, referenciando el
+    UUID de la factura original."""
+    db = mysql.connector.connect(
+        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
+    )
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pagos_ppd (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            factura_id INT NOT NULL,
+            fecha_pago DATE NOT NULL,
+            forma_pago VARCHAR(5) NOT NULL,
+            monto DECIMAL(12,2) NOT NULL,
+            numero_operacion VARCHAR(50) NULL,
+            saldo_anterior DECIMAL(12,2) NOT NULL,
+            saldo_insoluto DECIMAL(12,2) NOT NULL,
+            parcialidad INT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'Timbrando',
+            facturapi_invoice_id VARCHAR(50) NULL,
+            cfdi_uuid VARCHAR(36) NULL,
+            cfdi_xml_path VARCHAR(255) NULL,
+            cfdi_pdf_path VARCHAR(255) NULL,
+            ultimo_error_timbrado TEXT NULL,
+            ultimo_error_timbrado_fecha DATETIME NULL,
+            registrado_por VARCHAR(100) NULL,
+            fecha_registro DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_pagos_ppd_factura (factura_id)
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
+
 
 load_dotenv()
 
@@ -125,6 +164,15 @@ class FacturaRequest(BaseModel):
 
 # RFC genérico que el SAT reserva para ventas a público en general
 RFC_PUBLICO_GENERAL = "XAXX010101000"
+
+EMAIL_REGEX = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _validar_correo_cliente(correo: Optional[str]) -> None:
+    """El correo del cliente es el único canal para entregarle el CFDI —
+    si viene, debe tener forma de correo válida (no basta con 'no vacío')."""
+    if correo and not EMAIL_REGEX.match(correo.strip()):
+        raise HTTPException(status_code=400, detail=f"Correo inválido: '{correo}'")
 
 
 def _sw_base_url(pac_env: str) -> str:
@@ -808,6 +856,93 @@ def _facturapi_timbrar_borrador(draft_id: str) -> dict:
         "fecha_certificacion": fecha_certificacion,
         "no_certificado_sat": no_certificado_sat,
         "rfc_pac": rfc_pac,
+    }
+
+
+def _facturapi_crear_y_timbrar_rep(customer_id: str, uuid_factura: str, parcialidad: int,
+                                    saldo_anterior: float, monto: float, fecha_pago: str,
+                                    forma_pago: str, numero_operacion: Optional[str] = None) -> dict:
+    """Crea y timbra en un solo paso un CFDI de Pago (REP/Complemento de
+    Pago) en Facturapi — obligatorio cuando el CFDI original se emitió con
+    MetodoPago=PPD. Referencia la factura original por UUID (related
+    document), nunca por nuestro id interno, para que el SAT ligue
+    correctamente el pago con su ingreso.
+
+    Sigue el esquema documentado por Facturapi para POST /v2/invoices con
+    type='P' y complements[].type='pago'. Si Facturapi cambia ese contrato,
+    el mensaje de error de aquí queda visible tal cual en
+    ultimo_error_timbrado (mismo mecanismo que timbrar_factura_pago) — no se
+    pierde en logs."""
+    import requests
+    from satcfdi.cfdi import CFDI
+    from satcfdi.render import pdf_write
+
+    # Facturapi asume IVA 16% en todos los conceptos (mismo criterio que
+    # _facturapi_mapear_cliente/_facturapi_crear_borrador al armar la
+    # factura original) — la base gravable de este abono se deriva del
+    # monto cobrado, no del total de la factura.
+    base_gravable = round(monto / 1.16, 2)
+    payload = {
+        "customer": customer_id,
+        "type": "P",
+        "complements": [{
+            "type": "pago",
+            "data": [{
+                "date": fecha_pago,
+                "payment_form": forma_pago,
+                "currency": "MXN",
+                "related_documents": [{
+                    "uuid": uuid_factura,
+                    "installment": parcialidad,
+                    "last_balance": round(saldo_anterior, 2),
+                    "amount": round(monto, 2),
+                    "taxes": [{"base": base_gravable, "type": "IVA", "rate": 0.16}],
+                }],
+            }],
+        }],
+    }
+    if numero_operacion:
+        payload["complements"][0]["data"][0]["operation_number"] = numero_operacion
+
+    try:
+        resp = requests.post(f"{_facturapi_base_url()}/invoices", json=payload, headers=_facturapi_headers(), timeout=30)
+        resp_data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error conectando con Facturapi (complemento de pago): {e}")
+    if not resp.ok:
+        detalle = resp_data.get('message') or resp_data
+        if resp_data.get('errors'):
+            detalle = f"{detalle} — {resp_data['errors']}"
+        raise HTTPException(status_code=502, detail=f"Error al timbrar el complemento de pago con Facturapi: {detalle}")
+
+    invoice_id = resp_data["id"]
+    uuid_ = resp_data["uuid"]
+
+    xml_resp = requests.get(f"{_facturapi_base_url()}/invoices/{invoice_id}/xml", headers=_facturapi_headers(), timeout=30)
+    if not xml_resp.ok:
+        raise HTTPException(status_code=502, detail=f"El REP se timbró pero no se pudo descargar el XML: HTTP {xml_resp.status_code}")
+    xml_bytes = xml_resp.content
+
+    folder = os.path.join("uploads", "facturas", "rep")
+    os.makedirs(folder, exist_ok=True)
+    xml_path = os.path.join(folder, f"{uuid_}.xml")
+    with open(xml_path, "wb") as f:
+        f.write(xml_bytes)
+
+    pdf_path = os.path.join(folder, f"{uuid_}.pdf")
+    pdf_resp = requests.get(f"{_facturapi_base_url()}/invoices/{invoice_id}/pdf", headers=_facturapi_headers(), timeout=30)
+    if pdf_resp.ok:
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_resp.content)
+    else:
+        stamped_cfdi = CFDI.from_string(xml_bytes)
+        pdf_write([stamped_cfdi], pdf_path)
+
+    return {
+        "facturapi_invoice_id": invoice_id,
+        "uuid": uuid_,
+        "xml_path": xml_path,
+        "pdf_path": pdf_path,
     }
 
 
@@ -1763,6 +1898,7 @@ def get_clientes():
 
 @app.post("/clientes")
 def add_cliente(cliente: Cliente):
+    _validar_correo_cliente(cliente.correo)
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -1914,6 +2050,7 @@ def find_or_create_cliente(data: ClienteFindOrCreateRequest):
 
 @app.put("/clientes/{cliente_id}")
 def update_cliente(cliente_id: int, cliente: Cliente):
+    _validar_correo_cliente(cliente.correo)
     db = mysql.connector.connect(
         host="localhost",
         user="usuario_vue",
@@ -6258,6 +6395,7 @@ def quitar_reportes_nota(nota_id: int, data: dict = Body(...)):
 class FacturaPagoCreate(BaseModel):
     ordenes: List[str]
     cliente: str
+    cliente_id: Optional[int] = None
     total: float
     status: str = "Pendiente timbre"
     reporte_ids: List[int] = []
@@ -6349,6 +6487,25 @@ def get_facturas_pago():
                 r['comprobantes'] = []
         if r.get('comprobantes') is None:
             r['comprobantes'] = []
+
+    # Saldo de complementos de pago (REP) para facturas PPD — así la lista
+    # puede mostrar "Parcial: $X/$Y" en vez del simple pagado/pendiente que
+    # no tiene sentido cuando el pago llega en varias parcialidades.
+    ids_ppd = [r['id'] for r in rows if (r.get('metodo_pago') or '').upper() == 'PPD']
+    if ids_ppd:
+        placeholders = ','.join(['%s'] * len(ids_ppd))
+        cursor.execute(
+            f"SELECT factura_id, COALESCE(SUM(monto),0) AS pagado FROM pagos_ppd "
+            f"WHERE factura_id IN ({placeholders}) AND status='Timbrado' GROUP BY factura_id",
+            tuple(ids_ppd)
+        )
+        pagados_por_factura = {row['factura_id']: float(row['pagado']) for row in cursor.fetchall()}
+        for r in rows:
+            if (r.get('metodo_pago') or '').upper() == 'PPD':
+                total_pagado = pagados_por_factura.get(r['id'], 0.0)
+                r['pagos_ppd_total'] = total_pagado
+                r['pagos_ppd_saldo'] = round(float(r.get('total') or 0) - total_pagado, 2)
+
     cursor.close()
     db.close()
     return rows
@@ -6491,12 +6648,18 @@ def crear_factura_pago(data: FacturaPagoCreate):
         db.commit()
     except Exception:
         pass
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN cliente_id INT NULL")
+        db.commit()
+    except Exception:
+        pass
     cursor.execute(
-        """INSERT INTO facturas_pago (ordenes, cliente, total, status, reporte_ids, productos_manual, pagado, fecha)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())""",
+        """INSERT INTO facturas_pago (ordenes, cliente, cliente_id, total, status, reporte_ids, productos_manual, pagado, fecha)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())""",
         (
             json.dumps(data.ordenes),
             data.cliente,
+            data.cliente_id,
             data.total,
             data.status,
             json.dumps(data.reporte_ids),
@@ -6649,24 +6812,34 @@ def _productos_de_factura(factura: dict) -> list:
     ]
 
 
+def _cliente_por_factura(factura: dict) -> Optional[dict]:
+    """Busca el cliente ligado a una factura. Prefiere factura['cliente_id']
+    (FK explícita, puesta desde NuevaPrefactura.vue) — si no existe, cae al
+    match por nombre de siempre, para no romper facturas creadas antes de
+    tener esa columna."""
+    db2 = _get_db()
+    cur2 = db2.cursor(dictionary=True)
+    if factura.get('cliente_id'):
+        cur2.execute("SELECT * FROM clientes WHERE id=%s", (factura['cliente_id'],))
+    else:
+        cur2.execute("SELECT * FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1", (factura['cliente'],))
+    row = cur2.fetchone()
+    cur2.close()
+    db2.close()
+    return row
+
+
 def _resolver_domicilio_regimen_receptor(factura: dict, domicilio_fiscal_receptor, regimen_fiscal_receptor, rfc_cliente):
     """Si el frontend no mandó domicilio/régimen del receptor, NUNCA se debe
     caer al domicilio/régimen del EMISOR (eso produciría un CFDI con los
     datos fiscales de la propia empresa en el campo del cliente). En vez de
-    eso, se busca al cliente por nombre y se usan sus datos reales; si
-    tampoco existen ahí, se rechaza — mejor bloquear que timbrar mal."""
+    eso, se busca al cliente (por id si la factura lo tiene, si no por
+    nombre) y se usan sus datos reales; si tampoco existen ahí, se rechaza —
+    mejor bloquear que timbrar mal."""
     domicilio_receptor = domicilio_fiscal_receptor
     regimen_receptor = regimen_fiscal_receptor
     if (not domicilio_receptor or not regimen_receptor) and rfc_cliente != RFC_PUBLICO_GENERAL:
-        db2 = _get_db()
-        cur2 = db2.cursor(dictionary=True)
-        cur2.execute(
-            "SELECT codigo_postal, regimen_fiscal FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1",
-            (factura['cliente'],)
-        )
-        cliente_row = cur2.fetchone()
-        cur2.close()
-        db2.close()
+        cliente_row = _cliente_por_factura(factura)
         domicilio_receptor = domicilio_receptor or (cliente_row or {}).get('codigo_postal')
         regimen_receptor = regimen_receptor or (cliente_row or {}).get('regimen_fiscal')
         if not domicilio_receptor or not regimen_receptor:
@@ -6680,10 +6853,52 @@ def _resolver_domicilio_regimen_receptor(factura: dict, domicilio_fiscal_recepto
 class TimbrarFacturaPagoRequest(BaseModel):
     rfc_cliente: str
     uso_cfdi: str
-    forma_pago: str = "03"
+    # Sin default: forma/método de pago los debe elegir el usuario en el
+    # front para cada factura, nunca asumirse (ver DetalleFactura.vue).
+    forma_pago: str
     metodo_pago: str
     domicilio_fiscal_receptor: Optional[str] = None
     regimen_fiscal_receptor: Optional[str] = None
+
+
+# ── Monitoreo de timbrado ──
+# Cuando el PAC rechaza un timbrado (CSD vencido, folio duplicado, datos
+# fiscales inválidos, etc.) el error queda visible en la factura en vez de
+# perderse en logs — así se detecta un CSD por vencer antes de que se
+# acumulen varias facturas atoradas.
+def _registrar_error_timbrado(factura_id: int, mensaje: str) -> None:
+    db = _get_db()
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN ultimo_error_timbrado TEXT NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN ultimo_error_timbrado_fecha DATETIME NULL")
+    except Exception:
+        pass
+    cursor.execute(
+        "UPDATE facturas_pago SET ultimo_error_timbrado=%s, ultimo_error_timbrado_fecha=NOW() WHERE id=%s",
+        (mensaje[:2000], factura_id)
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+
+
+def _limpiar_error_timbrado(cursor, factura_id: int) -> None:
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN ultimo_error_timbrado TEXT NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN ultimo_error_timbrado_fecha DATETIME NULL")
+    except Exception:
+        pass
+    cursor.execute(
+        "UPDATE facturas_pago SET ultimo_error_timbrado=NULL, ultimo_error_timbrado_fecha=NULL WHERE id=%s",
+        (factura_id,)
+    )
 
 
 @app.post("/facturas-pago/{factura_id}/generar-prefactura")
@@ -6733,28 +6948,28 @@ def generar_prefactura_factura_pago(factura_id: int, data: TimbrarFacturaPagoReq
     facturapi_customer_id = None
     if data.rfc_cliente != RFC_PUBLICO_GENERAL:
         try:
-            db_cli = _get_db()
-            cur_cli = db_cli.cursor(dictionary=True)
-            cur_cli.execute("SELECT facturapi_customer_id FROM clientes WHERE LOWER(nombre)=LOWER(%s) LIMIT 1", (factura['cliente'],))
-            row_cli = cur_cli.fetchone()
-            cur_cli.close(); db_cli.close()
-            facturapi_customer_id = (row_cli or {}).get('facturapi_customer_id')
+            facturapi_customer_id = (_cliente_por_factura(factura) or {}).get('facturapi_customer_id')
         except Exception:
             facturapi_customer_id = None
 
-    borrador = _facturapi_crear_borrador(
-        nombre_cliente=factura['cliente'],
-        rfc_cliente=data.rfc_cliente,
-        uso_cfdi=data.uso_cfdi,
-        metodo_pago=data.metodo_pago,
-        forma_pago=data.forma_pago,
-        productos=productos,
-        serie="F",
-        folio=str(factura_id),
-        domicilio_fiscal_receptor=domicilio_receptor,
-        regimen_fiscal_receptor=regimen_receptor,
-        facturapi_customer_id=facturapi_customer_id,
-    )
+    try:
+        borrador = _facturapi_crear_borrador(
+            nombre_cliente=factura['cliente'],
+            rfc_cliente=data.rfc_cliente,
+            uso_cfdi=data.uso_cfdi,
+            metodo_pago=data.metodo_pago,
+            forma_pago=data.forma_pago,
+            productos=productos,
+            serie="F",
+            folio=str(factura_id),
+            domicilio_fiscal_receptor=domicilio_receptor,
+            regimen_fiscal_receptor=regimen_receptor,
+            facturapi_customer_id=facturapi_customer_id,
+        )
+    except Exception as e:
+        mensaje_error = e.detail if isinstance(e, HTTPException) else str(e)
+        _registrar_error_timbrado(factura_id, str(mensaje_error))
+        raise
 
     db = mysql.connector.connect(
         host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
@@ -6768,6 +6983,7 @@ def generar_prefactura_factura_pago(factura_id: int, data: TimbrarFacturaPagoReq
         (borrador['draft_id'], data.rfc_cliente, borrador['uso_cfdi'], data.forma_pago, data.metodo_pago,
          domicilio_receptor, regimen_receptor, factura_id)
     )
+    _limpiar_error_timbrado(cursor, factura_id)
     db.commit()
     cursor.close()
     db.close()
@@ -6825,6 +7041,8 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
         "ALTER TABLE facturas_pago ADD COLUMN timbrado_por VARCHAR(100) NULL",
         "ALTER TABLE facturas_pago ADD COLUMN timbrado_fecha DATETIME NULL",
         "ALTER TABLE facturas_pago ADD COLUMN facturapi_draft_id VARCHAR(50) NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN ultimo_error_timbrado TEXT NULL",
+        "ALTER TABLE facturas_pago ADD COLUMN ultimo_error_timbrado_fecha DATETIME NULL",
     ):
         try:
             cursor.execute(_col_sql)
@@ -6897,7 +7115,7 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
                 domicilio_fiscal_receptor=domicilio_receptor,
                 regimen_fiscal_receptor=regimen_receptor,
             )
-    except Exception:
+    except Exception as e:
         # El PAC falló o faltaron datos: liberar la reserva 'Timbrando' para
         # que la factura vuelva a quedar disponible y se pueda reintentar.
         db_revert = mysql.connector.connect(
@@ -6908,6 +7126,8 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
         db_revert.commit()
         cur_revert.close()
         db_revert.close()
+        mensaje_error = e.detail if isinstance(e, HTTPException) else str(e)
+        _registrar_error_timbrado(factura_id, str(mensaje_error))
         raise
 
     db = mysql.connector.connect(
@@ -6929,6 +7149,7 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
          resultado['fecha_certificacion'], resultado['no_certificado_sat'], resultado['rfc_pac'],
          regimen_receptor, current.get('username'), factura_id)
     )
+    _limpiar_error_timbrado(cursor, factura_id)
     db.commit()
     cursor.close()
     db.close()
@@ -6941,6 +7162,247 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
         "xml_url": build_public_url(resultado['xml_path']),
         "pdf_url": build_public_url(resultado['pdf_path'])
     }
+
+
+# ── Complementos de pago (REP) — facturas PPD ──
+class RegistrarPagoPpdRequest(BaseModel):
+    fecha_pago: str  # YYYY-MM-DD
+    forma_pago: str  # catálogo c_FormaPago
+    monto: float
+    numero_operacion: Optional[str] = None
+
+
+def _serializar_pago_ppd(r: dict) -> dict:
+    for campo in ('fecha_pago', 'fecha_registro', 'ultimo_error_timbrado_fecha', 'cfdi_cancelacion_fecha'):
+        if r.get(campo) and hasattr(r[campo], 'isoformat'):
+            r[campo] = r[campo].isoformat()
+    for campo in ('monto', 'saldo_anterior', 'saldo_insoluto'):
+        if r.get(campo) is not None:
+            r[campo] = float(r[campo])
+    return r
+
+
+@app.get("/facturas-pago/{factura_id}/pagos-ppd")
+def listar_pagos_ppd(factura_id: int):
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM pagos_ppd WHERE factura_id=%s ORDER BY parcialidad ASC", (factura_id,))
+    rows = [_serializar_pago_ppd(r) for r in cursor.fetchall()]
+    cursor.close()
+    db.close()
+    return rows
+
+
+@app.post("/facturas-pago/{factura_id}/pagos-ppd")
+def registrar_pago_ppd(factura_id: int, data: RegistrarPagoPpdRequest, current=Depends(get_current_user)):
+    """Registra un abono a una factura PPD y timbra su complemento de pago
+    (REP) en Facturapi — el CFDI tipo 'P' que el SAT exige cada vez que se
+    cobra algo de una factura emitida con MetodoPago=PPD. Cuando el saldo
+    llega a 0, la factura se marca 'pagado' sola; ya no depende del toggle
+    manual (ver DetalleFactura.vue)."""
+    if os.getenv("PAC_PROVIDER", "sw").strip().lower() != "facturapi":
+        raise HTTPException(status_code=400, detail="Los complementos de pago (REP) solo están disponibles con Facturapi (PAC_PROVIDER=facturapi)")
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM facturas_pago WHERE id=%s", (factura_id,))
+    factura = cursor.fetchone()
+    if not factura:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.get('status') != 'Timbrado':
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Solo se pueden registrar pagos de una factura ya timbrada")
+    if (factura.get('metodo_pago') or '').upper() != 'PPD':
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Esta factura no es PPD — no requiere complemento de pago")
+    if not factura.get('cfdi_uuid'):
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="La factura no tiene UUID de timbrado")
+    if (factura.get('rfc_cliente') or '') == RFC_PUBLICO_GENERAL:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="No se puede emitir complemento de pago a público en general — el receptor debe estar identificado")
+
+    cursor.execute(
+        "SELECT COALESCE(SUM(monto),0) AS pagado, COUNT(*) AS n FROM pagos_ppd WHERE factura_id=%s AND status='Timbrado'",
+        (factura_id,)
+    )
+    acumulado = cursor.fetchone()
+    total_pagado_previo = float(acumulado['pagado'] or 0)
+    parcialidad = int(acumulado['n'] or 0) + 1
+    saldo_anterior = round(float(factura['total']) - total_pagado_previo, 2)
+
+    if data.monto <= 0:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
+    if data.monto > saldo_anterior + 0.01:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail=f"El monto excede el saldo pendiente (${saldo_anterior:.2f})")
+
+    facturapi_customer_id = (_cliente_por_factura(factura) or {}).get('facturapi_customer_id')
+    cursor.close()
+    db.close()
+    if not facturapi_customer_id:
+        raise HTTPException(status_code=400, detail="El cliente no está sincronizado con Facturapi — sincronízalo primero desde Clientes")
+
+    saldo_insoluto = round(saldo_anterior - data.monto, 2)
+
+    # Reserva la fila antes de llamar al PAC, mismo patrón que timbrar_factura_pago:
+    # si el timbrado falla, el error queda visible en vez de perderse.
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        """INSERT INTO pagos_ppd (factura_id, fecha_pago, forma_pago, monto, numero_operacion,
+               saldo_anterior, saldo_insoluto, parcialidad, status, registrado_por)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'Timbrando',%s)""",
+        (factura_id, data.fecha_pago, data.forma_pago, data.monto, data.numero_operacion,
+         saldo_anterior, saldo_insoluto, parcialidad, current.get('username'))
+    )
+    db.commit()
+    pago_id = cursor.lastrowid
+    cursor.close()
+    db.close()
+
+    try:
+        resultado = _facturapi_crear_y_timbrar_rep(
+            customer_id=facturapi_customer_id, uuid_factura=factura['cfdi_uuid'], parcialidad=parcialidad,
+            saldo_anterior=saldo_anterior, monto=data.monto, fecha_pago=data.fecha_pago,
+            forma_pago=data.forma_pago, numero_operacion=data.numero_operacion,
+        )
+    except Exception as e:
+        mensaje_error = e.detail if isinstance(e, HTTPException) else str(e)
+        db_err = _get_db()
+        cur_err = db_err.cursor()
+        cur_err.execute(
+            "UPDATE pagos_ppd SET status='Error', ultimo_error_timbrado=%s, ultimo_error_timbrado_fecha=NOW() WHERE id=%s",
+            (str(mensaje_error)[:2000], pago_id)
+        )
+        db_err.commit()
+        cur_err.close()
+        db_err.close()
+        raise
+
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        """UPDATE pagos_ppd SET status='Timbrado', facturapi_invoice_id=%s, cfdi_uuid=%s,
+               cfdi_xml_path=%s, cfdi_pdf_path=%s, ultimo_error_timbrado=NULL, ultimo_error_timbrado_fecha=NULL
+           WHERE id=%s""",
+        (resultado['facturapi_invoice_id'], resultado['uuid'], resultado['xml_path'], resultado['pdf_path'], pago_id)
+    )
+    factura_liquidada = saldo_insoluto <= 0.01
+    if factura_liquidada:
+        cursor.execute("UPDATE facturas_pago SET pagado=1 WHERE id=%s", (factura_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return {
+        "message": "Complemento de pago timbrado correctamente",
+        "id": pago_id,
+        "uuid": resultado['uuid'],
+        "saldo_insoluto": saldo_insoluto,
+        "factura_liquidada": factura_liquidada,
+    }
+
+
+class CancelarPagoPpdRequest(BaseModel):
+    motivo: str = "02"
+    folio_sustitucion: Optional[str] = None
+
+
+@app.post("/facturas-pago/{factura_id}/pagos-ppd/{pago_id}/cancelar")
+def cancelar_pago_ppd(factura_id: int, pago_id: int, data: CancelarPagoPpdRequest, current=Depends(get_current_user)):
+    if data.motivo not in ("01", "02", "03", "04"):
+        raise HTTPException(status_code=400, detail="Motivo inválido. Valores: 01, 02, 03, 04")
+    if data.motivo == "01" and not data.folio_sustitucion:
+        raise HTTPException(status_code=400, detail="El motivo 01 requiere 'folio_sustitucion' (UUID del complemento de pago que sustituye)")
+
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM pagos_ppd WHERE id=%s AND factura_id=%s", (pago_id, factura_id))
+    pago = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    if pago.get('status') != 'Timbrado':
+        raise HTTPException(status_code=400, detail="Solo se puede cancelar un complemento ya timbrado")
+
+    resultado = _facturapi_cancelar_cfdi(pago['facturapi_invoice_id'], data.motivo, data.folio_sustitucion)
+
+    db = _get_db()
+    cursor = db.cursor()
+    for _col_sql in (
+        "ALTER TABLE pagos_ppd ADD COLUMN cfdi_cancelacion_motivo VARCHAR(2) NULL",
+        "ALTER TABLE pagos_ppd ADD COLUMN cfdi_cancelacion_estatus VARCHAR(20) NULL",
+        "ALTER TABLE pagos_ppd ADD COLUMN cfdi_cancelacion_fecha DATETIME NULL",
+        "ALTER TABLE pagos_ppd ADD COLUMN cancelado_por VARCHAR(100) NULL",
+        "ALTER TABLE pagos_ppd ADD COLUMN cfdi_acuse_cancelacion_xml_path VARCHAR(500) NULL",
+        "ALTER TABLE pagos_ppd ADD COLUMN cfdi_acuse_cancelacion_pdf_path VARCHAR(500) NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+    cursor.execute(
+        """UPDATE pagos_ppd
+           SET status='Cancelado', cfdi_cancelacion_motivo=%s, cfdi_cancelacion_estatus=%s, cfdi_cancelacion_fecha=NOW(),
+               cancelado_por=%s, cfdi_acuse_cancelacion_xml_path=%s, cfdi_acuse_cancelacion_pdf_path=%s
+           WHERE id=%s""",
+        (data.motivo, resultado["estatus"], current.get('username'),
+         resultado["acuse_xml_path"], resultado["acuse_pdf_path"], pago_id)
+    )
+    # Si esta factura ya se había marcado 'pagado' gracias a este complemento,
+    # se revierte — mejor forzar una revisión manual que dejar 'pagado'
+    # mintiendo sobre un CFDI de pago que ya no existe ante el SAT.
+    cursor.execute("UPDATE facturas_pago SET pagado=0 WHERE id=%s", (factura_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Complemento de pago cancelado", **resultado}
+
+
+@app.post("/facturas-pago/{factura_id}/pagos-ppd/{pago_id}/verificar-cancelacion")
+def verificar_cancelacion_pago_ppd(factura_id: int, pago_id: int, current=Depends(get_current_user)):
+    """Igual que /facturas-pago/{id}/verificar-cancelacion pero para un
+    complemento de pago (REP) — vuelve a preguntarle a Facturapi el estatus
+    de la cancelación y descarga el acuse en cuanto el SAT la acepte."""
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, status, facturapi_invoice_id, cfdi_acuse_cancelacion_xml_path, cfdi_acuse_cancelacion_pdf_path "
+        "FROM pagos_ppd WHERE id=%s AND factura_id=%s", (pago_id, factura_id)
+    )
+    pago = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    if pago.get("status") != "Cancelado":
+        raise HTTPException(status_code=400, detail="Solo aplica a complementos de pago cancelados")
+    if not pago.get("facturapi_invoice_id"):
+        raise HTTPException(status_code=400, detail="El complemento no tiene id de Facturapi")
+
+    estatus = _facturapi_verificar_cancelacion(pago["facturapi_invoice_id"])
+
+    xml_path = pago.get("cfdi_acuse_cancelacion_xml_path")
+    pdf_path = pago.get("cfdi_acuse_cancelacion_pdf_path")
+    if estatus == "accepted" and not (xml_path and pdf_path):
+        nuevo_xml, nuevo_pdf = _facturapi_descargar_acuse_cancelacion(pago["facturapi_invoice_id"])
+        xml_path = nuevo_xml or xml_path
+        pdf_path = nuevo_pdf or pdf_path
+
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        "UPDATE pagos_ppd SET cfdi_cancelacion_estatus=%s, cfdi_acuse_cancelacion_xml_path=%s, cfdi_acuse_cancelacion_pdf_path=%s WHERE id=%s",
+        (estatus, xml_path, pdf_path, pago_id)
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return {"message": "Estatus actualizado", "estatus": estatus, "acuse_xml_path": xml_path, "acuse_pdf_path": pdf_path}
 
 
 class CancelarFacturaPagoRequest(BaseModel):

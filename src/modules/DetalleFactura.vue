@@ -42,16 +42,42 @@
           <strong>Pago:</strong>
           <span :class="'badge badge-' + (item.pagado ? 'success' : 'warning')" style="margin-left:0.5rem;">{{ item.pagado ? 'Pagada' : 'Pendiente pago' }}</span>
           <Button
+            v-if="!esPPD"
             :label="item.pagado ? 'Marcar como pendiente' : 'Marcar como pagada'"
             icon="pi pi-dollar" class="p-button-sm p-button-text" style="margin-left:0.75rem;"
             :loading="guardandoPagado" @click="togglePagado"
           />
+          <small v-else style="margin-left:0.75rem;color:var(--color-text);opacity:0.7;">
+            Es PPD — se marca sola cuando se completan los complementos de pago (abajo).
+          </small>
         </div>
       </div>
 
       <!-- ═══ Timbrado ═══ -->
       <div v-if="item.status === 'Pendiente timbre'" class="timbrado-card">
         <h3><i class="pi pi-verified" /> Timbrar factura</h3>
+
+        <div v-if="timbrarForm.metodo_pago === 'PPD'" class="ppd-flujo-banner">
+          <i class="pi pi-info-circle" />
+          <div>
+            <strong>Esta factura es PPD (pago diferido/parcialidades) — flujo en 2 pasos:</strong>
+            <ol>
+              <li>Timbras esta factura ahora <em>sin</em> registrar ningún pago (es el CFDI de ingreso, forma de pago "99 - Por definir").</li>
+              <li>Cuando el cliente pague (todo o en parcialidades), regresas a esta pantalla y usas <strong>"Registrar pago"</strong> en la sección "Complementos de pago (REP)" que aparece abajo una vez timbrada. Cada pago genera su propio CFDI de tipo Pago, relacionado automáticamente con esta factura.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div v-if="item.ultimo_error_timbrado" class="error-timbrado-banner">
+          <i class="pi pi-exclamation-triangle" />
+          <div>
+            <strong>El último intento de timbrado falló{{ item.ultimo_error_timbrado_fecha ? ' (' + formatFecha(item.ultimo_error_timbrado_fecha) + ')' : '' }}:</strong>
+            <p>{{ item.ultimo_error_timbrado }}</p>
+            <small v-if="pareceErrorDeCsd(item.ultimo_error_timbrado)">
+              <i class="pi pi-info-circle" /> Este mensaje suena a un problema con el certificado de sello digital (CSD) — revisa su vigencia con el PAC antes de reintentar.
+            </small>
+          </div>
+        </div>
 
         <div v-if="cargandoCliente" style="text-align:center;padding:1.5rem;"><i class="pi pi-spin pi-spinner" /></div>
 
@@ -67,6 +93,7 @@
               <div class="fiscal-resumen-item"><span>RFC</span><strong>{{ clienteFiscal.rfc }}</strong></div>
               <div class="fiscal-resumen-item"><span>C.P.</span><strong>{{ clienteFiscal.codigo_postal }}</strong></div>
               <div class="fiscal-resumen-item"><span>Régimen fiscal</span><strong>{{ clienteFiscal.regimen_fiscal }}</strong></div>
+              <div class="fiscal-resumen-item"><span>Correo</span><strong>{{ clienteFiscal.correo }}</strong></div>
               <Button label="Editar" icon="pi pi-pencil" class="p-button-text p-button-sm" @click="editandoFiscal = true" />
             </div>
 
@@ -90,6 +117,11 @@
                   <label>Régimen fiscal (SAT)</label>
                   <Dropdown v-model="fiscalForm.regimen_fiscal" :options="REGIMENES_FISCALES" optionLabel="label" optionValue="value" placeholder="Selecciona..." class="w-full" />
                 </div>
+                <div class="fiscal-field">
+                  <label>Correo (para enviarle el CFDI)</label>
+                  <InputText v-model="fiscalForm.correo" placeholder="cliente@correo.com" class="w-full" :class="{ 'p-invalid': fiscalForm.correo && !correoValido }" />
+                  <small v-if="fiscalForm.correo && !correoValido" class="fiscal-error">Correo con formato inválido</small>
+                </div>
               </div>
               <Button label="Guardar datos fiscales" icon="pi pi-save" class="p-button-sm" :loading="guardandoFiscal" @click="guardarDatosFiscales" />
             </div>
@@ -103,13 +135,19 @@
             </div>
             <div class="fiscal-field">
               <label>Método de pago</label>
-              <Dropdown v-model="timbrarForm.metodo_pago" :options="[{ label: 'PUE - Pago en una sola exhibición', value: 'PUE' }, { label: 'PPD - Pago en parcialidades o diferido', value: 'PPD' }]" optionLabel="label" optionValue="value" class="w-full" />
+              <Dropdown v-model="timbrarForm.metodo_pago" :options="[{ label: 'PUE - Pago en una sola exhibición', value: 'PUE' }, { label: 'PPD - Pago en parcialidades o diferido', value: 'PPD' }]" optionLabel="label" optionValue="value" placeholder="Selecciona..." class="w-full" />
             </div>
             <div class="fiscal-field">
               <label>Forma de pago</label>
-              <Dropdown v-model="timbrarForm.forma_pago" :options="formasPago" optionLabel="label" optionValue="value" class="w-full" />
+              <Dropdown v-model="timbrarForm.forma_pago" :options="formasPago" optionLabel="label" optionValue="value" placeholder="Selecciona..." class="w-full" />
             </div>
           </div>
+          <small class="fiscal-form-aviso" style="color:var(--color-text);opacity:0.75;font-weight:400;">
+            <i class="pi pi-info-circle" /> Confirma estos tres campos según cómo se cobró realmente esta factura — no hay valor por defecto.
+          </small>
+          <small v-if="camposFaltantes.length" class="fiscal-error" style="display:block;margin-top:0.35rem;">
+            <i class="pi pi-exclamation-triangle" /> Falta: {{ camposFaltantes.join(', ') }}
+          </small>
 
           <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
             <Button
@@ -175,10 +213,121 @@
             </small>
           </div>
         </div>
+
+        <!-- ═══ Complementos de pago (REP) — solo facturas PPD ya timbradas ═══ -->
+        <div v-if="esPPD && item.status === 'Timbrado'" class="rep-section">
+          <h4><i class="pi pi-wallet" /> Complementos de pago (REP)</h4>
+          <div class="rep-saldo-banner" :class="{ 'rep-saldo-liquidado': saldoPendientePpd <= 0.01 }">
+            <span>Pagado: <strong>{{ formatTotal(totalPagadoPpd) }}</strong> de {{ formatTotal(item.total) }}</span>
+            <span v-if="saldoPendientePpd > 0.01">Saldo pendiente: <strong>{{ formatTotal(saldoPendientePpd) }}</strong></span>
+            <span v-else><i class="pi pi-check-circle" /> Liquidada</span>
+            <Button
+              v-if="saldoPendientePpd > 0.01" label="Registrar pago" icon="pi pi-plus"
+              class="p-button-sm p-button-success" @click="abrirRegistrarPagoDialog"
+            />
+          </div>
+
+          <div v-if="cargandoPagosPpd" style="text-align:center;padding:1rem;"><i class="pi pi-spin pi-spinner" /></div>
+          <div v-else-if="!pagosPpd.length" class="rep-empty">Sin complementos de pago registrados todavía.</div>
+          <DataTable v-else :value="pagosPpd" size="small" responsiveLayout="scroll">
+            <Column header="#"><template #body="{ data }">{{ data.parcialidad }}</template></Column>
+            <Column header="Fecha"><template #body="{ data }">{{ formatFecha(data.fecha_pago) }}</template></Column>
+            <Column header="Forma de pago"><template #body="{ data }">{{ labelFormaPago(data.forma_pago) }}</template></Column>
+            <Column header="Monto"><template #body="{ data }">{{ formatTotal(data.monto) }}</template></Column>
+            <Column header="Saldo tras pago"><template #body="{ data }">{{ formatTotal(data.saldo_insoluto) }}</template></Column>
+            <Column header="Estatus">
+              <template #body="{ data }">
+                <span :class="'badge badge-' + repBadgeClass(data.status)">{{ data.status }}</span>
+                <span v-if="data.status === 'Cancelado'" :class="'badge badge-' + estatusCancelacionBadge(data.cfdi_cancelacion_estatus)" style="margin-left:0.35rem;">
+                  {{ estatusCancelacionTexto(data.cfdi_cancelacion_estatus) }}
+                </span>
+                <i
+                  v-if="data.status === 'Error' && data.ultimo_error_timbrado"
+                  class="pi pi-exclamation-triangle timbrado-error-icono"
+                  :title="data.ultimo_error_timbrado"
+                ></i>
+              </template>
+            </Column>
+            <Column header="Acciones">
+              <template #body="{ data }">
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+                  <template v-if="data.status === 'Timbrado'">
+                    <Button icon="pi pi-file" class="p-button-sm p-button-text" title="XML" @click="abrirArchivoCfdi(data.cfdi_xml_path)" />
+                    <Button icon="pi pi-file-pdf" class="p-button-sm p-button-text" title="PDF" @click="abrirArchivoCfdi(data.cfdi_pdf_path)" />
+                    <Button icon="pi pi-ban" class="p-button-sm p-button-text p-button-danger" title="Cancelar" @click="abrirCancelarPagoDialog(data)" />
+                  </template>
+                  <template v-else-if="data.status === 'Error'">
+                    <Button label="Reintentar" icon="pi pi-refresh" class="p-button-sm p-button-text" @click="reintentarPagoConError(data)" />
+                  </template>
+                  <template v-else-if="data.status === 'Cancelado'">
+                    <Button
+                      icon="pi pi-refresh" class="p-button-sm p-button-text" title="Verificar estatus"
+                      :loading="verificandoCancelacionPago === data.id" @click="verificarCancelacionPago(data)"
+                    />
+                    <Button v-if="data.cfdi_acuse_cancelacion_xml_path" icon="pi pi-file" class="p-button-sm p-button-text" title="Acuse XML" @click="abrirArchivoCfdi(data.cfdi_acuse_cancelacion_xml_path)" />
+                    <Button v-if="data.cfdi_acuse_cancelacion_pdf_path" icon="pi pi-file-pdf" class="p-button-sm p-button-text" title="Acuse PDF" @click="abrirArchivoCfdi(data.cfdi_acuse_cancelacion_pdf_path)" />
+                    <small v-if="!data.cfdi_acuse_cancelacion_xml_path && !data.cfdi_acuse_cancelacion_pdf_path" style="color:var(--color-border);">Sin acuse aún</small>
+                  </template>
+                </div>
+              </template>
+            </Column>
+          </DataTable>
+        </div>
       </div>
 
       <Dialog v-model:visible="prefacturaPdfVisible" header="Prefactura (borrador sin timbrar)" :modal="true" :style="{ width: '85vw' }" :draggable="false">
         <iframe v-if="prefacturaPdfUrl" :src="prefacturaPdfUrl" style="width:100%;height:80vh;border:none;" />
+      </Dialog>
+
+      <!-- Dialog: registrar complemento de pago (REP) -->
+      <Dialog v-model:visible="registrarPagoDialogVisible" header="Registrar pago (complemento REP)" :modal="true" :style="{ width: '480px', maxWidth: '95vw' }" :draggable="false">
+        <div class="timbrar-form">
+          <p style="margin:0;color:var(--color-text);opacity:0.8;font-size:0.88rem;">
+            Saldo pendiente: <strong>{{ formatTotal(saldoPendientePpd) }}</strong>
+          </p>
+          <div class="fiscal-field">
+            <label>Fecha de pago</label>
+            <Calendar v-model="nuevoPago.fecha_pago" dateFormat="yy-mm-dd" showIcon class="w-full" />
+          </div>
+          <div class="fiscal-field">
+            <label>Forma de pago</label>
+            <Dropdown v-model="nuevoPago.forma_pago" :options="formasPagoCatalogo" optionLabel="label" optionValue="value" placeholder="Selecciona..." class="w-full" />
+          </div>
+          <div class="fiscal-field">
+            <label>Monto</label>
+            <InputNumber v-model="nuevoPago.monto" mode="currency" currency="MXN" locale="es-MX" :max="saldoPendientePpd" class="w-full" />
+          </div>
+          <div class="fiscal-field">
+            <label>Número de operación (opcional)</label>
+            <InputText v-model="nuevoPago.numero_operacion" class="w-full" />
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
+          <Button label="Cancelar" class="p-button-text" @click="registrarPagoDialogVisible = false" />
+          <Button
+            label="Registrar y timbrar" icon="pi pi-verified" class="p-button-success"
+            :disabled="!pagoListoParaRegistrar" :loading="registrandoPago" @click="confirmarRegistrarPago"
+          />
+        </div>
+      </Dialog>
+
+      <!-- Dialog: cancelar complemento de pago (REP) -->
+      <Dialog v-model:visible="cancelarPagoDialogVisible" header="Cancelar complemento de pago" :modal="true" :style="{ width: '480px', maxWidth: '95vw' }" :draggable="false">
+        <div class="timbrar-form">
+          <div class="fiscal-field">
+            <label>Motivo de cancelación</label>
+            <Dropdown v-model="cancelarPagoForm.motivo" :options="motivosCancelacion" optionLabel="label" optionValue="value" placeholder="Selecciona un motivo" class="w-full" />
+          </div>
+          <div class="fiscal-field" v-if="cancelarPagoForm.motivo === '01'">
+            <label>UUID del complemento de pago que sustituye</label>
+            <InputText v-model="cancelarPagoForm.folio_sustitucion" class="w-full" />
+          </div>
+          <small style="color:var(--color-border);">Esto cancela el CFDI de pago ante el SAT. No se puede deshacer.</small>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
+          <Button label="Cerrar" class="p-button-text" @click="cancelarPagoDialogVisible = false" />
+          <Button label="Cancelar pago" icon="pi pi-ban" class="p-button-danger" :disabled="!cancelarPagoForm.motivo || (cancelarPagoForm.motivo === '01' && !cancelarPagoForm.folio_sustitucion)" :loading="cancelandoPago" @click="confirmarCancelarPago" />
+        </div>
       </Dialog>
 
       <!-- Comprobantes de pago -->
@@ -300,11 +449,12 @@
     <Dialog v-model:visible="enviarDialogVisible" header="Enviar CFDI por correo" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }" :draggable="false">
       <div class="fiscal-field">
         <label>Correo del destinatario</label>
-        <InputText v-model="correoEnvio" placeholder="cliente@correo.com" class="w-full" />
+        <InputText v-model="correoEnvio" placeholder="cliente@correo.com" class="w-full" :class="{ 'p-invalid': correoEnvio && !correoEnvioValido }" />
+        <small v-if="correoEnvio && !correoEnvioValido" class="fiscal-error">Correo con formato inválido</small>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
         <Button label="Cancelar" class="p-button-text" @click="enviarDialogVisible = false" />
-        <Button label="Enviar" icon="pi pi-send" class="p-button-success" :disabled="!correoEnvio" :loading="enviando" @click="confirmarEnviar" />
+        <Button label="Enviar" icon="pi pi-send" class="p-button-success" :disabled="!correoEnvioValido" :loading="enviando" @click="confirmarEnviar" />
       </div>
     </Dialog>
   </div>
@@ -320,6 +470,8 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
+import InputNumber from 'primevue/inputnumber';
+import Calendar from 'primevue/calendar';
 import Textarea from 'primevue/textarea';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
@@ -330,6 +482,7 @@ import {
   timbrarFactura, cancelarFactura, verificarCancelacionFactura, enviarCfdiFactura, getNotas, getFacturas,
   actualizarPagadoFactura,
   generarPrefacturaFactura, getPrefacturaPdfUrl,
+  getPagosPpd, registrarPagoPpd, cancelarPagoPpd, verificarCancelacionPagoPpd,
 } from '@/services/pagosService';
 import { getClientes, addCliente, updateCliente } from '@/services/clientesService';
 import { generarReporteServicioPDF } from '@/components/GeneraReporteServicioPDF.js';
@@ -367,7 +520,13 @@ function urlComprobante(path) {
 function nombreArchivo(path) { return path ? path.split('/').pop() : 'comprobante'; }
 function abrirArchivoCfdi(path) { if (path) window.open(urlComprobante(path), '_blank', 'noopener'); }
 
-const esEditable = computed(() => item.value?.status === 'Pendiente timbre');
+const esEditable = computed(() => item.value?.status === 'Pendiente timbre' && !item.value?.facturapi_draft_id);
+
+const PALABRAS_ERROR_CSD = ['certificado', 'csd', 'vigen', 'caduc', 'sello', 'expired', 'expir'];
+function pareceErrorDeCsd(mensaje) {
+  const m = (mensaje || '').toLowerCase();
+  return PALABRAS_ERROR_CSD.some(p => m.includes(p));
+}
 
 const lugaresDisponibles = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'MercadoLibre Eliseo', 'Efectivo entregado oficina'];
 const lugarPagoSeleccionado = ref(null);
@@ -437,6 +596,7 @@ const formasPagoCatalogo = [
   { label: '99 - Por definir', value: '99' }, // el SAT solo la permite con MétodoPago PPD
 ];
 const RFC_REGEX = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RFC_PUBLICO_GENERAL = 'XAXX010101000';
 
 const clientesCache = ref([]);
@@ -445,9 +605,10 @@ const clienteExiste = computed(() => !!clienteFiscal.value?.id);
 const cargandoCliente = ref(false);
 const editandoFiscal = ref(false);
 const guardandoFiscal = ref(false);
-const fiscalForm = ref({ rfc: '', codigo_postal: '', regimen_fiscal: '' });
+const fiscalForm = ref({ rfc: '', codigo_postal: '', regimen_fiscal: '', correo: '' });
 
 const rfcValido = computed(() => RFC_REGEX.test((fiscalForm.value.rfc || '').trim()));
+const correoValido = computed(() => EMAIL_REGEX.test((fiscalForm.value.correo || '').trim()));
 
 // Venta a público en general: el backend fuerza RFC genérico + UsoCFDI S01 +
 // régimen/domicilio del propio emisor sin importar lo que se mande — así que
@@ -456,7 +617,8 @@ const publicoGeneral = ref(false);
 
 const datosFiscalesCompletos = computed(() =>
   publicoGeneral.value ||
-  !!(clienteFiscal.value?.rfc && clienteFiscal.value?.codigo_postal && clienteFiscal.value?.regimen_fiscal)
+  !!(clienteFiscal.value?.rfc && clienteFiscal.value?.codigo_postal && clienteFiscal.value?.regimen_fiscal
+    && clienteFiscal.value?.correo && EMAIL_REGEX.test(clienteFiscal.value.correo))
 );
 
 const regimenReceptorActivo = computed(() => publicoGeneral.value ? '616' : (clienteFiscal.value?.regimen_fiscal || ''));
@@ -474,14 +636,17 @@ async function cargarClienteFiscal() {
   cargandoCliente.value = true;
   try {
     clientesCache.value = await getClientes();
-    const match = clientesCache.value.find(
-      c => (c.nombre || '').trim().toLowerCase() === (item.value?.cliente || '').trim().toLowerCase()
-    );
+    // Prefiere la FK explícita (facturas creadas desde NuevaPrefactura.vue) —
+    // el match por nombre queda como respaldo para facturas viejas.
+    const match = item.value?.cliente_id
+      ? clientesCache.value.find(c => c.id === item.value.cliente_id)
+      : clientesCache.value.find(c => (c.nombre || '').trim().toLowerCase() === (item.value?.cliente || '').trim().toLowerCase());
     clienteFiscal.value = match || { nombre: item.value?.cliente || '' };
     fiscalForm.value = {
       rfc: clienteFiscal.value.rfc || '',
       codigo_postal: clienteFiscal.value.codigo_postal || '',
       regimen_fiscal: clienteFiscal.value.regimen_fiscal || '',
+      correo: clienteFiscal.value.correo || '',
     };
     editandoFiscal.value = false;
   } catch {
@@ -491,13 +656,16 @@ async function cargarClienteFiscal() {
 }
 
 async function guardarDatosFiscales() {
-  if (!rfcValido.value || !fiscalForm.value.codigo_postal || !fiscalForm.value.regimen_fiscal) {
-    toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Completa RFC, código postal y régimen fiscal.', life: 3500 });
+  if (!rfcValido.value || !fiscalForm.value.codigo_postal || !fiscalForm.value.regimen_fiscal || !correoValido.value) {
+    toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Completa RFC, código postal, régimen fiscal y un correo válido (es el único medio para entregarle el CFDI).', life: 4000 });
     return;
   }
   guardandoFiscal.value = true;
   try {
-    const payload = { nombre: item.value.cliente, rfc: fiscalForm.value.rfc.toUpperCase(), codigo_postal: fiscalForm.value.codigo_postal, regimen_fiscal: fiscalForm.value.regimen_fiscal };
+    const payload = {
+      nombre: item.value.cliente, rfc: fiscalForm.value.rfc.toUpperCase(), codigo_postal: fiscalForm.value.codigo_postal,
+      regimen_fiscal: fiscalForm.value.regimen_fiscal, correo: fiscalForm.value.correo.trim(),
+    };
     if (clienteExiste.value) {
       await updateCliente(clienteFiscal.value.id, { ...clienteFiscal.value, ...payload });
     } else {
@@ -511,7 +679,10 @@ async function guardarDatosFiscales() {
   guardandoFiscal.value = false;
 }
 
-const timbrarForm = ref({ uso_cfdi: 'G03', forma_pago: '03', metodo_pago: 'PUE' });
+// Sin valores por defecto a propósito: el usuario debe elegir uso CFDI,
+// método y forma de pago para cada factura (ver aviso en el template) —
+// nunca se debe asumir "lo de siempre" porque cambia según cómo pagó cada cliente.
+const timbrarForm = ref({ uso_cfdi: null, forma_pago: null, metodo_pago: null });
 const timbrando = ref(false);
 
 // El SAT solo permite FormaPago '99' cuando MétodoPago es PPD — si el usuario
@@ -533,6 +704,17 @@ const datosFiscalesListos = computed(() => {
 });
 
 const listoParaTimbrar = computed(() => datosFiscalesListos.value);
+
+const camposFaltantes = computed(() => {
+  const faltan = [];
+  if (!publicoGeneral.value && !timbrarForm.value.uso_cfdi) faltan.push('Uso CFDI');
+  if (!timbrarForm.value.metodo_pago) faltan.push('Método de pago');
+  if (!timbrarForm.value.forma_pago) faltan.push('Forma de pago');
+  if (!publicoGeneral.value && !(datosFiscalesCompletos.value && RFC_REGEX.test(clienteFiscal.value?.rfc || ''))) {
+    faltan.push('datos fiscales del cliente (RFC/CP/régimen/correo)');
+  }
+  return faltan;
+});
 
 function datosFiscalesPayload() {
   return publicoGeneral.value ? {
@@ -828,6 +1010,7 @@ async function cargarDetalle() {
     lugarPagoSeleccionado.value = item.value?.lugar_pago || null;
     observacionesTexto.value = item.value?.observaciones || '';
     if (item.value?.status === 'Pendiente timbre') await cargarClienteFiscal();
+    if (esPPD.value && item.value?.status === 'Timbrado') await cargarPagosPpd();
   } catch {
     item.value = null;
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el detalle.', life: 4000 });
@@ -839,6 +1022,7 @@ async function cargarDetalle() {
 const enviarDialogVisible = ref(false);
 const enviando = ref(false);
 const correoEnvio = ref('');
+const correoEnvioValido = computed(() => EMAIL_REGEX.test((correoEnvio.value || '').trim()));
 
 async function abrirEnviarDialog() {
   correoEnvio.value = '';
@@ -853,7 +1037,7 @@ async function abrirEnviarDialog() {
 }
 
 async function confirmarEnviar() {
-  if (!correoEnvio.value) return;
+  if (!correoEnvioValido.value) return;
   enviando.value = true;
   try {
     await enviarCfdiFactura(id.value, correoEnvio.value.trim());
@@ -863,6 +1047,136 @@ async function confirmarEnviar() {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo enviar el correo.', life: 5000 });
   }
   enviando.value = false;
+}
+
+// ── Complementos de pago (REP) — facturas PPD ──
+const esPPD = computed(() => (item.value?.metodo_pago || '').toUpperCase() === 'PPD');
+const pagosPpd = ref([]);
+const cargandoPagosPpd = ref(false);
+
+const totalPagadoPpd = computed(() =>
+  pagosPpd.value.filter(p => p.status === 'Timbrado').reduce((sum, p) => sum + Number(p.monto || 0), 0)
+);
+const saldoPendientePpd = computed(() => Math.max(0, round2(Number(item.value?.total || 0) - totalPagadoPpd.value)));
+function round2(n) { return Math.round(n * 100) / 100; }
+
+function labelFormaPago(codigo) {
+  return formasPagoCatalogo.find(f => f.value === codigo)?.label || codigo;
+}
+function repBadgeClass(status) {
+  if (status === 'Timbrado') return 'success';
+  if (status === 'Error') return 'danger';
+  if (status === 'Cancelado') return 'danger';
+  return 'warning';
+}
+
+async function cargarPagosPpd() {
+  cargandoPagosPpd.value = true;
+  try {
+    pagosPpd.value = await getPagosPpd(id.value);
+  } catch {
+    pagosPpd.value = [];
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los complementos de pago.', life: 4000 });
+  }
+  cargandoPagosPpd.value = false;
+}
+
+const registrarPagoDialogVisible = ref(false);
+const registrandoPago = ref(false);
+const nuevoPago = ref({ fecha_pago: new Date(), forma_pago: null, monto: 0, numero_operacion: '' });
+
+function abrirRegistrarPagoDialog() {
+  nuevoPago.value = { fecha_pago: new Date(), forma_pago: null, monto: saldoPendientePpd.value, numero_operacion: '' };
+  registrarPagoDialogVisible.value = true;
+}
+
+function reintentarPagoConError(pagoFallido) {
+  nuevoPago.value = {
+    fecha_pago: pagoFallido.fecha_pago ? new Date(pagoFallido.fecha_pago) : new Date(),
+    forma_pago: pagoFallido.forma_pago || null,
+    monto: Number(pagoFallido.monto) || saldoPendientePpd.value,
+    numero_operacion: pagoFallido.numero_operacion || '',
+  };
+  registrarPagoDialogVisible.value = true;
+}
+
+const pagoListoParaRegistrar = computed(() =>
+  !!nuevoPago.value.fecha_pago && !!nuevoPago.value.forma_pago && Number(nuevoPago.value.monto) > 0
+  && Number(nuevoPago.value.monto) <= saldoPendientePpd.value + 0.01
+);
+
+function fechaISO(d) {
+  const dt = (d instanceof Date) ? d : new Date(d);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+async function confirmarRegistrarPago() {
+  if (!pagoListoParaRegistrar.value) return;
+  registrandoPago.value = true;
+  try {
+    const res = await registrarPagoPpd(id.value, {
+      fecha_pago: fechaISO(nuevoPago.value.fecha_pago),
+      forma_pago: nuevoPago.value.forma_pago,
+      monto: Number(nuevoPago.value.monto),
+      numero_operacion: nuevoPago.value.numero_operacion?.trim() || undefined,
+    });
+    toast.add({
+      severity: 'success', summary: 'Complemento de pago timbrado',
+      detail: res.factura_liquidada ? 'Factura liquidada — saldo en $0.' : `Saldo restante: ${formatTotal(res.saldo_insoluto)}.`,
+      life: 4500
+    });
+    registrarPagoDialogVisible.value = false;
+    await cargarPagosPpd();
+    await cargarDetalle();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error al timbrar el pago', detail: e?.response?.data?.detail || 'No se pudo timbrar el complemento de pago.', life: 6000 });
+    await cargarPagosPpd();
+  }
+  registrandoPago.value = false;
+}
+
+const cancelarPagoDialogVisible = ref(false);
+const cancelandoPago = ref(false);
+const cancelarPagoForm = ref({ motivo: '', folio_sustitucion: '' });
+const pagoACancelar = ref(null);
+
+function abrirCancelarPagoDialog(pago) {
+  pagoACancelar.value = pago;
+  cancelarPagoForm.value = { motivo: '', folio_sustitucion: '' };
+  cancelarPagoDialogVisible.value = true;
+}
+
+async function confirmarCancelarPago() {
+  if (!pagoACancelar.value || !cancelarPagoForm.value.motivo) return;
+  if (cancelarPagoForm.value.motivo === '01' && !cancelarPagoForm.value.folio_sustitucion) return;
+  cancelandoPago.value = true;
+  try {
+    await cancelarPagoPpd(id.value, pagoACancelar.value.id, cancelarPagoForm.value.motivo, cancelarPagoForm.value.folio_sustitucion);
+    toast.add({ severity: 'success', summary: 'Cancelado', detail: 'Complemento de pago cancelado ante el SAT.', life: 4000 });
+    cancelarPagoDialogVisible.value = false;
+    await cargarPagosPpd();
+    await cargarDetalle();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo cancelar el complemento de pago.', life: 5000 });
+  }
+  cancelandoPago.value = false;
+}
+
+const verificandoCancelacionPago = ref(null);
+async function verificarCancelacionPago(pago) {
+  verificandoCancelacionPago.value = pago.id;
+  try {
+    const res = await verificarCancelacionPagoPpd(id.value, pago.id);
+    await cargarPagosPpd();
+    toast.add({
+      severity: 'success', summary: 'Estatus actualizado',
+      detail: `Estatus: ${estatusCancelacionTexto(res.estatus)}${res.acuse_xml_path || res.acuse_pdf_path ? ' — acuse disponible.' : ''}`,
+      life: 4000
+    });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo verificar el estatus.', life: 5000 });
+  }
+  verificandoCancelacionPago.value = null;
 }
 
 onMounted(() => {
@@ -904,11 +1218,46 @@ onMounted(() => {
 .acuse-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
 .acuse-section h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.75rem; color: var(--color-title); font-size: 0.95rem; }
 .publico-general-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; cursor: pointer; }
+.error-timbrado-banner {
+  display: flex; gap: 0.75rem; align-items: flex-start;
+  padding: 0.9rem 1.1rem; border-radius: 10px; margin-bottom: 1rem;
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+  color: var(--color-error);
+}
+.error-timbrado-banner .pi-exclamation-triangle { font-size: 1.2rem; margin-top: 0.15rem; }
+.error-timbrado-banner p { margin: 0.25rem 0 0.4rem; color: var(--color-text); font-size: 0.88rem; }
+.error-timbrado-banner small { display: flex; align-items: center; gap: 0.35rem; color: var(--color-text); opacity: 0.8; }
 .timbrar-form { display: flex; flex-direction: column; gap: 0.9rem; }
+
+.ppd-flujo-banner {
+  display: flex; gap: 0.75rem; align-items: flex-start;
+  padding: 0.9rem 1.1rem; border-radius: 10px; margin-bottom: 1rem;
+  background: color-mix(in srgb, var(--color-info, #3b82f6) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-info, #3b82f6) 30%, transparent);
+  font-size: 0.88rem; color: var(--color-text);
+}
+.ppd-flujo-banner .pi-info-circle { font-size: 1.2rem; margin-top: 0.15rem; color: var(--color-info, #3b82f6); }
+.ppd-flujo-banner ol { margin: 0.35rem 0 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.3rem; }
 
 .comprobante-section, .observaciones-section, .ordenes-detalle { margin-bottom: 1.5rem; }
 .comprobante-section h3, .observaciones-section h3, .ordenes-detalle h3 { margin-bottom: 0.75rem; color: var(--color-title); }
 .comprobantes-lista { margin-bottom: 0.75rem; }
 .comprobante-item { display: flex; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid var(--color-border); }
 .comprobante-item:last-child { border-bottom: none; }
+
+.rep-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
+.rep-section h4 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.9rem; color: var(--color-title); font-size: 0.95rem; }
+.rep-saldo-banner {
+  display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+  padding: 0.75rem 1rem; border-radius: 10px; margin-bottom: 1rem; font-size: 0.88rem;
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+}
+.rep-saldo-banner.rep-saldo-liquidado {
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+  color: var(--color-success);
+}
+.rep-empty { color: var(--color-border); padding: 0.5rem 0 1rem; }
 </style>

@@ -38,6 +38,7 @@ import NuevoReporteRenovacion from '@/modules/NuevoReporteRenovacion.vue';
 import Pagos from '@/modules/Pagos.vue';
 import DetallePago from '@/modules/DetallePago.vue';
 import Facturacion from '@/modules/Facturacion.vue';
+import NuevaPrefactura from '@/modules/NuevaPrefactura.vue';
 import DetalleFactura from '@/modules/DetalleFactura.vue';
 import UtilidadesImei from '@/modules/UtilidadesImei.vue';
 import Bancos from '@/modules/Bancos.vue';
@@ -88,6 +89,7 @@ const routes = [
   ,{ path: '/pagos', name: 'pagos', component: Pagos }
   ,{ path: '/pagos/:tipo/:id', name: 'detalle-pago', component: DetallePago, props: true }
   ,{ path: '/facturacion', name: 'facturacion', component: Facturacion }
+  ,{ path: '/facturacion/nueva', name: 'nueva-prefactura', component: NuevaPrefactura }
   ,{ path: '/facturacion/:id', name: 'detalle-factura', component: DetalleFactura, props: true }
   ,{ path: '/utilidades-imei', name: 'utilidades-imei', component: UtilidadesImei }
   ,{ path: '/bancos', name: 'bancos', component: Bancos }
