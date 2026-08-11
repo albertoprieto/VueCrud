@@ -151,6 +151,16 @@ export async function sincronizarComprobantesTodas() {
   return res.data;
 }
 
+export async function limpiarComprobantesDuplicados() {
+  const res = await axios.post(`${API_URL}/facturas-pago/limpiar-comprobantes-duplicados`);
+  return res.data;
+}
+
+export async function marcarPagadasConComprobante() {
+  const res = await axios.post(`${API_URL}/facturas-pago/marcar-pagadas-con-comprobante`);
+  return res.data;
+}
+
 export async function agregarReportesFactura(id, reporte_ids) {
   const res = await axios.put(`${API_URL}/facturas-pago/${id}/agregar-reportes`, { reporte_ids });
   return res.data;
