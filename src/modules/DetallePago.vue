@@ -436,8 +436,9 @@ const lugaresDisponibles = [
   'Comercializadora',
   'BBVA PAU',
   'Mercadopago Victor',
-  'MercadoLibre Eliseo',
-  'Efectivo entregado oficina'
+  'Mercadopago Eliseo',
+  'Efectivo oficina',
+  'Efectivo tecnico'
 ];
 
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');

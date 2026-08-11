@@ -41,6 +41,11 @@
           <span class="resumen-valor sin">{{ totalGeneral.reportesPendientes }}</span>
           <span v-if="tab === 'vendedor'" class="resumen-subvalor">{{ formatTotal(totalGeneral.vendidoSinNota) }} vendido</span>
         </div>
+        <div class="resumen-item" v-if="totalGeneral.reportesConPermiso">
+          <span class="resumen-label">Con permiso</span>
+          <span class="resumen-valor permiso">{{ totalGeneral.reportesConPermiso }}</span>
+          <span class="resumen-subvalor">de {{ totalGeneral.personasConPermiso }} {{ tab === 'tecnico' ? 'técnico' : 'responsable' }}{{ totalGeneral.personasConPermiso === 1 ? '' : 's' }} · {{ formatTotal(totalGeneral.vendidoConPermiso) }}</span>
+        </div>
       </div>
 
       <div v-if="!personas.length" class="vacio">No hay {{ tab === 'tecnico' ? 'técnicos' : 'vendedores' }} con reportes registrados.</div>
@@ -67,6 +72,10 @@
           </span>
           <span v-else class="al-dia-tag">
             <i class="pi pi-check-circle" /> Todo con nota/factura
+          </span>
+          <span v-if="p.reportesConPermiso > 0" class="permiso-tag">
+            <i class="pi pi-clock" />
+            {{ p.reportesConPermiso }} con permiso{{ tab === 'vendedor' ? ` · ${formatTotal(p.totalConPermiso)}` : '' }}
           </span>
         </button>
       </div>
@@ -162,11 +171,14 @@ const totalGeneral = computed(() => {
     acc.vendido += p.totalVendido;
     acc.vendidoConComprobante += p.totalConComprobante;
     acc.vendidoSinNota += p.totalSinNota;
+    acc.vendidoConPermiso += p.totalConPermiso;
     acc.reportesConComprobante += p.reportesConComprobante;
     acc.reportesPendientes += p.reportesSinNota;
+    acc.reportesConPermiso += p.reportesConPermiso;
     if (tienePendientes(p)) acc.personasConPendientes += 1;
+    if (p.reportesConPermiso > 0) acc.personasConPermiso += 1;
     return acc;
-  }, { totalReportes: 0, vendido: 0, vendidoConComprobante: 0, vendidoSinNota: 0, reportesConComprobante: 0, reportesPendientes: 0, personasConPendientes: 0 });
+  }, { totalReportes: 0, vendido: 0, vendidoConComprobante: 0, vendidoSinNota: 0, vendidoConPermiso: 0, reportesConComprobante: 0, reportesPendientes: 0, reportesConPermiso: 0, personasConPendientes: 0, personasConPermiso: 0 });
 });
 
 function verDetalle(nombre) {
@@ -288,6 +300,7 @@ onMounted(async () => {
 }
 .resumen-valor.con { color: var(--color-success); }
 .resumen-valor.sin { color: var(--color-warning); }
+.resumen-valor.permiso { color: var(--color-warning); }
 .resumen-subvalor {
   font-size: 0.78rem;
   color: var(--color-text);
@@ -385,6 +398,17 @@ onMounted(async () => {
   font-weight: 700;
   background: color-mix(in srgb, var(--color-success) 18%, transparent);
   color: var(--color-success);
+}
+.permiso-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--color-warning) 20%, transparent);
+  color: var(--color-warning);
 }
 .cero-section {
   margin-top: 2rem;
