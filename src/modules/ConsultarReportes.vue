@@ -418,6 +418,10 @@
           <label>Estatus</label>
           <Dropdown v-model="crearPagoStatus" :options="opcionesStatusNota" optionLabel="label" optionValue="value" placeholder="Seleccionar" class="w-full" />
         </div>
+        <div v-if="crearPagoTipo === 'nota'" class="form-group">
+          <label>Lugar de pago</label>
+          <Dropdown v-model="crearPagoLugarPago" :options="opcionesLugarPago" placeholder="Seleccionar" class="w-full" showClear />
+        </div>
         <div v-else class="form-group">
           <label>Estatus</label>
           <Dropdown v-model="crearPagoStatus" :options="opcionesStatusFactura" optionLabel="label" optionValue="value" placeholder="Seleccionar" class="w-full" />
@@ -488,7 +492,7 @@ import { useLoginStore } from '@/stores/loginStore';
 import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
 import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
-import { crearNota, crearFactura, getNotas, getFacturas, actualizarCamposNota } from '@/services/pagosService';
+import { crearNota, crearFactura, getNotas, getFacturas, actualizarCamposNota, actualizarLugarPagoNota } from '@/services/pagosService';
 import { generarNotaServicioPDF } from '@/services/NotaServicioPdfService.js';
 import * as XLSX from 'xlsx';
 import NuevoReporteDeServicio from './NuevoReporteDeServicio.vue';
@@ -537,6 +541,7 @@ const crearPagoTipo = ref('nota'); // 'nota' | 'factura'
 const crearPagoCliente = ref('');
 const crearPagoTotal = ref(0);
 const crearPagoStatus = ref('');
+const crearPagoLugarPago = ref('');
 const creandoPago = ref(false);
 
 // ── Notas y Facturas cargadas (para saber qué reportes ya están asignados) ──
@@ -596,6 +601,7 @@ const opcionesStatusNota = [
   { label: 'Pagado', value: 'pagado' },
   { label: 'Cancelado', value: 'cancelado' }
 ];
+const opcionesLugarPago = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico'];
 const opcionesStatusFactura = [
   { label: 'Timbrado', value: 'Timbrado' },
   { label: 'Pendiente timbre', value: 'Pendiente timbre' },
@@ -623,6 +629,7 @@ function abrirCrearNota() {
   crearPagoCliente.value = seleccionados.value[0]?.nombre_cliente || '';
   crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + obtenerMontoParaPago(r), 0);
   crearPagoStatus.value = 'pendiente de pago';
+  crearPagoLugarPago.value = '';
   showCrearPagoDialog.value = true;
 }
 
@@ -666,6 +673,13 @@ async function confirmarCrearPago() {
       const notaResp = await crearNota(payload);
       const notaId = notaResp?.id || notaResp?.data?.id || null;
       toast.add({ severity: 'success', summary: 'Nota creada', detail: 'La nota se creó correctamente.', life: 3000 });
+      if (notaId && crearPagoLugarPago.value) {
+        try {
+          await actualizarLugarPagoNota(notaId, crearPagoLugarPago.value);
+        } catch (e) {
+          console.error('actualizarLugarPagoNota:', e);
+        }
+      }
       try {
         await generarNotaServicioPDF({
           notaId,
