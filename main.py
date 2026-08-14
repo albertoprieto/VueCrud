@@ -78,6 +78,41 @@ async def require_auth(request: Request, call_next):
     return await call_next(request)
 
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        user_id: int = payload.get("user_id")
+        if username is None or user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    return {"username": username, "user_id": user_id}
+
+
+def require_admin(current=Depends(get_current_user)):
+    """Exige perfil Admin ademas de un token valido. Usar en endpoints que
+    puedan otorgar privilegios (gestion de usuarios) o mover inventario
+    entre ubicaciones sin registro de quien lo autorizo."""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not row or (row["perfil"] or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Requiere perfil Admin")
+    return current
+
+
 # Helper para construir URL pública consistente
 def build_public_url(rel_path: str, request: Request | None = None) -> str:
     import os as _os
@@ -3433,7 +3468,6 @@ def delete_imei(imei: str):
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 días
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -3484,38 +3518,6 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
         "token_type": "bearer",
         "user": user_data
     }
-
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        user_id: int = payload.get("user_id")
-        if username is None or user_id is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    # Aquí puedes consultar el usuario en la base de datos si lo necesitas
-    return {"username": username, "user_id": user_id}
-
-
-def require_admin(current=Depends(get_current_user)):
-    """Exige perfil Admin ademas de un token valido. Usar en endpoints que
-    puedan otorgar privilegios (gestion de usuarios) o mover inventario
-    entre ubicaciones sin registro de quien lo autorizo."""
-    db = get_db_connection()
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT perfil FROM usuarios WHERE id=%s", (current["user_id"],))
-    row = cursor.fetchone()
-    cursor.close()
-    db.close()
-    if not row or (row["perfil"] or "").lower() != "admin":
-        raise HTTPException(status_code=403, detail="Requiere perfil Admin")
-    return current
 
 @app.get("/usuarios/me")
 def get_usuario_actual(request: Request, token: str = Depends(oauth2_scheme)):
