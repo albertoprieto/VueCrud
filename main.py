@@ -16,7 +16,7 @@ import mysql.connector
 from fastapi import FastAPI, Query, Body, HTTPException, Depends, status
 from typing import Optional, List
 import datetime
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -33,6 +33,44 @@ from fastapi.staticfiles import StaticFiles
 
 
 app = FastAPI()
+
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY no configurado. Define SECRET_KEY en .env")
+ALGORITHM = "HS256"
+
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME"),
+    )
+
+
+# Rutas que no requieren token (login, health check, verificacion de dominio,
+# archivos subidos que se comparten por liga publica con clientes)
+_PUBLIC_PATHS = {"/token", "/ok", "/google5bd3c87fea64a137.html"}
+_PUBLIC_PREFIXES = ("/uploads/",)
+
+
+@app.middleware("http")
+async def require_auth(request: Request, call_next):
+    path = request.url.path
+    if request.method == "OPTIONS" or path in _PUBLIC_PATHS or path.startswith(_PUBLIC_PREFIXES):
+        return await call_next(request)
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "No autenticado"})
+    try:
+        jwt.decode(auth_header[7:], SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return JSONResponse(status_code=401, content={"detail": "Token invalido o expirado"})
+    return await call_next(request)
+
 
 # Helper para construir URL pública consistente
 def build_public_url(rel_path: str, request: Request | None = None) -> str:
@@ -73,12 +111,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.on_event("startup")
 def crear_tabla_retiros_banco():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS retiros_banco (
@@ -105,9 +138,7 @@ def crear_tabla_pagos_ppd():
     timbró con MetodoPago=PPD. Una factura puede tener varios (parcialidades),
     cada uno es su propio CFDI tipo 'P' timbrado aparte, referenciando el
     UUID de la factura original."""
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pagos_ppd (
@@ -137,8 +168,6 @@ def crear_tabla_pagos_ppd():
     db.close()
 
 
-
-load_dotenv()
 
 class Producto(BaseModel):
     ClaveProdServ: str
@@ -1101,12 +1130,7 @@ def google_verification():
 
 @app.get("/imeis")
 def get_imeis(articulo_nombre: str = None):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     if articulo_nombre:
         cursor.execute("SELECT * FROM imeis WHERE articulo_nombre=%s", (articulo_nombre,))
@@ -1119,12 +1143,7 @@ def get_imeis(articulo_nombre: str = None):
 
 @app.get("/imeis-vendidos")
 def get_imeis_vendidos(articulo_nombre: str = None):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     if articulo_nombre:
         cursor.execute("SELECT * FROM imeis WHERE articulo_nombre=%s", (articulo_nombre,))
@@ -1137,12 +1156,7 @@ def get_imeis_vendidos(articulo_nombre: str = None):
 
 @app.post("/imeis")
 def add_imei(item: IMEI):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO imeis (name, description, imei, registeredBy, date, status, technician, gpsModel) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
@@ -1155,12 +1169,7 @@ def add_imei(item: IMEI):
 
 @app.put("/imeis/{imei_value}")
 def update_imei(imei_value: str, imei: dict):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "UPDATE imeis SET name=%s, description=%s, registeredBy=%s, date=%s, status=%s, technician=%s, gpsModel=%s WHERE imei=%s",
@@ -1194,12 +1203,7 @@ class MovimientoDinero(BaseModel):
 
 @app.get("/movimientos-dinero")
 def get_movimientos_dinero():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM movimientos_dinero ORDER BY fecha DESC")
     movimientos = cursor.fetchall()
@@ -1209,12 +1213,7 @@ def get_movimientos_dinero():
 
 @app.post("/movimientos-dinero")
 def add_movimiento_dinero(mov: MovimientoDinero):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         cursor.execute("ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL")
@@ -1243,12 +1242,7 @@ def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
             valores.append(v)
     if not campos:
         raise HTTPException(status_code=400, detail="Nada que actualizar")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         cursor.execute("ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL")
@@ -1269,12 +1263,7 @@ def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
 
 @app.delete("/movimientos-dinero/{movimiento_id}")
 def delete_movimiento_dinero(movimiento_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM movimientos_dinero WHERE id=%s", (movimiento_id,))
     db.commit()
@@ -1302,12 +1291,7 @@ class Cotizacion(BaseModel):
 
 @app.get("/cotizaciones")
 def get_cotizaciones():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM cotizaciones")
     cotizaciones = cursor.fetchall()
@@ -1317,12 +1301,7 @@ def get_cotizaciones():
 
 @app.get("/cotizaciones/{cotizacion_id}")
 def get_cotizacion(cotizacion_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM cotizaciones WHERE id=%s", (cotizacion_id,))
     cotizacion = cursor.fetchone()
@@ -1334,12 +1313,7 @@ def get_cotizacion(cotizacion_id: int):
 
 @app.post("/cotizaciones")
 def add_cotizacion(cotizacion: Cotizacion):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO cotizaciones (cliente_id, fecha, descripcion, monto, status, usuario_id, observaciones, articulos, autorizada, fecha_autorizacion, venta_id, vendedor, descuento) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
@@ -1366,12 +1340,7 @@ def add_cotizacion(cotizacion: Cotizacion):
 
 @app.put("/cotizaciones/{cotizacion_id}")
 def update_cotizacion(cotizacion_id: int, cotizacion: Cotizacion):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "UPDATE cotizaciones SET cliente_id=%s, fecha=%s, descripcion=%s, monto=%s, status=%s, usuario_id=%s, observaciones=%s, articulos=%s, autorizada=%s, fecha_autorizacion=%s, venta_id=%s, vendedor=%s, descuento=%s WHERE id=%s",
@@ -1399,12 +1368,7 @@ def update_cotizacion(cotizacion_id: int, cotizacion: Cotizacion):
 
 @app.delete("/cotizaciones/{cotizacion_id}")
 def delete_cotizacion(cotizacion_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM cotizaciones WHERE id=%s", (cotizacion_id,))
     db.commit()
@@ -1423,12 +1387,7 @@ class Evento(BaseModel):
 
 @app.get("/eventos")
 def get_eventos():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM eventos")
     eventos = cursor.fetchall()
@@ -1438,12 +1397,7 @@ def get_eventos():
 
 @app.patch("/eventos/{evento_id}")
 def update_evento_status(evento_id: int, data: dict):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "UPDATE eventos SET status=%s WHERE id=%s",
@@ -1456,12 +1410,7 @@ def update_evento_status(evento_id: int, data: dict):
 
 @app.post("/eventos")
 def add_evento(evento: Evento):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO eventos (title, descripcion, cliente, technician, start, status) VALUES (%s, %s, %s, %s, %s, %s)",
@@ -1487,12 +1436,7 @@ class Reporte(BaseModel):
 
 @app.post("/reportes")
 def add_reporte(reporte: Reporte):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO reportes (eventoId, imei, cotizacion, technician, start, status, modelo, placa, cliente, observaciones, medio_pago, pagado) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
@@ -1518,12 +1462,7 @@ def add_reporte(reporte: Reporte):
 
 @app.get("/reportes")
 def get_reportes(eventoId: int = Query(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM reportes WHERE eventoId = %s", (eventoId,))
     reportes = cursor.fetchall()
@@ -1539,12 +1478,7 @@ class Usuario(BaseModel):
 
 @app.get("/usuarios")
 def get_usuarios():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
         SELECT 
@@ -1561,16 +1495,11 @@ def get_usuarios():
     return usuarios
 
 @app.post("/usuarios")
-def add_usuario(usuario: Usuario):
+def add_usuario(usuario: Usuario, current=Depends(require_admin)):
     from passlib.context import CryptContext
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     hashed_password = pwd_context.hash(usuario.password)
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO usuarios (username, password, perfil) VALUES (%s, %s, %s)",
@@ -1590,50 +1519,13 @@ def registrar_sesion(data: dict = Body(...)):
     user_id = data.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id requerido")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s", (user_id,))
     db.commit()
     cursor.close()
     db.close()
     return {"success": True}
-
-@app.post("/usuarios/login")
-def login_usuario(login: LoginRequest):
-    from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
-    cursor = db.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT id, username, password, perfil FROM usuarios WHERE username=%s",
-        (login.username,)
-    )
-    user = cursor.fetchone()
-    
-    if user and pwd_context.verify(login.password, user["password"]):
-        # Actualizar ultima_sesion
-        cursor.execute(
-            "UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s",
-            (user["id"],)
-        )
-        db.commit()
-        cursor.close()
-        db.close()
-        return {"success": True, "user": {"id": user["id"], "username": user["username"], "perfil": user["perfil"]}}
-    else:
-        cursor.close()
-        db.close()
-        return {"success": False}
 
 # MODELO ARTICULO
 class Articulo(BaseModel):
@@ -1658,12 +1550,7 @@ class Articulo(BaseModel):
 
 @app.get("/articulos")
 def get_articulos():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM articulos WHERE stock > 0")
     articulos = cursor.fetchall()
@@ -1673,12 +1560,7 @@ def get_articulos():
 
 @app.post("/articulos")
 def add_articulo(articulo: Articulo):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO articulos (codigo, nombre, pagina, tipo, sku, unidad, precioVenta, impuesto, descripcion, precioCompra, codigoSat, unidadSat, codigoUnidadSat) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
@@ -1705,12 +1587,7 @@ def add_articulo(articulo: Articulo):
 
 @app.put("/articulos/{articulo_id}")
 def update_articulo(articulo_id: int, articulo: dict):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "UPDATE articulos SET codigo=%s, nombre=%s, pagina=%s, tipo=%s, sku=%s, unidad=%s, precioVenta=%s, impuesto=%s, descripcion=%s, precioCompra=%s, codigoSat=%s, unidadSat=%s, codigoUnidadSat=%s WHERE id=%s",
@@ -1738,12 +1615,7 @@ def update_articulo(articulo_id: int, articulo: dict):
 
 @app.delete("/articulos/{articulo_id}")
 def delete_articulo(articulo_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM articulos WHERE id=%s", (articulo_id,))
     db.commit()
@@ -1753,12 +1625,7 @@ def delete_articulo(articulo_id: int):
 
 @app.get("/articulos/{articulo_id}/stock")
 def get_stock_articulo(articulo_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("SELECT COUNT(*) FROM imeis WHERE articulo_id=%s", (articulo_id,))
     stock = cursor.fetchone()[0]
@@ -1768,12 +1635,7 @@ def get_stock_articulo(articulo_id: int):
 
 @app.post("/articulos/{articulo_id}/asignar-imeis")
 def asignar_imeis_a_articulo(articulo_id: int, imeis: list[str]):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     for imei in imeis:
         cursor.execute("UPDATE imeis SET articulo_id=%s WHERE imei=%s", (articulo_id, imei))
@@ -1790,12 +1652,7 @@ class RegistrarAsignarIMEIsRequest(BaseModel):
 
 @app.post("/articulos/{articulo_id}/registrar-y-asignar-imeis")
 def registrar_y_asignar_imeis(articulo_id: int, data: RegistrarAsignarIMEIsRequest):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for imei in data.imeis:
@@ -1816,12 +1673,7 @@ class RegistrarAsignarIMEIsNombreRequest(BaseModel):
 
 @app.post("/articulos/nombre/{articulo_nombre}/registrar-y-asignar-imeis")
 def registrar_y_asignar_imeis_nombre(articulo_nombre: str, data: RegistrarAsignarIMEIsNombreRequest):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for imei in data.imeis:
@@ -1838,12 +1690,7 @@ def registrar_y_asignar_imeis_nombre(articulo_nombre: str, data: RegistrarAsigna
 
 @app.get("/articulos/nombre/{articulo_nombre}/stock")
 def get_stock_articulo_nombre(articulo_nombre: str):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("SELECT COUNT(*) FROM imeis WHERE articulo_nombre=%s", (articulo_nombre,))
     stock = cursor.fetchone()[0]
@@ -1870,12 +1717,7 @@ class Cliente(BaseModel):
 
 @app.get("/clientes")
 def get_clientes():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM clientes")
     clientes = cursor.fetchall()
@@ -1899,12 +1741,7 @@ def get_clientes():
 @app.post("/clientes")
 def add_cliente(cliente: Cliente):
     _validar_correo_cliente(cliente.correo)
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         cursor.execute("ALTER TABLE clientes ADD COLUMN atendidoPor VARCHAR(255) NULL")
@@ -1999,9 +1836,7 @@ def find_or_create_cliente(data: ClienteFindOrCreateRequest):
     que le falte (no pisa nombre/correo/etc. ya capturados a mano). Si no
     existe, crea un cliente nuevo con lo que se tenga (correo/dirección
     quedan vacíos — eso el bot no lo sabe)."""
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
 
     cliente_id = None
@@ -2051,12 +1886,7 @@ def find_or_create_cliente(data: ClienteFindOrCreateRequest):
 @app.put("/clientes/{cliente_id}")
 def update_cliente(cliente_id: int, cliente: Cliente):
     _validar_correo_cliente(cliente.correo)
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         cursor.execute("ALTER TABLE clientes ADD COLUMN atendidoPor VARCHAR(255) NULL")
@@ -2144,12 +1974,7 @@ def update_cliente(cliente_id: int, cliente: Cliente):
 
 @app.delete("/clientes/{cliente_id}")
 def delete_cliente(cliente_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM clientes WHERE id=%s", (cliente_id,))
     db.commit()
@@ -2302,12 +2127,7 @@ class Venta(BaseModel):
 
 @app.post("/ventas")
 def crear_venta(venta: Venta):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
 
     # Normaliza fecha a formato MySQL DATETIME
@@ -2395,12 +2215,7 @@ def crear_venta(venta: Venta):
 
 @app.get("/ventas")
 def listar_ventas(request: Request = None):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute(
         """
@@ -2431,12 +2246,7 @@ def listar_ventas(request: Request = None):
 
 @app.get("/ventas/{venta_id}/detalle")
 def detalle_venta(venta_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
         SELECT dv.*, a.nombre as articulo_nombre
@@ -2451,12 +2261,7 @@ def detalle_venta(venta_id: int):
 
 @app.get("/articulos/todos")
 def get_todos_articulos():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM articulos")
     articulos = cursor.fetchall()
@@ -2466,12 +2271,7 @@ def get_todos_articulos():
 
 @app.delete("/ventas/{venta_id}")
 def eliminar_venta(venta_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         # 1. Eliminar reportes_servicio relacionados
@@ -2511,12 +2311,7 @@ class Ubicacion(BaseModel):
 
 @app.get("/ubicaciones")
 def get_ubicaciones():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
         SELECT 
@@ -2546,12 +2341,7 @@ def get_ubicaciones():
 
 @app.post("/ubicaciones")
 def add_ubicacion(ubicacion: Ubicacion):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO ubicaciones (nombre, descripcion, encargado, telefonos, correo, direccion, capacidad_maxima, estado) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
@@ -2573,12 +2363,7 @@ def add_ubicacion(ubicacion: Ubicacion):
 
 @app.put("/ubicaciones/{ubicacion_id}")
 def update_ubicacion(ubicacion_id: int, ubicacion: Ubicacion):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "UPDATE ubicaciones SET nombre=%s, descripcion=%s, encargado=%s, telefonos=%s, correo=%s, direccion=%s, capacidad_maxima=%s, estado=%s WHERE id=%s",
@@ -2601,12 +2386,7 @@ def update_ubicacion(ubicacion_id: int, ubicacion: Ubicacion):
 
 @app.delete("/ubicaciones/{ubicacion_id}")
 def delete_ubicacion(ubicacion_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM ubicaciones WHERE id=%s", (ubicacion_id,))
     db.commit()
@@ -2621,12 +2401,7 @@ class AsignarIMEIsUbicacionRequest(BaseModel):
 
 @app.get("/ubicaciones/{ubicacion_id}/imeis")
 def get_imeis_por_ubicacion(ubicacion_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
         SELECT i.*, a.nombre as articulo_nombre, a.sku as sku
@@ -2641,12 +2416,7 @@ def get_imeis_por_ubicacion(ubicacion_id: int):
 
 @app.post("/ubicaciones/{ubicacion_id}/asignar-imeis")
 def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     for imei in data.imeis:
         cursor.execute("UPDATE imeis SET ubicacion_id=%s WHERE imei=%s", (ubicacion_id, imei))
@@ -2657,12 +2427,7 @@ def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequ
 
 @app.post("/ubicaciones/{ubicacion_id}/remover-imeis")
 def remover_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     for imei in data.imeis:
         cursor.execute("UPDATE imeis SET ubicacion_id=NULL WHERE imei=%s AND ubicacion_id=%s", (imei, ubicacion_id))
@@ -2676,13 +2441,8 @@ class TransferirIMEIsRequest(BaseModel):
     destino_id: int
 
 @app.post("/ubicaciones/transferir-imeis")
-def transferir_imeis(request: TransferirIMEIsRequest):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+def transferir_imeis(request: TransferirIMEIsRequest, current=Depends(require_admin)):
+    db = get_db_connection()
     cursor = db.cursor()
     if request.imeis:
         placeholders = ','.join(['%s'] * len(request.imeis))
@@ -2697,12 +2457,7 @@ def transferir_imeis(request: TransferirIMEIsRequest):
 
 @app.get("/buscar-imei")
 def buscar_imei(digitos: str):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     query = """
         SELECT i.imei, i.articulo_nombre, a.sku, i.status, u.nombre as ubicacion
@@ -2727,12 +2482,7 @@ def buscar_imeis_bulk(data: BuscarImeisBulkRequest):
     imeis = [i for i in dict.fromkeys(data.imeis) if i]
     if not imeis:
         return []
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     placeholders = ','.join(['%s'] * len(imeis))
     cursor.execute(f"""
@@ -2751,12 +2501,7 @@ def buscar_imeis_bulk(data: BuscarImeisBulkRequest):
 def devolver_imei(imei: str, data: dict = Body(...)):
     motivo = data.get("motivo")
     usuario = data.get("usuario", "sistema")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT articulo_id FROM imeis WHERE imei=%s", (imei,))
     row = cursor.fetchone()
@@ -2778,12 +2523,7 @@ def devolver_imei(imei: str, data: dict = Body(...)):
 
 @app.post("/articulos/sincronizar-stock-imeis")
 def sincronizar_stock_articulos():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     # Actualiza el stock de todos los artículos según la cantidad de IMEIs disponibles o devueltos
     cursor.execute("""
@@ -2820,12 +2560,7 @@ def asignar_tecnico_venta(venta_id: int, data: dict = Body(...)):
     if not tecnico_id or not fecha_servicio:
         raise HTTPException(status_code=400, detail="tecnico_id y fecha_servicio son obligatorios")
 
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         """
@@ -2852,12 +2587,7 @@ def asignar_tecnico_venta(venta_id: int, data: dict = Body(...)):
 
 @app.get("/ventas/{venta_id}/tecnico")
 def get_tecnico_venta(venta_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
         SELECT u.* FROM venta_tecnico vt
@@ -2872,12 +2602,7 @@ def get_tecnico_venta(venta_id: int):
 
 @app.delete("/ventas/{venta_id}/asignar-tecnico")
 def eliminar_asignacion_tecnico(venta_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM venta_tecnico WHERE venta_id = %s", (venta_id,))
     db.commit()
@@ -2887,12 +2612,7 @@ def eliminar_asignacion_tecnico(venta_id: int):
 
 @app.get("/asignaciones-tecnicos")
 def get_asignaciones_tecnicos():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
         SELECT vt.id,
@@ -2971,12 +2691,7 @@ class ReporteServicio(BaseModel):
 
 @app.post("/reportes-servicio")
 def add_reporte_servicio(reporte: ReporteServicio):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     
     # Permitir reportes con o sin asignacion_id
@@ -3206,12 +2921,7 @@ def add_reporte_servicio(reporte: ReporteServicio):
     }
 @app.get("/reportes-servicio")
 def get_reporte_servicio(asignacion_id: int = Query(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM reportes_servicio WHERE asignacion_id = %s", (asignacion_id,))
     reporte = cursor.fetchone()
@@ -3237,12 +2947,7 @@ def get_reporte_servicio(asignacion_id: int = Query(...)):
 # NUEVO: detalle por ID
 @app.get("/reportes-servicio/{reporte_id}")
 def get_reporte_servicio_por_id(reporte_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM reportes_servicio WHERE id = %s", (reporte_id,))
     reporte = cursor.fetchone()
@@ -3263,12 +2968,7 @@ def get_reporte_servicio_por_id(reporte_id: int):
 
 @app.get("/reportes-servicio-todos")
 def get_reportes_servicio_todos():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM reportes_servicio ORDER BY id DESC")
     reportes = cursor.fetchall()
@@ -3304,9 +3004,7 @@ def reordenar_reportes_servicio(data: ReordenarReportesRequest):
     incluyendo 'reordenar', por lo que si quedara después nunca se alcanzaría."""
     if not data.orden:
         raise HTTPException(status_code=400, detail="Se requiere 'orden'")
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         cursor.execute("ALTER TABLE reportes_servicio ADD COLUMN orden_manual INT NULL")
@@ -3335,12 +3033,7 @@ def reordenar_reportes_servicio(data: ReordenarReportesRequest):
 
 @app.put("/reportes-servicio/{reporte_id}")
 def update_reporte_servicio(reporte_id: int, reporte: dict):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     for _col_sql in (
         "ALTER TABLE reportes_servicio ADD COLUMN plataforma_telefono VARCHAR(50) NULL",
@@ -3637,12 +3330,7 @@ def consultar_plataforma_datos_reportes(data: ConsultarPlataformaDatosRequest):
 
 @app.delete("/reportes-servicio/{reporte_id}")
 def delete_reporte_servicio(reporte_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     imeis_to_revert = set()
     try:
@@ -3728,12 +3416,7 @@ def delete_reporte_servicio(reporte_id: int):
 
 @app.delete("/imeis/{imei}")
 def delete_imei(imei: str):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM imeis WHERE imei=%s", (imei,))
     db.commit()
@@ -3741,8 +3424,6 @@ def delete_imei(imei: str):
     db.close()
     return {"message": "IMEI eliminado"}
 
-SECRET_KEY = "super-secret-key"  # Usa una variable de entorno en producción
-ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 días
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -3755,12 +3436,7 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 def authenticate_user(username, password):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM usuarios WHERE username=%s", (username,))
     user = cursor.fetchone()
@@ -3783,12 +3459,7 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
     # Actualizar ultima_sesion
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s", (user["id"],))
     db.commit()
@@ -3825,6 +3496,21 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     # Aquí puedes consultar el usuario en la base de datos si lo necesitas
     return {"username": username, "user_id": user_id}
 
+
+def require_admin(current=Depends(get_current_user)):
+    """Exige perfil Admin ademas de un token valido. Usar en endpoints que
+    puedan otorgar privilegios (gestion de usuarios) o mover inventario
+    entre ubicaciones sin registro de quien lo autorizo."""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not row or (row["perfil"] or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Requiere perfil Admin")
+    return current
+
 @app.get("/usuarios/me")
 def get_usuario_actual(request: Request, token: str = Depends(oauth2_scheme)):
     try:
@@ -3835,12 +3521,7 @@ def get_usuario_actual(request: Request, token: str = Depends(oauth2_scheme)):
             raise HTTPException(status_code=401, detail="Token inválido")
     except JWTError:
         raise HTTPException(status_code=401, detail="Token inválido")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (user_id,))
     user = cursor.fetchone()
@@ -3886,12 +3567,7 @@ class TicketComment(BaseModel):
 
 @app.post("/tickets")
 def create_ticket(ticket: TicketCreate):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         imeis_json = json.dumps(ticket.imeis)
@@ -3918,12 +3594,7 @@ def create_ticket(ticket: TicketCreate):
 
 @app.get("/tickets")
 def list_tickets(estado: str | None = Query(None), reporteId: int | None = Query(None)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
         base = "SELECT * FROM tickets"
@@ -3948,12 +3619,7 @@ def list_tickets(estado: str | None = Query(None), reporteId: int | None = Query
 
 @app.get("/tickets/{ticket_id}")
 def get_ticket(ticket_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cur = db.cursor(dictionary=True)
     try:
         cur.execute("SELECT * FROM tickets WHERE id=%s", (ticket_id,))
@@ -3982,12 +3648,7 @@ def get_ticket(ticket_id: int):
 
 @app.patch("/tickets/{ticket_id}")
 def update_ticket(ticket_id: int, patch: TicketUpdate):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         campos = []
@@ -4033,12 +3694,7 @@ def add_ticket_comment(ticket_id: int, body: TicketComment):
         raise HTTPException(status_code=400, detail="Comentario vacío")
     if not usuario:
         raise HTTPException(status_code=400, detail="Usuario vacío")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cur = db.cursor()
     try:
         cur.execute("INSERT INTO ticket_comments (ticket_id, text, usuario) VALUES (%s,%s,%s)", (ticket_id, text, usuario))
@@ -4051,12 +3707,7 @@ def add_ticket_comment(ticket_id: int, body: TicketComment):
 
 @app.delete("/tickets/{ticket_id}")
 def delete_ticket(ticket_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cur = db.cursor()
     try:
         # Primero borrar comentarios asociados
@@ -4072,12 +3723,7 @@ def delete_ticket(ticket_id: int):
 
 @app.get("/reportes-servicio/{reporte_id}/context")
 def get_reporte_context(reporte_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     base = None
     try:
@@ -4153,12 +3799,7 @@ def get_reporte_context(reporte_id: int):
 
 @app.get("/ubicaciones/{ubicacion_id}/articulos-stock")
 def get_articulos_stock_por_ubicacion(ubicacion_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
         SELECT a.*, COUNT(i.id) as stock
@@ -4199,12 +3840,7 @@ def enviar_cotizacion(req: EmailRequest):
 
 @app.post("/cotizaciones/enviar")
 def enviar_cotizacion_al_cliente(data: dict = Body(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "INSERT INTO cotizaciones_enviadas (cotizacion_id, cliente_id, fecha_envio, status, email_destino) VALUES (%s, %s, NOW(), %s, %s)",
@@ -4223,24 +3859,14 @@ def enviar_cotizacion_al_cliente(data: dict = Body(...)):
 
 @app.get("/imeis/{imei}")
 def get_imei(imei: str):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("SELECT motivo_devolucion FROM imeis WHERE imei=%s", (imei,))
     row = cursor.fetchone()
     return {"motivo_devolucion": row[0] if row else ""}
 
 def registrar_movimiento(usuario, evento, articulo_id, articulo_nombre, imei, ubicacion_origen, ubicacion_destino, motivo):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("""
         INSERT INTO movimientos_inventario
@@ -4253,12 +3879,7 @@ def registrar_movimiento(usuario, evento, articulo_id, articulo_nombre, imei, ub
 
 @app.get("/movimientos-inventario")
 def get_movimientos_inventario():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM movimientos_inventario ORDER BY fecha DESC")
     movimientos = cursor.fetchall()
@@ -4267,15 +3888,10 @@ def get_movimientos_inventario():
     return movimientos
 
 @app.put("/usuarios/{usuario_id}")
-def update_usuario(usuario_id: int, usuario: dict):
+def update_usuario(usuario_id: int, usuario: dict, current=Depends(require_admin)):
     from passlib.context import CryptContext
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     campos = []
     valores = []
@@ -4302,13 +3918,8 @@ def update_usuario(usuario_id: int, usuario: dict):
     return {"message": "Usuario actualizado"}
 
 @app.delete("/usuarios/{usuario_id}")
-def delete_usuario(usuario_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+def delete_usuario(usuario_id: int, current=Depends(require_admin)):
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM usuarios WHERE id=%s", (usuario_id,))
     db.commit()
@@ -4318,12 +3929,7 @@ def delete_usuario(usuario_id: int):
 
 @app.get("/ventas/{venta_id}/asignacion")
 def get_asignacion_venta(venta_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
         SELECT venta_id, tecnico_id, fecha_servicio, hora_servicio, direccion, cp, link_ubicacion, cliente_info, fecha_asignacion
@@ -4348,12 +3954,7 @@ def subir_comprobante_reporte(reporte_id: int, archivo: UploadFile = File(...), 
     Guarda bajo uploads/servicios/<folio>/ y marca comprobante_estado='pendiente'.
     """
     # Validar reporte y obtener asignacion_id
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, asignacion_id, folio FROM reportes_servicio WHERE id=%s", (reporte_id,))
     rep = cursor.fetchone()
@@ -4401,12 +4002,7 @@ def subir_comprobante_reporte(reporte_id: int, archivo: UploadFile = File(...), 
 def aprobar_comprobante_reporte(reporte_id: int, current=Depends(get_current_user)):
     """Aprueba el comprobante de un reporte. Requiere rol Admin. Marca pagado=1."""
     # Obtener perfil del usuario
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
     user = cursor.fetchone()
@@ -4444,12 +4040,7 @@ def aprobar_comprobante_reporte(reporte_id: int, current=Depends(get_current_use
 @app.put("/reportes-servicio/{reporte_id}/rechazar-comprobante")
 def rechazar_comprobante_reporte(reporte_id: int, current=Depends(get_current_user)):
     """Rechaza el comprobante de un reporte. Requiere rol Admin."""
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
     user = cursor.fetchone()
@@ -4477,12 +4068,7 @@ async def subir_constancia_fiscal(venta_id: int, archivo: UploadFile = File(...)
     MAX_SIZE_MB = 8
     import shutil
 
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, folio FROM ventas WHERE id=%s", (venta_id,))
     venta_row = cursor.fetchone()
@@ -4544,12 +4130,7 @@ async def subir_constancia_fiscal_cliente(cliente_id: int, archivo: UploadFile =
     ALLOWED_EXT = {'.pdf', '.png', '.jpg', '.jpeg'}
     MAX_SIZE_MB = 8
 
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, nombre FROM clientes WHERE id=%s", (cliente_id,))
     cliente_row = cursor.fetchone()
@@ -4647,12 +4228,7 @@ def get_activaciones_recientes(
     cuenta: Optional[str] = Query(None, description="Filtrar por cuenta"),
     limit: Optional[int] = Query(500, description="Límite de registros")
 ):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     
     # Construir query con filtros
@@ -4729,12 +4305,7 @@ def get_activaciones_recientes(
 
 @app.post("/activaciones-recientes/bulk")
 def bulk_upsert_activaciones(data: BulkActivacionesRequest):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     
     insertados = 0
@@ -4831,12 +4402,7 @@ def bulk_upsert_activaciones(data: BulkActivacionesRequest):
 
 @app.get("/activaciones-recientes/verificar-reportes")
 def verificar_reportes_activaciones():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     
     # Actualizar status basándose en reportes existentes
@@ -4898,12 +4464,7 @@ def verificar_reportes_activaciones():
 @app.put("/activaciones-recientes/por-dispositivo/status")
 def update_activacion_status_por_dispositivo(data: dict = Body(...)):
     """Actualiza el status de una activación por cuenta y número de dispositivo (IMEI)"""
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     cuenta = data.get('cuenta', '').strip() if data.get('cuenta') else ''
@@ -4939,12 +4500,7 @@ def update_activacion_status_por_dispositivo(data: dict = Body(...)):
 
 @app.put("/activaciones-recientes/{activacion_id}/status")
 def update_activacion_status(activacion_id: int, data: dict = Body(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     status = data.get('status')
@@ -4972,12 +4528,7 @@ def update_activacion_status(activacion_id: int, data: dict = Body(...)):
 @app.get("/activaciones-recientes/por-imei/{imei}")
 def buscar_activacion_por_imei(imei: str):
     """Busca una activación por su IMEI (número de dispositivo)"""
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     
     imei_limpio = imei.strip()
@@ -5011,12 +4562,7 @@ def buscar_activacion_por_imei(imei: str):
 @app.put("/activaciones-recientes/por-imei/sin-reporte")
 def marcar_sin_reporte_por_imei(data: dict = Body(...)):
     """Marca una activación como sin_reporte usando solo el IMEI"""
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     imei = data.get('imei', '').strip()
@@ -5039,12 +4585,7 @@ def marcar_sin_reporte_por_imei(data: dict = Body(...)):
 
 @app.delete("/activaciones-recientes")
 def delete_activaciones_antiguas(dias_antiguedad: int = Query(90, description="Eliminar registros más antiguos que X días")):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     cursor.execute("""
@@ -5061,12 +4602,7 @@ def delete_activaciones_antiguas(dias_antiguedad: int = Query(90, description="E
 
 @app.get("/activaciones-recientes/stats")
 def get_activaciones_stats():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     
     # Conteo por status
@@ -5124,12 +4660,7 @@ def get_renovaciones_recientes(
     cuenta: str = Query(None, description="Filtrar por cuenta"),
     limit: int = Query(1000, description="Límite de registros")
 ):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
 
     if anio and mes:
@@ -5181,12 +4712,7 @@ def get_renovaciones_recientes(
 
 @app.post("/renovaciones-recientes/bulk")
 def guardar_renovaciones_bulk(data: dict = Body(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     renovaciones = data.get('renovaciones', [])
@@ -5375,12 +4901,7 @@ def guardar_renovaciones_bulk(data: dict = Body(...)):
 @app.get("/renovaciones-recientes/verificar-reportes")
 def verificar_reportes_renovaciones():
     """Verifica y actualiza el status de reportes para renovaciones"""
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     
     # Buscar renovaciones que tienen reporte por IMEI en el campo principal
@@ -5444,12 +4965,7 @@ def verificar_reportes_renovaciones():
 
 @app.put("/renovaciones-recientes/{renovacion_id}/status")
 def update_renovacion_status(renovacion_id: int, data: dict = Body(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     status = data.get('status')
@@ -5477,12 +4993,7 @@ def update_renovacion_status(renovacion_id: int, data: dict = Body(...)):
 @app.put("/renovaciones-recientes/por-imei/sin-reporte")
 def marcar_renovacion_sin_reporte_por_imei(data: dict = Body(...)):
     """Marca una renovación como sin_reporte usando solo el IMEI"""
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     imei = data.get('imei', '').strip()
@@ -5505,12 +5016,7 @@ def marcar_renovacion_sin_reporte_por_imei(data: dict = Body(...)):
 
 @app.put("/renovaciones-recientes/por-dispositivo/status")
 def update_renovacion_status_por_dispositivo(data: dict = Body(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     cuenta = data.get('cuenta', '').strip()
@@ -5545,12 +5051,7 @@ def update_renovacion_status_por_dispositivo(data: dict = Body(...)):
 
 @app.delete("/renovaciones-recientes")
 def delete_renovaciones_antiguas(dias_antiguedad: int = Query(90, description="Eliminar registros más antiguos que X días")):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     
     cursor.execute("""
@@ -5567,12 +5068,7 @@ def delete_renovaciones_antiguas(dias_antiguedad: int = Query(90, description="E
 
 @app.get("/renovaciones-recientes/stats")
 def get_renovaciones_stats():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     
     # Conteo por status
@@ -5628,12 +5124,7 @@ def get_operacion_imeis(
     estatus/bodega del IMEI en inventario y, si existe, el reporte de servicio
     generado — la base para saber qué pasó con cada dispositivo desde que se activó.
     """
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
 
     query = """
@@ -5720,12 +5211,7 @@ def get_datos_reporte_renovacion(data: dict = Body(...)):
     if not imei_input:
         raise HTTPException(status_code=400, detail="El campo 'imei' es requerido")
 
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
 
     # 1. Buscar renovación reciente por IMEI en BD interna
@@ -5889,12 +5375,7 @@ class NotaPagoCreate(BaseModel):
 
 @app.get("/notas-pago")
 def get_notas_pago():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
         cursor.execute("ALTER TABLE reportes_servicio ADD COLUMN plataforma_cuenta VARCHAR(100) NULL")
@@ -5975,12 +5456,7 @@ def get_notas_pago():
 
 @app.get("/notas-pago/{nota_id}")
 def get_nota_pago(nota_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM notas_pago WHERE id=%s", (nota_id,))
     row = cursor.fetchone()
@@ -6041,12 +5517,7 @@ def get_nota_pago(nota_id: int):
 
 @app.post("/notas-pago")
 def crear_nota_pago(data: NotaPagoCreate):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         """INSERT INTO notas_pago (ordenes, cliente, total, status, reporte_ids, fecha)
@@ -6070,12 +5541,7 @@ def actualizar_status_nota(nota_id: int, data: dict = Body(...)):
     new_status = data.get('status', '').strip()
     if new_status not in ('pendiente de pago', 'pagado', 'cancelado'):
         raise HTTPException(status_code=400, detail="Status inválido. Valores: pendiente de pago, pagado, cancelado")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     if new_status == 'cancelado':
         cursor.execute("UPDATE notas_pago SET status=%s, reporte_ids=%s WHERE id=%s", (new_status, json.dumps([]), nota_id))
@@ -6095,12 +5561,7 @@ def actualizar_lugar_pago_nota(nota_id: int, data: dict = Body(...)):
     lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico']
     if lugar_pago and lugar_pago not in lugares_validos:
         raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE notas_pago SET lugar_pago=%s WHERE id=%s", (lugar_pago if lugar_pago else None, nota_id))
     db.commit()
@@ -6126,12 +5587,7 @@ def editar_campos_nota(nota_id: int, data: dict = Body(...)):
         valores.append(float(data.get('total') or 0))
     if not campos:
         raise HTTPException(status_code=400, detail="Nada que actualizar")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("SELECT id FROM notas_pago WHERE id=%s", (nota_id,))
     if not cursor.fetchone():
@@ -6148,12 +5604,7 @@ def editar_campos_nota(nota_id: int, data: dict = Body(...)):
 @app.put("/notas-pago/{nota_id}/observaciones")
 def actualizar_observaciones_nota(nota_id: int, data: dict = Body(...)):
     observaciones = data.get('observaciones', '')
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE notas_pago SET observaciones=%s WHERE id=%s", (observaciones or None, nota_id))
     db.commit()
@@ -6166,12 +5617,7 @@ def actualizar_observaciones_nota(nota_id: int, data: dict = Body(...)):
 
 @app.put("/notas-pago/{nota_id}/datos-pago")
 def actualizar_datos_pago_nota(nota_id: int, data: dict = Body(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     for _col_sql in (
         "ALTER TABLE notas_pago ADD COLUMN metodo_pago VARCHAR(5) NULL",
@@ -6196,12 +5642,7 @@ def actualizar_datos_pago_nota(nota_id: int, data: dict = Body(...)):
 
 @app.delete("/notas-pago/{nota_id}")
 def eliminar_nota_pago(nota_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("DELETE FROM notas_pago WHERE id=%s", (nota_id,))
     db.commit()
@@ -6215,12 +5656,7 @@ def eliminar_nota_pago(nota_id: int):
 @app.post("/notas-pago/{nota_id}/comprobante")
 def subir_comprobante_nota(nota_id: int, archivo: UploadFile = File(...)):
     import shutil
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, comprobantes FROM notas_pago WHERE id=%s", (nota_id,))
     row = cursor.fetchone()
@@ -6263,12 +5699,7 @@ def eliminar_comprobante_nota(nota_id: int, data: dict = Body(...)):
     path = data.get('path', '').strip()
     if not path:
         raise HTTPException(status_code=400, detail="Se requiere 'path' del comprobante a eliminar")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, comprobantes FROM notas_pago WHERE id=%s", (nota_id,))
     row = cursor.fetchone()
@@ -6303,12 +5734,7 @@ def agregar_reportes_nota(nota_id: int, data: dict = Body(...)):
     nuevos_ids = data.get('reporte_ids', [])
     if not nuevos_ids:
         raise HTTPException(status_code=400, detail="Se requiere 'reporte_ids'")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, reporte_ids, status FROM notas_pago WHERE id=%s", (nota_id,))
     nota = cursor.fetchone()
@@ -6347,12 +5773,7 @@ def quitar_reportes_nota(nota_id: int, data: dict = Body(...)):
     ids_a_quitar = data.get('reporte_ids', [])
     if not ids_a_quitar:
         raise HTTPException(status_code=400, detail="Se requiere 'reporte_ids'")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, reporte_ids, status FROM notas_pago WHERE id=%s", (nota_id,))
     nota = cursor.fetchone()
@@ -6404,12 +5825,7 @@ class FacturaPagoCreate(BaseModel):
 
 @app.get("/facturas-pago")
 def get_facturas_pago():
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     try:
         cursor.execute("ALTER TABLE reportes_servicio ADD COLUMN plataforma_cuenta VARCHAR(100) NULL")
@@ -6512,12 +5928,7 @@ def get_facturas_pago():
 
 @app.get("/facturas-pago/{factura_id}")
 def get_factura_pago(factura_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM facturas_pago WHERE id=%s", (factura_id,))
     row = cursor.fetchone()
@@ -6640,12 +6051,7 @@ def _fusionar_comprobantes_de_reportes(factura_id: int, reporte_ids: list, compr
 
 @app.post("/facturas-pago")
 def crear_factura_pago(data: FacturaPagoCreate):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         cursor.execute("ALTER TABLE facturas_pago ADD COLUMN productos_manual TEXT NULL")
@@ -7016,9 +6422,7 @@ def generar_prefactura_factura_pago(factura_id: int, data: TimbrarFacturaPagoReq
             detail="La vista previa de PDF antes de timbrar solo está disponible con Facturapi (PAC_PROVIDER=facturapi)"
         )
 
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     for _col_sql in (
         "ALTER TABLE facturas_pago ADD COLUMN facturapi_draft_id VARCHAR(50) NULL",
@@ -7074,9 +6478,7 @@ def generar_prefactura_factura_pago(factura_id: int, data: TimbrarFacturaPagoReq
         _registrar_error_timbrado(factura_id, str(mensaje_error))
         raise
 
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         """UPDATE facturas_pago
@@ -7102,9 +6504,7 @@ def generar_prefactura_factura_pago(factura_id: int, data: TimbrarFacturaPagoReq
 @app.get("/facturas-pago/{factura_id}/prefactura-pdf")
 def prefactura_pdf_factura_pago(factura_id: int):
     """PDF del borrador generado con /generar-prefactura, sin timbrar todavía."""
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT facturapi_draft_id FROM facturas_pago WHERE id=%s", (factura_id,))
     row = cursor.fetchone()
@@ -7122,12 +6522,7 @@ def prefactura_pdf_factura_pago(factura_id: int):
 
 @app.post("/facturas-pago/{factura_id}/timbrar")
 def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, current=Depends(get_current_user)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     for _col_sql in (
         "ALTER TABLE facturas_pago ADD COLUMN rfc_cliente VARCHAR(20) NULL",
@@ -7185,9 +6580,7 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
     # Reserva la factura antes de llamar al PAC: si dos solicitudes llegan casi
     # simultáneas (doble-click, reintento automático), la segunda ve status
     # 'Timbrando' y se rechaza en vez de generar dos CFDIs para el mismo folio.
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE facturas_pago SET status='Timbrando' WHERE id=%s AND status='Pendiente timbre'", (factura_id,))
     db.commit()
@@ -7221,9 +6614,7 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
     except Exception as e:
         # El PAC falló o faltaron datos: liberar la reserva 'Timbrando' para
         # que la factura vuelva a quedar disponible y se pueda reintentar.
-        db_revert = mysql.connector.connect(
-            host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-        )
+        db_revert = get_db_connection()
         cur_revert = db_revert.cursor()
         cur_revert.execute("UPDATE facturas_pago SET status='Pendiente timbre' WHERE id=%s AND status='Timbrando'", (factura_id,))
         db_revert.commit()
@@ -7233,12 +6624,7 @@ def timbrar_factura_pago(factura_id: int, data: TimbrarFacturaPagoRequest, curre
         _registrar_error_timbrado(factura_id, str(mensaje_error))
         raise
 
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         """UPDATE facturas_pago
@@ -7521,12 +6907,7 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
     if data.motivo == "01" and not data.folio_sustitucion:
         raise HTTPException(status_code=400, detail="El motivo 01 requiere 'folio_sustitucion' (UUID de la factura que sustituye)")
 
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
 
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
@@ -7573,12 +6954,7 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
     else:
         resultado_cancel = _sw_cancelar_cfdi(factura["cfdi_uuid"], data.motivo, data.folio_sustitucion)
 
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         """UPDATE facturas_pago
@@ -7607,9 +6983,7 @@ def verificar_cancelacion_factura(factura_id: int, current=Depends(get_current_u
     """Vuelve a consultar al PAC el estatus de una cancelación (útil cuando
     quedó en 'pending'/'verifying' al cancelar) y descarga el acuse en
     cuanto el SAT la acepte."""
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute(
         "SELECT id, status, facturapi_draft_id, cfdi_acuse_cancelacion_xml_path, cfdi_acuse_cancelacion_pdf_path "
@@ -7643,9 +7017,7 @@ def verificar_cancelacion_factura(factura_id: int, current=Depends(get_current_u
         xml_path = nuevo_xml or xml_path
         pdf_path = nuevo_pdf or pdf_path
 
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         "UPDATE facturas_pago SET cfdi_cancelacion_estatus=%s, cfdi_acuse_cancelacion_xml_path=%s, cfdi_acuse_cancelacion_pdf_path=%s WHERE id=%s",
@@ -7666,9 +7038,7 @@ class EnviarCfdiFacturaRequest(BaseModel):
 def enviar_cfdi_factura(factura_id: int, data: EnviarCfdiFacturaRequest, current=Depends(get_current_user)):
     """Reenvía el XML+PDF del CFDI ya timbrado al correo indicado. Requiere
     SMTP_USER/SMTP_PASS en el entorno — sin eso no hay forma de mandar correo."""
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute(
         "SELECT status, cliente, cfdi_uuid, cfdi_xml_path, cfdi_pdf_path FROM facturas_pago WHERE id=%s",
@@ -7730,12 +7100,7 @@ def actualizar_status_factura_pago(factura_id: int, data: dict = Body(...)):
     new_status = data.get('status', '').strip()
     if new_status not in ('Pendiente timbre', 'Cancelado'):
         raise HTTPException(status_code=400, detail="Status inválido. Usa POST /facturas-pago/{id}/timbrar para timbrar. Valores manuales: Pendiente timbre, Cancelado")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     if new_status == 'Cancelado':
         cursor.execute("UPDATE facturas_pago SET status=%s, reporte_ids=%s WHERE id=%s", (new_status, json.dumps([]), factura_id))
@@ -7755,12 +7120,7 @@ def actualizar_lugar_pago_factura(factura_id: int, data: dict = Body(...)):
     lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico']
     if lugar_pago and lugar_pago not in lugares_validos:
         raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE facturas_pago SET lugar_pago=%s WHERE id=%s", (lugar_pago if lugar_pago else None, factura_id))
     db.commit()
@@ -7784,12 +7144,7 @@ def editar_campos_factura(factura_id: int, data: dict = Body(...)):
         valores.append(float(data.get('total') or 0))
     if not campos:
         raise HTTPException(status_code=400, detail="Nada que actualizar")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("SELECT id FROM facturas_pago WHERE id=%s", (factura_id,))
     if not cursor.fetchone():
@@ -7806,12 +7161,7 @@ def editar_campos_factura(factura_id: int, data: dict = Body(...)):
 @app.put("/facturas-pago/{factura_id}/pagado")
 def actualizar_pagado_factura(factura_id: int, data: dict = Body(...)):
     pagado = bool(data.get('pagado'))
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     try:
         cursor.execute("ALTER TABLE facturas_pago ADD COLUMN pagado TINYINT(1) NOT NULL DEFAULT 0")
@@ -7830,12 +7180,7 @@ def actualizar_pagado_factura(factura_id: int, data: dict = Body(...)):
 @app.put("/facturas-pago/{factura_id}/observaciones")
 def actualizar_observaciones_factura(factura_id: int, data: dict = Body(...)):
     observaciones = data.get('observaciones', '')
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE facturas_pago SET observaciones=%s WHERE id=%s", (observaciones or None, factura_id))
     db.commit()
@@ -7848,12 +7193,7 @@ def actualizar_observaciones_factura(factura_id: int, data: dict = Body(...)):
 
 @app.put("/facturas-pago/{factura_id}/datos-pago")
 def actualizar_datos_pago_factura(factura_id: int, data: dict = Body(...)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     for _col_sql in (
         "ALTER TABLE facturas_pago ADD COLUMN metodo_pago VARCHAR(5) NULL",
@@ -7878,12 +7218,7 @@ def actualizar_datos_pago_factura(factura_id: int, data: dict = Body(...)):
 
 @app.delete("/facturas-pago/{factura_id}")
 def eliminar_factura_pago(factura_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     # Una factura ya Timbrada es un CFDI real ante el SAT — borrar el
     # registro local lo dejaría sin rastro. Solo se puede cancelar (endpoint
@@ -8026,9 +7361,7 @@ def sincronizar_comprobantes_todas():
     'Pendiente timbre') de una sola vez — para ponerse al día con las que ya
     existían antes de que la fusión automática se activara. Timbrado/Cancelado
     quedan fuera: ya están cerradas, no tiene caso tocarlas."""
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, reporte_ids, comprobantes FROM facturas_pago WHERE status='Pendiente timbre'")
     facturas = cursor.fetchall()
@@ -8060,9 +7393,7 @@ def sincronizar_comprobantes_todas():
         comprobantes = _fusionar_comprobantes_de_reportes(factura['id'], reporte_ids, comprobantes_actuales)
         agregados = len(comprobantes) - len(comprobantes_actuales)
         if agregados > 0:
-            db2 = mysql.connector.connect(
-                host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-            )
+            db2 = get_db_connection()
             cur2 = db2.cursor()
             cur2.execute("UPDATE facturas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(comprobantes), factura['id']))
             db2.commit()
@@ -8085,9 +7416,7 @@ def sincronizar_comprobantes_factura(factura_id: int):
     ligados que todavía no se habían fusionado (facturas creadas antes de
     que esto existiera, o reportes a los que se les subió el comprobante
     después de ligarlos). Idempotente — no duplica lo que ya está."""
-    db = mysql.connector.connect(
-        host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, reporte_ids, comprobantes FROM facturas_pago WHERE id=%s", (factura_id,))
     factura = cursor.fetchone()
@@ -8116,9 +7445,7 @@ def sincronizar_comprobantes_factura(factura_id: int):
     agregados = len(comprobantes) - len(comprobantes_actuales)
 
     if agregados > 0:
-        db = mysql.connector.connect(
-            host="localhost", user="usuario_vue", password="tu_password_segura", database="nombre_de_tu_db"
-        )
+        db = get_db_connection()
         cursor = db.cursor()
         cursor.execute("UPDATE facturas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(comprobantes), factura_id))
         db.commit()
@@ -8131,12 +7458,7 @@ def sincronizar_comprobantes_factura(factura_id: int):
 @app.post("/facturas-pago/{factura_id}/comprobante")
 def subir_comprobante_factura(factura_id: int, archivo: UploadFile = File(...)):
     import shutil
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, comprobantes FROM facturas_pago WHERE id=%s", (factura_id,))
     row = cursor.fetchone()
@@ -8177,12 +7499,7 @@ def eliminar_comprobante_factura(factura_id: int, data: dict = Body(...)):
     path = data.get('path', '').strip()
     if not path:
         raise HTTPException(status_code=400, detail="Se requiere 'path' del comprobante a eliminar")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, comprobantes FROM facturas_pago WHERE id=%s", (factura_id,))
     row = cursor.fetchone()
@@ -8216,12 +7533,7 @@ def agregar_reportes_factura(factura_id: int, data: dict = Body(...)):
     nuevos_ids = data.get('reporte_ids', [])
     if not nuevos_ids:
         raise HTTPException(status_code=400, detail="Se requiere 'reporte_ids'")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, reporte_ids, status, comprobantes FROM facturas_pago WHERE id=%s", (factura_id,))
     factura = cursor.fetchone()
@@ -8270,12 +7582,7 @@ def quitar_reportes_factura(factura_id: int, data: dict = Body(...)):
     ids_a_quitar = data.get('reporte_ids', [])
     if not ids_a_quitar:
         raise HTTPException(status_code=400, detail="Se requiere 'reporte_ids'")
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, reporte_ids, status FROM facturas_pago WHERE id=%s", (factura_id,))
     factura = cursor.fetchone()
@@ -8317,12 +7624,7 @@ def quitar_reportes_factura(factura_id: int, data: dict = Body(...)):
 
 @app.get("/retiros-banco")
 def get_retiros_banco(banco: str = None, request: Request = None):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     if banco:
         cursor.execute("SELECT * FROM retiros_banco WHERE banco=%s ORDER BY id DESC", (banco,))
@@ -8368,12 +7670,7 @@ def crear_retiro_banco(
         shutil.copyfileobj(archivo.file, out)
     rel_path = dest_path.replace("\\", "/")
 
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
         """INSERT INTO retiros_banco (banco, monto, motivo, comprobante_path, estatus, creado_por, creado_fecha)
@@ -8394,12 +7691,7 @@ def crear_retiro_banco(
 
 @app.put("/retiros-banco/{retiro_id}/aprobar")
 def aprobar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
     user = cursor.fetchone()
@@ -8424,12 +7716,7 @@ def aprobar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
 
 @app.put("/retiros-banco/{retiro_id}/rechazar")
 def rechazar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
     user = cursor.fetchone()
@@ -8453,12 +7740,7 @@ def rechazar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
 
 @app.delete("/retiros-banco/{retiro_id}")
 def eliminar_retiro_banco(retiro_id: int):
-    db = mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, estatus, comprobante_path FROM retiros_banco WHERE id=%s", (retiro_id,))
     retiro = cursor.fetchone()
@@ -9670,12 +8952,7 @@ class ConsultaSimRecord(BaseModel):
 
 
 def _get_db():
-    return mysql.connector.connect(
-        host="localhost",
-        user="usuario_vue",
-        password="tu_password_segura",
-        database="nombre_de_tu_db"
-    )
+    return get_db_connection()
 
 
 def _consultas_sim_imei_exists(cursor, imei: str, exclude_id: int | None = None):
