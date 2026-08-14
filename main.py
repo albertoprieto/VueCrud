@@ -56,11 +56,17 @@ def get_db_connection():
 _PUBLIC_PATHS = {"/token", "/ok", "/google5bd3c87fea64a137.html"}
 _PUBLIC_PREFIXES = ("/uploads/",)
 
+# Key de servicio para llamadas server-to-server (ej. bot de Twilio en Render)
+# que no tienen un usuario logueado detras. Header: X-Api-Key.
+SERVICE_API_KEY = os.getenv("SERVICE_API_KEY")
+
 
 @app.middleware("http")
 async def require_auth(request: Request, call_next):
     path = request.url.path
     if request.method == "OPTIONS" or path in _PUBLIC_PATHS or path.startswith(_PUBLIC_PREFIXES):
+        return await call_next(request)
+    if SERVICE_API_KEY and request.headers.get("X-Api-Key") == SERVICE_API_KEY:
         return await call_next(request)
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
