@@ -53,6 +53,43 @@ export async function actualizarValidadoNota(id, validado) {
   return res.data;
 }
 
+// ── Pagos adicionales (mismo nota, otro banco) ──
+export async function getPagosNota(id) {
+  const res = await axios.get(`${API_URL}/notas-pago/${id}/pagos`);
+  return res.data;
+}
+
+export async function getPagosNotaTodos() {
+  const res = await axios.get(`${API_URL}/pagos-nota`);
+  return res.data;
+}
+
+export async function crearPagoNota(id, { banco, monto, comprobante }) {
+  const fd = new FormData();
+  fd.append('banco', banco);
+  fd.append('monto', monto);
+  if (comprobante) fd.append('comprobante', comprobante);
+  const res = await axios.post(`${API_URL}/notas-pago/${id}/pagos`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return res.data;
+}
+
+export async function asignarComprobanteComoPagoNota(id, { path, banco, monto }) {
+  const res = await axios.post(`${API_URL}/notas-pago/${id}/pagos/desde-comprobante`, { path, banco, monto });
+  return res.data;
+}
+
+export async function eliminarPagoNota(id, pagoId) {
+  const res = await axios.delete(`${API_URL}/notas-pago/${id}/pagos/${pagoId}`);
+  return res.data;
+}
+
+export async function actualizarValidadoPagoNota(id, pagoId, validado) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/pagos/${pagoId}/validado`, { validado });
+  return res.data;
+}
+
 export async function subirComprobanteNota(id, archivo) {
   const fd = new FormData();
   fd.append('archivo', archivo);

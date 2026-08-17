@@ -172,6 +172,30 @@ def crear_tabla_retiros_banco():
     cursor.close()
     db.close()
 
+@app.on_event("startup")
+def crear_tabla_pagos_nota():
+    """Pagos adicionales de una nota a un banco distinto del lugar_pago
+    principal — una nota puede recibir varios pagos independientes, cada uno
+    a su propio banco, sin que tengan que sumar el total de la nota."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pagos_nota (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            nota_id INT NOT NULL,
+            banco VARCHAR(100) NOT NULL,
+            monto DECIMAL(12,2) NOT NULL,
+            comprobante_path VARCHAR(500) NULL,
+            validado TINYINT(1) NOT NULL DEFAULT 0,
+            orden_manual INT NULL,
+            creado_por VARCHAR(100) NULL,
+            creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
 
 @app.on_event("startup")
 def crear_tabla_pagos_ppd():
@@ -7739,6 +7763,173 @@ def crear_retiro_banco(
         "estatus": "pendiente"
     }
 
+@app.get("/pagos-nota")
+def get_pagos_nota_todos(request: Request = None):
+    """Todos los pagos adicionales, con cliente/usuario/imeis de su nota —
+    usado por la tabla unificada de Bancos para reflejar cada pago en su
+    propio banco con los mismos datos que la fila de la nota."""
+    notas_por_id = {n["id"]: n for n in get_notas_pago()}
+
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM pagos_nota ORDER BY id DESC")
+    rows = cursor.fetchall()
+    for r in rows:
+        if r.get("creado_fecha") and hasattr(r["creado_fecha"], "isoformat"):
+            r["creado_fecha"] = r["creado_fecha"].isoformat()
+        r["comprobante_url"] = build_public_url(r.get("comprobante_path"), request)
+        if r.get("monto") is not None:
+            r["monto"] = float(r["monto"])
+        nota = notas_por_id.get(r.get("nota_id")) or {}
+        r["nota_cliente"] = nota.get("cliente") or ""
+        r["nota_usuario"] = nota.get("usuario") or ""
+        r["nota_imeis"] = nota.get("imeis") or []
+    cursor.close()
+    db.close()
+    return rows
+
+@app.get("/notas-pago/{nota_id}/pagos")
+def get_pagos_nota(nota_id: int, request: Request = None):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM pagos_nota WHERE nota_id=%s ORDER BY id DESC", (nota_id,))
+    rows = cursor.fetchall()
+    for r in rows:
+        if r.get("creado_fecha") and hasattr(r["creado_fecha"], "isoformat"):
+            r["creado_fecha"] = r["creado_fecha"].isoformat()
+        r["comprobante_url"] = build_public_url(r.get("comprobante_path"), request)
+        if r.get("monto") is not None:
+            r["monto"] = float(r["monto"])
+    cursor.close()
+    db.close()
+    return rows
+
+@app.post("/notas-pago/{nota_id}/pagos")
+def crear_pago_nota(
+    nota_id: int,
+    banco: str = Form(...),
+    monto: float = Form(...),
+    comprobante: UploadFile = File(None),
+    current=Depends(get_current_user),
+    request: Request = None
+):
+    import shutil
+    if monto <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM notas_pago WHERE id=%s", (nota_id,))
+    if not cursor.fetchone():
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+
+    rel_path = None
+    if comprobante is not None and comprobante.filename:
+        safe_banco = ''.join(c for c in banco if c.isalnum() or c in ('-', '_', ' ')).strip() or "SinBanco"
+        base_dir = os.path.join("uploads", "notas", str(nota_id), "pagos", safe_banco)
+        os.makedirs(base_dir, exist_ok=True)
+        filename = ''.join(c for c in comprobante.filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip() or "comprobante"
+        dest_path = os.path.join(base_dir, filename)
+        base_name, ext = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(dest_path):
+            dest_path = os.path.join(base_dir, f"{base_name}_{counter}{ext}")
+            counter += 1
+        with open(dest_path, "wb") as out:
+            shutil.copyfileobj(comprobante.file, out)
+        rel_path = dest_path.replace("\\", "/")
+
+    cursor.execute(
+        """INSERT INTO pagos_nota (nota_id, banco, monto, comprobante_path, creado_por, creado_fecha)
+           VALUES (%s, %s, %s, %s, %s, NOW())""",
+        (nota_id, banco, monto, rel_path, current.get("username"))
+    )
+    db.commit()
+    new_id = cursor.lastrowid
+    cursor.close()
+    db.close()
+    return {
+        "message": "Pago registrado",
+        "id": new_id,
+        "comprobante_path": rel_path,
+        "comprobante_url": build_public_url(rel_path, request),
+    }
+
+@app.post("/notas-pago/{nota_id}/pagos/desde-comprobante")
+def crear_pago_nota_desde_comprobante(nota_id: int, data: dict = Body(...), request: Request = None):
+    """Convierte un comprobante YA cargado en la nota (misma lista que
+    'Comprobantes de pago') en un pago adicional a otro banco, sin volver a
+    subir el archivo — solo lo mueve de la lista de comprobantes de la nota
+    a pagos_nota, reusando el mismo comprobante_path."""
+    path = (data.get('path') or '').strip()
+    banco = (data.get('banco') or '').strip()
+    monto = data.get('monto')
+    if not path or not banco or not monto or float(monto) <= 0:
+        raise HTTPException(status_code=400, detail="Se requiere 'path', 'banco' y 'monto' (> 0)")
+
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, comprobantes FROM notas_pago WHERE id=%s", (nota_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    existentes = []
+    if row.get('comprobantes'):
+        try:
+            existentes = json.loads(row['comprobantes']) if isinstance(row['comprobantes'], str) else row['comprobantes']
+        except Exception:
+            existentes = []
+    if path not in existentes:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado en la lista de la nota")
+    existentes.remove(path)
+
+    cursor2 = db.cursor()
+    cursor2.execute("UPDATE notas_pago SET comprobantes=%s WHERE id=%s", (json.dumps(existentes), nota_id))
+    cursor2.execute(
+        """INSERT INTO pagos_nota (nota_id, banco, monto, comprobante_path, creado_fecha)
+           VALUES (%s, %s, %s, %s, NOW())""",
+        (nota_id, banco, float(monto), path)
+    )
+    db.commit()
+    new_id = cursor2.lastrowid
+    cursor2.close(); cursor.close(); db.close()
+    return {
+        "message": "Comprobante asignado como pago adicional",
+        "id": new_id,
+        "comprobantes": existentes,
+        "comprobante_url": build_public_url(path, request),
+    }
+
+@app.put("/notas-pago/{nota_id}/pagos/{pago_id}/validado")
+def validar_pago_nota(nota_id: int, pago_id: int, data: dict = Body(...)):
+    validado = 1 if data.get('validado') else 0
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("UPDATE pagos_nota SET validado=%s WHERE id=%s AND nota_id=%s", (validado, pago_id, nota_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    return {"message": "Validado actualizado", "id": pago_id, "validado": bool(validado)}
+
+@app.delete("/notas-pago/{nota_id}/pagos/{pago_id}")
+def eliminar_pago_nota(nota_id: int, pago_id: int):
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM pagos_nota WHERE id=%s AND nota_id=%s", (pago_id, nota_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    return {"message": "Pago eliminado"}
+
 @app.put("/retiros-banco/{retiro_id}/validado")
 def validar_retiro_banco(retiro_id: int, data: dict = Body(...)):
     validado = 1 if data.get('validado') else 0
@@ -7766,6 +7957,7 @@ _TABLA_POR_PREFIJO_BANCOS = {
     'factura': 'facturas_pago',
     'mov': 'movimientos_dinero',
     'retiro': 'retiros_banco',
+    'pagonota': 'pagos_nota',
 }
 
 @app.put("/bancos/reordenar")

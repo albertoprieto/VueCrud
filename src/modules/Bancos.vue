@@ -1,6 +1,6 @@
 <template>
   <div class="bancos-container">
-    <h2 class="bancos-title">Comprobantes</h2>
+    <h2 class="bancos-title">Bancos</h2>
 
     <div v-if="loading" style="text-align:center;padding:3rem;">
       <i class="pi pi-spin pi-spinner" style="font-size:2rem;"></i>
@@ -8,7 +8,7 @@
 
     <template v-else>
       <div class="bancos-total-card">
-        <span class="bancos-total-label">Saldo {{ filtroMes === 'todos' ? 'total en bancos' : 'de ' + labelMes(filtroMes) }}</span>
+        <span class="bancos-total-label">Saldo {{ etiquetaFiltro }}</span>
         <span class="bancos-total-valor">{{ formatTotal(saldoTotal) }}</span>
       </div>
 
@@ -84,12 +84,6 @@
             <span v-else :class="data.monto < 0 ? 'monto-negativo' : 'monto-positivo'">{{ formatTotal(data.monto) }}</span>
           </template>
         </Column>
-        <Column header="Reportes">
-          <template #body="{ data }">
-            <span v-if="data.conReporte === null" class="celda-vacia">—</span>
-            <span v-else :class="'badge badge-' + (data.conReporte ? 'success' : 'danger')">{{ data.conReporte ? 'Con reporte' : 'Sin reporte' }}</span>
-          </template>
-        </Column>
         <Column header="Comprobante">
           <template #body="{ data }">
             <span v-if="!data.comprobantes.length" class="celda-vacia">—</span>
@@ -98,12 +92,6 @@
                 <i class="pi pi-file" /> {{ data.comprobantes.length > 1 ? i + 1 : '' }}
               </a>
             </div>
-          </template>
-        </Column>
-        <Column header="Estatus">
-          <template #body="{ data }">
-            <span v-if="data.estatus" :class="'badge badge-' + badgeClaseEstatus(data.estatus)">{{ data.estatus }}</span>
-            <span v-else class="celda-vacia">—</span>
           </template>
         </Column>
         <Column header="Validado" style="width:110px">
@@ -138,6 +126,7 @@
                 />
                 <router-link v-if="data.tipo === 'Nota'" :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
                 <router-link v-else-if="data.tipo === 'Factura'" :to="{ name: 'detalle-factura', params: { id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
+                <router-link v-else-if="data.tipo === 'Pago nota'" :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.raw.nota_id } }" class="p-button p-button-sm p-button-text p-button-icon-only" v-tooltip.top="'Ver nota'"><i class="pi pi-eye" /></router-link>
               </template>
             </div>
           </template>
@@ -217,6 +206,7 @@ import {
   getNotas, getFacturas,
   actualizarLugarPagoNota, actualizarCamposNota, actualizarValidadoNota,
   actualizarLugarPagoFactura, actualizarCamposFactura, actualizarValidadoFactura,
+  getPagosNotaTodos, actualizarValidadoPagoNota,
 } from '@/services/pagosService';
 import { getRetiros, crearRetiro, aprobarRetiro, rechazarRetiro, actualizarValidadoRetiro, reordenarBancos } from '@/services/bancosService';
 import { getMovimientosDinero, registrarAbonoDinero, actualizarMovimientoDinero } from '@/services/dineroService';
@@ -239,6 +229,7 @@ const notas = ref([]);
 const facturas = ref([]);
 const movimientos = ref([]);
 const retiros = ref([]);
+const pagosNota = ref([]);
 
 const formatoMoneda = new Intl.NumberFormat('es-MX', {
   style: 'currency', currency: 'MXN', minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -268,7 +259,6 @@ const filas = computed(() => {
       nombre: n.cliente || '', usuario: n.usuario || '',
       imeis: (n.imeis || []).join(', '),
       monto: Number(n.total) || 0,
-      conReporte: (n.reporte_ids || []).length > 0,
       comprobantes: parseComprobantes(n.comprobantes).map(urlComprobante),
       estatus: n.status,
       validado: !!n.validado,
@@ -285,7 +275,6 @@ const filas = computed(() => {
       nombre: f.cliente || '', usuario: f.usuario || '',
       imeis: (f.imeis || []).join(', '),
       monto: Number(f.total) || 0,
-      conReporte: (f.reporte_ids || []).length > 0,
       comprobantes,
       estatus: f.status,
       validado: !!f.validado,
@@ -300,7 +289,7 @@ const filas = computed(() => {
       nombre: m.concepto || '', usuario: '',
       imeis: '',
       monto: Number(m.monto) || 0,
-      conReporte: null, comprobantes: [],
+      comprobantes: [],
       estatus: '',
       validado: !!m.validado,
       orden_manual: m.orden_manual,
@@ -314,11 +303,25 @@ const filas = computed(() => {
       nombre: r.motivo || 'Retiro de banco', usuario: '',
       imeis: '',
       monto: -(Number(r.monto) || 0),
-      conReporte: null, comprobantes: r.comprobante_url ? [r.comprobante_url] : [],
+      comprobantes: r.comprobante_url ? [r.comprobante_url] : [],
       estatus: r.estatus,
       validado: !!r.validado,
       orden_manual: r.orden_manual,
       raw: r,
+    });
+  }
+  for (const p of pagosNota.value) {
+    out.push({
+      key: `pagonota-${p.id}`, id: p.id, tipo: 'Pago nota',
+      fecha: p.creado_fecha, banco: p.banco || null,
+      nombre: p.nota_cliente || '', usuario: p.nota_usuario || '',
+      imeis: (p.nota_imeis || []).join(', '),
+      monto: Number(p.monto) || 0,
+      comprobantes: p.comprobante_url ? [p.comprobante_url] : [],
+      estatus: '',
+      validado: !!p.validado,
+      orden_manual: p.orden_manual,
+      raw: p,
     });
   }
   return out;
@@ -367,14 +370,18 @@ const opcionesFiltroTipo = [
   { label: 'Ingreso', value: 'Ingreso' },
   { label: 'Egreso', value: 'Egreso' },
   { label: 'Retiro', value: 'Retiro' },
+  { label: 'Pago nota', value: 'Pago nota' },
 ];
 const opcionesFiltroMes = computed(() => {
   const keys = [...new Set(filas.value.map(f => mesKey(f.fecha)).filter(Boolean))].sort().reverse();
   return [{ label: 'Todos los meses', value: 'todos' }, ...keys.map(k => ({ label: labelMes(k), value: k }))];
 });
 
+// filtroMes NO cuenta aquí: arranca en "último mes" por defecto, si contara
+// las flechas quedarían disabled desde siempre. El swap ya opera sobre
+// filasOrdenadas completa (sin filtrar), así que reordenar con mes puesto es seguro.
 const filtrosActivos = computed(() => !!(
-  busqueda.value.trim() || filtroMes.value !== 'todos' || filtroBanco.value !== 'todos' || filtroTipo.value !== 'todos'
+  busqueda.value.trim() || filtroBanco.value !== 'todos' || filtroTipo.value !== 'todos'
 ));
 
 const filasFiltradas = computed(() => {
@@ -393,10 +400,11 @@ const filasFiltradas = computed(() => {
   });
 });
 
+// Reactivo a todos los filtros de la tabla (mes, banco, tipo, búsqueda) — el
+// saldo mostrado siempre corresponde a lo que se ve en el datatable.
 const saldoTotal = computed(() => {
   let total = 0;
-  for (const f of filas.value) {
-    if (filtroMes.value !== 'todos' && mesKey(f.fecha) !== filtroMes.value) continue;
+  for (const f of filasFiltradas.value) {
     if (f.tipo === 'Nota' && f.raw.status === 'cancelado') continue;
     if (f.tipo === 'Factura' && f.raw.status === 'Cancelado') continue;
     if (f.tipo === 'Retiro' && f.raw.estatus !== 'aprobado') continue;
@@ -405,16 +413,19 @@ const saldoTotal = computed(() => {
   return total;
 });
 
+const etiquetaFiltro = computed(() => {
+  const partes = [];
+  if (filtroBanco.value === 'sin_banco') partes.push('sin banco');
+  else if (filtroBanco.value !== 'todos') partes.push(filtroBanco.value);
+  if (filtroTipo.value !== 'todos') partes.push(filtroTipo.value.toLowerCase());
+  partes.push(filtroMes.value === 'todos' ? 'todos los meses' : labelMes(filtroMes.value));
+  return `de ${partes.join(' · ')}`;
+});
+
 function badgeClaseTipo(tipo) {
-  if (tipo === 'Nota' || tipo === 'Factura' || tipo === 'Ingreso') return 'success';
+  if (tipo === 'Nota' || tipo === 'Factura' || tipo === 'Ingreso' || tipo === 'Pago nota') return 'success';
   if (tipo === 'Egreso' || tipo === 'Retiro') return 'danger';
   return 'info';
-}
-function badgeClaseEstatus(estatus) {
-  const e = String(estatus).toLowerCase();
-  if (e === 'pagado' || e === 'timbrado' || e === 'aprobado') return 'success';
-  if (e === 'cancelado' || e === 'rechazado') return 'danger';
-  return 'warning';
 }
 
 // ── Edición inline (banco, nombre, monto) ──
@@ -579,6 +590,7 @@ async function toggleValidado(fila) {
     if (fila.tipo === 'Nota') await actualizarValidadoNota(fila.id, nuevoValor);
     else if (fila.tipo === 'Factura') await actualizarValidadoFactura(fila.id, nuevoValor);
     else if (fila.tipo === 'Retiro') await actualizarValidadoRetiro(fila.id, nuevoValor);
+    else if (fila.tipo === 'Pago nota') await actualizarValidadoPagoNota(fila.raw.nota_id, fila.id, nuevoValor);
     else await actualizarMovimientoDinero(fila.id, { validado: nuevoValor });
     fila.raw.validado = nuevoValor;
     await cargar(false);
@@ -592,8 +604,8 @@ let filtroMesInicializado = false;
 async function cargar(resetLoading = true) {
   if (resetLoading) loading.value = true;
   try {
-    [notas.value, facturas.value, movimientos.value, retiros.value] = await Promise.all([
-      getNotas(), getFacturas(), getMovimientosDinero(), getRetiros(),
+    [notas.value, facturas.value, movimientos.value, retiros.value, pagosNota.value] = await Promise.all([
+      getNotas(), getFacturas(), getMovimientosDinero(), getRetiros(), getPagosNotaTodos(),
     ]);
     if (!filtroMesInicializado) {
       const meses = opcionesFiltroMes.value.filter(o => o.value !== 'todos');
@@ -601,7 +613,7 @@ async function cargar(resetLoading = true) {
       filtroMesInicializado = true;
     }
   } catch {
-    notas.value = []; facturas.value = []; movimientos.value = []; retiros.value = [];
+    notas.value = []; facturas.value = []; movimientos.value = []; retiros.value = []; pagosNota.value = [];
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los comprobantes.', life: 4000 });
   }
   loading.value = false;
