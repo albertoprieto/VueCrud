@@ -205,6 +205,30 @@
       {{ error }}
     </Message>
 
+    <!-- Filtro de mes: siempre visible, aunque no haya datos cargados -->
+    <div class="table-header">
+      <div class="header-left">
+        <span class="header-label">Mes</span>
+        <Calendar v-model="mesFiltro" view="month" dateFormat="mm/yy" showIcon iconDisplay="input" class="mes-input" />
+      </div>
+      <div class="header-right">
+        <Button
+          icon="pi pi-sync"
+          title="Sincronizar reportes"
+          class="p-button-outlined p-button-sm p-button-info"
+          @click="sincronizarReportes"
+          :loading="sincronizando"
+        />
+        <Button
+          icon="pi pi-file-excel"
+          label="Exportar sin reporte"
+          class="p-button-outlined p-button-sm p-button-success"
+          @click="exportarSinReporte"
+          :disabled="!dataEnriquecida.length"
+        />
+      </div>
+    </div>
+
     <!-- Tabla de datos con paginación -->
     <DataTable
       v-if="dataEnriquecida.length"
@@ -220,30 +244,6 @@
       stripedRows
       :rowClass="rowClass"
     >
-      <template #header>
-        <div class="table-header">
-          <div class="header-left">
-            <span class="header-label">Mes</span>
-            <Calendar v-model="mesFiltro" view="month" dateFormat="mm/yy" showIcon iconDisplay="input" class="mes-input" />
-          </div>
-          <div class="header-right">
-            <Button 
-              icon="pi pi-sync" 
-              title="Sincronizar reportes"
-              class="p-button-outlined p-button-sm p-button-info"
-              @click="sincronizarReportes"
-              :loading="sincronizando"
-            />
-            <Button 
-              icon="pi pi-file-excel" 
-              label="Exportar sin reporte" 
-              class="p-button-outlined p-button-sm p-button-success"
-              @click="exportarSinReporte"
-              :disabled="!dataEnriquecida.length"
-            />
-          </div>
-        </div>
-      </template>
 
       <!-- Columnas dinámicas del CSV -->
       <Column 

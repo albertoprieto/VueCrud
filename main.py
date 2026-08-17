@@ -1274,7 +1274,7 @@ def add_movimiento_dinero(mov: MovimientoDinero):
 def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
     """Edición desde la tabla unificada de Comprobantes — mismos campos editables
     (banco, nombre/concepto, monto) que notas y facturas."""
-    campos_validos = {'fecha', 'tipo', 'concepto', 'monto', 'referencia', 'banco'}
+    campos_validos = {'fecha', 'tipo', 'concepto', 'monto', 'referencia', 'banco', 'validado'}
     campos = []
     valores = []
     for k, v in data.items():
@@ -1285,11 +1285,15 @@ def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
         raise HTTPException(status_code=400, detail="Nada que actualizar")
     db = get_db_connection()
     cursor = db.cursor()
-    try:
-        cursor.execute("ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL")
-        db.commit()
-    except Exception:
-        pass
+    for _col_sql in (
+        "ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL",
+        "ALTER TABLE movimientos_dinero ADD COLUMN validado TINYINT(1) NOT NULL DEFAULT 0",
+    ):
+        try:
+            cursor.execute(_col_sql)
+            db.commit()
+        except Exception:
+            pass
     cursor.execute("SELECT id FROM movimientos_dinero WHERE id=%s", (movimiento_id,))
     if not cursor.fetchone():
         cursor.close()
@@ -5609,6 +5613,25 @@ def editar_campos_nota(nota_id: int, data: dict = Body(...)):
     db.close()
     return {"message": "Campos actualizados", "id": nota_id}
 
+@app.put("/notas-pago/{nota_id}/validado")
+def validar_nota_pago(nota_id: int, data: dict = Body(...)):
+    validado = 1 if data.get('validado') else 0
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE notas_pago ADD COLUMN validado TINYINT(1) NOT NULL DEFAULT 0")
+        db.commit()
+    except Exception:
+        pass
+    cursor.execute("UPDATE notas_pago SET validado=%s WHERE id=%s", (validado, nota_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    return {"message": "Validado actualizado", "id": nota_id, "validado": bool(validado)}
+
 @app.put("/notas-pago/{nota_id}/observaciones")
 def actualizar_observaciones_nota(nota_id: int, data: dict = Body(...)):
     observaciones = data.get('observaciones', '')
@@ -7166,6 +7189,25 @@ def editar_campos_factura(factura_id: int, data: dict = Body(...)):
     db.close()
     return {"message": "Campos actualizados", "id": factura_id}
 
+@app.put("/facturas-pago/{factura_id}/validado")
+def validar_factura_pago(factura_id: int, data: dict = Body(...)):
+    validado = 1 if data.get('validado') else 0
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN validado TINYINT(1) NOT NULL DEFAULT 0")
+        db.commit()
+    except Exception:
+        pass
+    cursor.execute("UPDATE facturas_pago SET validado=%s WHERE id=%s", (validado, factura_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return {"message": "Validado actualizado", "id": factura_id, "validado": bool(validado)}
+
 @app.put("/facturas-pago/{factura_id}/pagado")
 def actualizar_pagado_factura(factura_id: int, data: dict = Body(...)):
     pagado = bool(data.get('pagado'))
@@ -7696,6 +7738,79 @@ def crear_retiro_banco(
         "comprobante_url": build_public_url(rel_path, request),
         "estatus": "pendiente"
     }
+
+@app.put("/retiros-banco/{retiro_id}/validado")
+def validar_retiro_banco(retiro_id: int, data: dict = Body(...)):
+    validado = 1 if data.get('validado') else 0
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE retiros_banco ADD COLUMN validado TINYINT(1) NOT NULL DEFAULT 0")
+        db.commit()
+    except Exception:
+        pass
+    cursor.execute("UPDATE retiros_banco SET validado=%s WHERE id=%s", (validado, retiro_id))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Retiro no encontrado")
+    return {"message": "Validado actualizado", "id": retiro_id, "validado": bool(validado)}
+
+class ReordenarBancosRequest(BaseModel):
+    orden: List[dict]  # [{key: "nota-5", orden: int}, ...] — key = f"{tipo}-{id}" como en Bancos.vue
+
+_TABLA_POR_PREFIJO_BANCOS = {
+    'nota': 'notas_pago',
+    'factura': 'facturas_pago',
+    'mov': 'movimientos_dinero',
+    'retiro': 'retiros_banco',
+}
+
+@app.put("/bancos/reordenar")
+def reordenar_bancos(data: ReordenarBancosRequest):
+    """Orden manual de la tabla unificada de Comprobantes (mismo mecanismo que
+    /reportes-servicio/reordenar), pero las filas vienen de 4 tablas distintas
+    (notas_pago, facturas_pago, movimientos_dinero, retiros_banco) — el key
+    "tipo-id" que ya arma Bancos.vue dice a qué tabla va cada UPDATE."""
+    if not data.orden:
+        raise HTTPException(status_code=400, detail="Se requiere 'orden'")
+    grupos = {}
+    for item in data.orden:
+        key, orden = item.get('key'), item.get('orden')
+        if key is None or orden is None:
+            continue
+        prefijo, _, id_str = str(key).rpartition('-')
+        if prefijo not in _TABLA_POR_PREFIJO_BANCOS or not id_str.isdigit():
+            continue
+        grupos.setdefault(prefijo, []).append((int(id_str), orden))
+    if not grupos:
+        raise HTTPException(status_code=400, detail="Sin pares key/orden válidos")
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    total = 0
+    for prefijo, pares in grupos.items():
+        tabla = _TABLA_POR_PREFIJO_BANCOS[prefijo]
+        try:
+            cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN orden_manual INT NULL")
+            db.commit()
+        except Exception:
+            pass
+        ids = [rid for rid, _ in pares]
+        case_sql = " ".join("WHEN %s THEN %s" for _ in pares)
+        case_params = [v for par in pares for v in par]
+        placeholders = ",".join(["%s"] * len(ids))
+        cursor.execute(
+            f"UPDATE {tabla} SET orden_manual = CASE id {case_sql} END WHERE id IN ({placeholders})",
+            (*case_params, *ids)
+        )
+        total += len(pares)
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Orden actualizado", "total": total}
 
 @app.put("/retiros-banco/{retiro_id}/aprobar")
 def aprobar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
