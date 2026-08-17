@@ -48,6 +48,11 @@ export async function eliminarNota(id) {
   return res.data;
 }
 
+export async function actualizarValidadoNota(id, validado) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/validado`, { validado });
+  return res.data;
+}
+
 export async function subirComprobanteNota(id, archivo) {
   const fd = new FormData();
   fd.append('archivo', archivo);
@@ -122,6 +127,11 @@ export async function actualizarDatosPagoFactura(id, payload) {
 
 export async function eliminarFactura(id) {
   const res = await axios.delete(`${API_URL}/facturas-pago/${id}`);
+  return res.data;
+}
+
+export async function actualizarValidadoFactura(id, validado) {
+  const res = await axios.put(`${API_URL}/facturas-pago/${id}/validado`, { validado });
   return res.data;
 }
 

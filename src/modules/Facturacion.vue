@@ -155,7 +155,7 @@
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
               <Button
                 v-if="data.status === 'Pendiente timbre'"
-                icon="pi pi-verified" label="Timbrar"
+                icon="pi pi-verified" label="Detalles"
                 class="p-button-sm p-button-success"
                 @click="irDetalle(data.id)"
               />
