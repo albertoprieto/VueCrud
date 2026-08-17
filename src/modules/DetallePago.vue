@@ -81,18 +81,43 @@
       <div class="comprobante-section">
         <h3>Comprobantes de pago</h3>
         <div v-if="item.comprobantes && item.comprobantes.length" class="comprobantes-lista">
-          <div v-for="(comp, idx) in item.comprobantes" :key="idx" class="comprobante-item">
-            <i class="pi pi-file" style="color:#1976d2;margin-right:0.5rem;"></i>
-            <a :href="urlComprobante(comp)" target="_blank" rel="noopener noreferrer" style="color:#1976d2;font-weight:bold;flex:1;">
-              {{ nombreArchivo(comp) }}
-            </a>
-            <Button
-              icon="pi pi-trash"
-              class="p-button-text p-button-danger p-button-sm"
-              :loading="eliminandoComprobante === comp"
-              @click="eliminarComprobante(comp)"
-              v-tooltip.top="'Eliminar comprobante'"
-            />
+          <div v-for="(comp, idx) in item.comprobantes" :key="idx">
+            <div class="comprobante-item">
+              <i class="pi pi-file" style="color:#1976d2;margin-right:0.5rem;"></i>
+              <a :href="urlComprobante(comp)" target="_blank" rel="noopener noreferrer" style="color:#1976d2;font-weight:bold;flex:1;">
+                {{ nombreArchivo(comp) }}
+              </a>
+              <Button
+                icon="pi pi-wallet"
+                label="Asignar a banco"
+                class="p-button-outlined p-button-info p-button-sm"
+                @click="asignando = asignando === comp ? null : comp"
+              />
+              <Button
+                icon="pi pi-trash"
+                class="p-button-text p-button-danger p-button-sm"
+                :loading="eliminandoComprobante === comp"
+                @click="eliminarComprobante(comp)"
+                v-tooltip.top="'Eliminar comprobante'"
+              />
+            </div>
+            <div v-if="asignando === comp" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;padding:0.5rem 0 0.75rem 1.8rem;">
+              <div>
+                <label style="font-weight:bold;display:block;font-size:0.8rem;">Banco</label>
+                <Dropdown v-model="formAsignar.banco" :options="lugaresDisponibles" placeholder="Selecciona banco" style="min-width:200px;" />
+              </div>
+              <div>
+                <label style="font-weight:bold;display:block;font-size:0.8rem;">Monto</label>
+                <input type="number" v-model.number="formAsignar.monto" min="0" step="0.01" style="padding:0.4rem;" />
+              </div>
+              <Button
+                label="Confirmar" icon="pi pi-check" class="p-button-sm p-button-success"
+                :disabled="!formAsignar.banco || !formAsignar.monto"
+                :loading="asignandoGuardando"
+                @click="confirmarAsignarComprobante(comp)"
+              />
+              <Button label="Cancelar" class="p-button-sm p-button-secondary" @click="asignando = null" />
+            </div>
           </div>
         </div>
         <div v-else style="color:#999;margin-bottom:0.75rem;">No se han cargado comprobantes aún.</div>
@@ -106,6 +131,50 @@
             :disabled="!archivoSeleccionado"
             :loading="subiendo"
             @click="subirComprobante"
+          />
+        </div>
+      </div>
+
+      <!-- Pagos adicionales a otro banco (ej. nota se paga en dos partes a bancos distintos) -->
+      <div class="comprobante-section">
+        <h3>Pagos adicionales a otro banco</h3>
+        <div v-if="pagosAdicionales.length" class="comprobantes-lista">
+          <div v-for="pago in pagosAdicionales" :key="pago.id" class="comprobante-item">
+            <i class="pi pi-wallet" style="color:#1976d2;margin-right:0.5rem;"></i>
+            <span style="flex:1;">
+              <strong>{{ pago.banco }}</strong> — ${{ Number(pago.monto).toFixed(2) }}
+              <a v-if="pago.comprobante_url" :href="pago.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:#1976d2;">ver comprobante</a>
+            </span>
+            <Button
+              icon="pi pi-trash"
+              class="p-button-text p-button-danger p-button-sm"
+              :loading="eliminandoPago === pago.id"
+              @click="eliminarPagoAdicional(pago)"
+              v-tooltip.top="'Eliminar pago'"
+            />
+          </div>
+        </div>
+        <div v-else style="color:#999;margin-bottom:0.75rem;">Sin pagos adicionales registrados.</div>
+        <div class="comprobante-upload" style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end;">
+          <div>
+            <label style="font-weight:bold;display:block;margin-bottom:0.5rem;">Banco</label>
+            <Dropdown v-model="nuevoPago.banco" :options="lugaresDisponibles" placeholder="Selecciona banco" style="min-width:200px;" />
+          </div>
+          <div>
+            <label style="font-weight:bold;display:block;margin-bottom:0.5rem;">Monto</label>
+            <input type="number" v-model.number="nuevoPago.monto" min="0" step="0.01" style="padding:0.4rem;" />
+          </div>
+          <div>
+            <label style="font-weight:bold;display:block;margin-bottom:0.5rem;">Comprobante (opcional)</label>
+            <input type="file" @change="onFilePagoChange" accept="application/pdf,image/*" />
+          </div>
+          <Button
+            label="Registrar pago"
+            icon="pi pi-plus"
+            class="p-button-success"
+            :disabled="!nuevoPago.banco || !nuevoPago.monto"
+            :loading="registrandoPago"
+            @click="registrarPagoAdicional"
           />
         </div>
       </div>
@@ -347,6 +416,10 @@ import {
   actualizarDatosPagoNota,
   subirComprobanteNota,
   eliminarComprobanteNota,
+  getPagosNota,
+  crearPagoNota,
+  eliminarPagoNota,
+  asignarComprobanteComoPagoNota,
   agregarReportesNota,
   quitarReportesNota,
   getNotas,
@@ -382,6 +455,15 @@ const formasPago = [
 const archivoSeleccionado = ref(null);
 const subiendo = ref(false);
 const eliminandoComprobante = ref(null);
+
+const pagosAdicionales = ref([]);
+const nuevoPago = ref({ banco: '', monto: null, comprobante: null });
+const registrandoPago = ref(false);
+const eliminandoPago = ref(null);
+
+const asignando = ref(null);
+const formAsignar = ref({ banco: '', monto: null });
+const asignandoGuardando = ref(false);
 const detalleOrdenesMap = ref({});
 
 // Agregar servicios
@@ -528,6 +610,7 @@ async function cargarDetalle() {
     };
     await cargarDetalleOrdenesEnriquecido();
     await cargarClienteFiscal();
+    pagosAdicionales.value = await getPagosNota(id.value);
   } catch {
     item.value = null;
     detalleOrdenesMap.value = {};
@@ -644,6 +727,52 @@ async function eliminarComprobante(path) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el comprobante.', life: 4000 });
   }
   eliminandoComprobante.value = null;
+}
+
+function onFilePagoChange(event) {
+  const files = event?.target?.files;
+  nuevoPago.value.comprobante = files && files.length ? files[0] : null;
+}
+
+async function registrarPagoAdicional() {
+  if (!nuevoPago.value.banco || !nuevoPago.value.monto) return;
+  registrandoPago.value = true;
+  try {
+    await crearPagoNota(id.value, nuevoPago.value);
+    toast.add({ severity: 'success', summary: 'Registrado', detail: 'Pago registrado correctamente.', life: 3000 });
+    nuevoPago.value = { banco: '', monto: null, comprobante: null };
+    await cargarDetalle();
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar el pago.', life: 4000 });
+  }
+  registrandoPago.value = false;
+}
+
+async function confirmarAsignarComprobante(path) {
+  if (!formAsignar.value.banco || !formAsignar.value.monto) return;
+  asignandoGuardando.value = true;
+  try {
+    await asignarComprobanteComoPagoNota(id.value, { path, ...formAsignar.value });
+    toast.add({ severity: 'success', summary: 'Asignado', detail: 'Comprobante asignado como pago adicional.', life: 3000 });
+    asignando.value = null;
+    formAsignar.value = { banco: '', monto: null };
+    await cargarDetalle();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo asignar el comprobante.', life: 4000 });
+  }
+  asignandoGuardando.value = false;
+}
+
+async function eliminarPagoAdicional(pago) {
+  eliminandoPago.value = pago.id;
+  try {
+    await eliminarPagoNota(id.value, pago.id);
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Pago eliminado.', life: 3000 });
+    await cargarDetalle();
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el pago.', life: 4000 });
+  }
+  eliminandoPago.value = null;
 }
 
 async function abrirReportesDialog() {
