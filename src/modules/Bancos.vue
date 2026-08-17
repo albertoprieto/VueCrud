@@ -8,613 +8,72 @@
 
     <template v-else>
       <div class="bancos-total-card">
-        <span class="bancos-total-label">Saldo {{ etiquetaFiltro }}</span>
-        <span class="bancos-total-valor">{{ formatTotal(saldoTotal) }}</span>
+        <span class="bancos-total-label">Saldo total (todos los bancos)</span>
+        <span class="bancos-total-valor">{{ formatTotal(saldoGlobal) }}</span>
       </div>
 
-      <div class="comprobantes-toolbar">
-        <InputText v-model="busqueda" placeholder="Buscar por nombre, usuario o IMEI..." class="comprobantes-buscador" />
-        <Dropdown v-model="filtroMes" :options="opcionesFiltroMes" optionLabel="label" optionValue="value" placeholder="Mes" class="comprobantes-filtro" />
-        <Dropdown v-model="filtroBanco" :options="opcionesFiltroBanco" optionLabel="label" optionValue="value" placeholder="Banco" class="comprobantes-filtro" />
-        <Dropdown v-model="filtroTipo" :options="opcionesFiltroTipo" optionLabel="label" optionValue="value" placeholder="Tipo" class="comprobantes-filtro" />
-        <div class="comprobantes-toolbar-acciones">
-          <Button label="Nuevo movimiento" icon="pi pi-plus" class="p-button-sm" @click="abrirNuevoMovimiento" />
-          <Button label="Nuevo retiro" icon="pi pi-upload" class="p-button-sm p-button-danger" @click="abrirNuevoRetiro" />
-        </div>
+      <div class="bancos-grid">
+        <router-link
+          v-for="banco in tarjetas"
+          :key="banco.nombre"
+          :to="{ name: 'detalle-banco', params: { nombre: banco.nombre } }"
+          class="banco-card"
+        >
+          <div class="banco-card-header">
+            <i class="pi pi-wallet" />
+            <span class="banco-card-nombre">{{ banco.nombre }}</span>
+          </div>
+          <span class="banco-card-saldo" :class="{ negativo: banco.saldo < 0 }">{{ formatTotal(banco.saldo) }}</span>
+          <span v-if="banco.pendientesCount" class="banco-card-pendiente">
+            {{ banco.pendientesCount }} retiro{{ banco.pendientesCount === 1 ? '' : 's' }} por aprobar (-{{ formatTotal(banco.pendiente) }})
+          </span>
+          <span class="banco-card-footer">
+            {{ banco.totalMovimientos }} movimiento{{ banco.totalMovimientos === 1 ? '' : 's' }}
+            <template v-if="banco.ultimaFecha"> · último {{ formatFecha(banco.ultimaFecha) }}</template>
+          </span>
+        </router-link>
       </div>
-
-      <DataTable
-        :value="filasFiltradas"
-        responsiveLayout="scroll"
-        :loading="loading"
-        :paginator="filasFiltradas.length > 50"
-        :rows="50"
-        dataKey="key"
-        sortMode="single"
-      >
-        <template #loading><DataTableLoader text="Cargando comprobantes..." /></template>
-
-        <Column header="Orden" headerStyle="width:3.5rem" style="text-align:center;">
-          <template #body="{ data }">
-            <div style="display:flex;flex-direction:column;gap:0.1rem;" :title="filtrosActivos ? 'Quita los filtros para poder reordenar' : ''">
-              <Button
-                icon="pi pi-chevron-up" class="p-button-sm p-button-text"
-                style="padding:0.15rem;width:1.8rem;height:1.4rem;"
-                :disabled="filtrosActivos || esPrimeraFila(data) || moviendoKey !== null"
-                :loading="moviendoKey === data.key"
-                @click="moverFila(data, -1)"
-              />
-              <Button
-                icon="pi pi-chevron-down" class="p-button-sm p-button-text"
-                style="padding:0.15rem;width:1.8rem;height:1.4rem;"
-                :disabled="filtrosActivos || esUltimaFila(data) || moviendoKey !== null"
-                @click="moverFila(data, 1)"
-              />
-            </div>
-          </template>
-        </Column>
-        <Column field="tipo" header="Tipo" sortable style="width:100px">
-          <template #body="{ data }"><span :class="'badge badge-' + badgeClaseTipo(data.tipo)">{{ data.tipo }}</span></template>
-        </Column>
-        <Column field="fecha" header="Fecha" sortable>
-          <template #body="{ data }">{{ formatFecha(data.fecha) }}</template>
-        </Column>
-        <Column field="banco" header="Banco" sortable>
-          <template #body="{ data }">
-            <Dropdown v-if="editando === data.key" v-model="edicion.banco" :options="lugaresValidos" showClear placeholder="Sin banco" class="edit-input" />
-            <span v-else-if="data.banco" class="badge badge-info">{{ data.banco }}</span>
-            <span v-else class="badge badge-warning">Sin banco</span>
-          </template>
-        </Column>
-        <Column field="nombre" header="Nombre" sortable>
-          <template #body="{ data }">
-            <InputText v-if="editando === data.key" v-model="edicion.nombre" class="edit-input" />
-            <span v-else>{{ data.nombre || '—' }}</span>
-          </template>
-        </Column>
-        <Column field="usuario" header="Usuario" sortable>
-          <template #body="{ data }">{{ data.usuario || '—' }}</template>
-        </Column>
-        <Column field="imeis" header="IMEIs">
-          <template #body="{ data }">{{ data.imeis || '—' }}</template>
-        </Column>
-        <Column field="monto" header="Monto" sortable>
-          <template #body="{ data }">
-            <InputNumber v-if="editando === data.key" v-model="edicion.monto" mode="currency" currency="MXN" locale="es-MX" class="edit-input" />
-            <span v-else :class="data.monto < 0 ? 'monto-negativo' : 'monto-positivo'">{{ formatTotal(data.monto) }}</span>
-          </template>
-        </Column>
-        <Column header="Comprobante">
-          <template #body="{ data }">
-            <span v-if="!data.comprobantes.length" class="celda-vacia">—</span>
-            <div v-else class="comprobantes-links">
-              <a v-for="(url, i) in data.comprobantes" :key="i" :href="url" target="_blank" rel="noopener noreferrer" class="link-comprobante" :title="'Ver comprobante ' + (i + 1)">
-                <i class="pi pi-file" /> {{ data.comprobantes.length > 1 ? i + 1 : '' }}
-              </a>
-            </div>
-          </template>
-        </Column>
-        <Column header="Validado" style="width:110px">
-          <template #body="{ data }">
-            <Button
-              :icon="data.validado ? 'pi pi-check-circle' : 'pi pi-circle'"
-              :label="data.validado ? 'Validado' : 'Validar'"
-              :class="'p-button-sm ' + (data.validado ? 'p-button-success' : 'p-button-outlined p-button-secondary')"
-              :loading="validando === data.key"
-              @click="toggleValidado(data)"
-            />
-          </template>
-        </Column>
-        <Column header="Acciones" style="width:230px">
-          <template #body="{ data }">
-            <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
-              <template v-if="editando === data.key">
-                <Button icon="pi pi-check" class="p-button-sm p-button-success" :loading="guardando" @click="guardarEdicion(data)" />
-                <Button icon="pi pi-times" class="p-button-sm p-button-secondary" @click="cancelarEdicion" />
-              </template>
-              <template v-else>
-                <Button v-if="esEditable(data)" icon="pi pi-pencil" class="p-button-sm p-button-text" @click="iniciarEdicion(data)" />
-                <Button
-                  v-if="data.tipo === 'Retiro' && data.estatus === 'pendiente' && esAdmin"
-                  icon="pi pi-check" label="Aprobar" class="p-button-sm p-button-success"
-                  @click="aprobar(data)"
-                />
-                <Button
-                  v-if="data.tipo === 'Retiro' && data.estatus === 'pendiente' && esAdmin"
-                  icon="pi pi-times" label="Rechazar" class="p-button-sm p-button-danger p-button-outlined"
-                  @click="rechazar(data)"
-                />
-                <router-link v-if="data.tipo === 'Nota'" :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
-                <router-link v-else-if="data.tipo === 'Factura'" :to="{ name: 'detalle-factura', params: { id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
-                <router-link v-else-if="data.tipo === 'Pago nota'" :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.raw.nota_id } }" class="p-button p-button-sm p-button-text p-button-icon-only" v-tooltip.top="'Ver nota'"><i class="pi pi-eye" /></router-link>
-              </template>
-            </div>
-          </template>
-        </Column>
-      </DataTable>
     </template>
-
-    <Dialog v-model:visible="showMovimientoDialog" header="Nuevo movimiento" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }">
-      <div class="form-group">
-        <label>Tipo</label>
-        <Dropdown v-model="nuevoMovimiento.tipo" :options="['Ingreso', 'Egreso']" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Banco</label>
-        <Dropdown v-model="nuevoMovimiento.banco" :options="lugaresValidos" showClear placeholder="Sin banco" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Concepto</label>
-        <InputText v-model="nuevoMovimiento.concepto" class="w-full" placeholder="Ej: Pago a proveedor" />
-      </div>
-      <div class="form-group">
-        <label>Monto</label>
-        <InputNumber v-model="nuevoMovimiento.monto" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Referencia (opcional)</label>
-        <InputText v-model="nuevoMovimiento.referencia" class="w-full" />
-      </div>
-      <div class="modal-actions">
-        <Button label="Registrar" icon="pi pi-check" :loading="guardandoMovimiento" @click="confirmarNuevoMovimiento" />
-        <Button label="Cancelar" class="p-button-secondary" @click="showMovimientoDialog = false" />
-      </div>
-    </Dialog>
-
-    <Dialog v-model:visible="showRetiroDialog" header="Registrar retiro" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }">
-      <div class="form-group">
-        <label>Banco</label>
-        <Dropdown v-model="nuevoRetiro.banco" :options="lugaresValidos" placeholder="Selecciona un banco" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Monto a retirar</label>
-        <InputNumber v-model="nuevoRetiro.monto" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Motivo (opcional)</label>
-        <InputText v-model="nuevoRetiro.motivo" placeholder="Ej: Pago a proveedor" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Comprobante</label>
-        <input type="file" accept="application/pdf,image/*" @change="onArchivoRetiroChange" />
-      </div>
-      <div class="modal-actions">
-        <Button
-          label="Registrar" icon="pi pi-upload" class="p-button-danger"
-          :disabled="!nuevoRetiro.banco || !nuevoRetiro.monto || !archivoRetiro"
-          :loading="guardandoRetiro" @click="confirmarNuevoRetiro"
-        />
-        <Button label="Cancelar" class="p-button-secondary" @click="showRetiroDialog = false" />
-      </div>
-    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import InputNumber from 'primevue/inputnumber';
-import Dropdown from 'primevue/dropdown';
-import Dialog from 'primevue/dialog';
-import DataTableLoader from '@/components/DataTableLoader.vue';
 import { useToast } from 'primevue/usetoast';
-import { useLoginStore } from '@/stores/loginStore';
-import {
-  getNotas, getFacturas,
-  actualizarLugarPagoNota, actualizarCamposNota, actualizarValidadoNota,
-  actualizarLugarPagoFactura, actualizarCamposFactura, actualizarValidadoFactura,
-  getPagosNotaTodos, actualizarValidadoPagoNota,
-} from '@/services/pagosService';
-import { getRetiros, crearRetiro, aprobarRetiro, rechazarRetiro, actualizarValidadoRetiro, reordenarBancos } from '@/services/bancosService';
-import { getMovimientosDinero, registrarAbonoDinero, actualizarMovimientoDinero } from '@/services/dineroService';
+import { LUGARES_VALIDOS, fetchBancosRaw, buildFilas, calcularSaldoBanco } from '@/composables/useBancosData';
 
 const toast = useToast();
-const loginStore = useLoginStore();
-const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
-
-const lugaresValidos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico'];
-
-const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-function urlComprobante(path) {
-  if (!path) return '';
-  const p = path.startsWith('/') ? path : `/${path}`;
-  return `${API_URL}${p}`;
-}
 
 const loading = ref(true);
-const notas = ref([]);
-const facturas = ref([]);
-const movimientos = ref([]);
-const retiros = ref([]);
-const pagosNota = ref([]);
+const filas = ref([]);
+const saldosIncialesPorBanco = ref({});
 
 const formatoMoneda = new Intl.NumberFormat('es-MX', {
   style: 'currency', currency: 'MXN', minimumFractionDigits: 2, maximumFractionDigits: 2,
 });
 function formatTotal(value) { return formatoMoneda.format(Number(value) || 0); }
 function formatFecha(f) {
-  if (!f) return '—';
+  if (!f) return '';
   const d = new Date(f);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-function parseComprobantes(raw) {
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw) || []; } catch { return []; }
-  }
-  return [];
-}
+const tarjetas = computed(() => LUGARES_VALIDOS.map(nombre => ({
+  nombre,
+  ...calcularSaldoBanco(filas.value, nombre, saldosIncialesPorBanco.value),
+})));
 
-// ── Unificación: cada comprobante/movimiento de dinero, sin importar su origen, es una fila ──
-const filas = computed(() => {
-  const out = [];
-  for (const n of notas.value) {
-    out.push({
-      key: `nota-${n.id}`, id: n.id, tipo: 'Nota',
-      fecha: n.fecha, banco: n.lugar_pago || null,
-      nombre: n.cliente || '', usuario: n.usuario || '',
-      imeis: (n.imeis || []).join(', '),
-      monto: Number(n.total) || 0,
-      comprobantes: parseComprobantes(n.comprobantes).map(urlComprobante),
-      estatus: n.status,
-      validado: !!n.validado,
-      orden_manual: n.orden_manual,
-      raw: n,
-    });
-  }
-  for (const f of facturas.value) {
-    const comprobantes = parseComprobantes(f.comprobantes).map(urlComprobante);
-    if (f.cfdi_pdf_path) comprobantes.push(urlComprobante(f.cfdi_pdf_path));
-    out.push({
-      key: `factura-${f.id}`, id: f.id, tipo: 'Factura',
-      fecha: f.fecha, banco: f.lugar_pago || null,
-      nombre: f.cliente || '', usuario: f.usuario || '',
-      imeis: (f.imeis || []).join(', '),
-      monto: Number(f.total) || 0,
-      comprobantes,
-      estatus: f.status,
-      validado: !!f.validado,
-      orden_manual: f.orden_manual,
-      raw: f,
-    });
-  }
-  for (const m of movimientos.value) {
-    out.push({
-      key: `mov-${m.id}`, id: m.id, tipo: m.tipo === 'Egreso' ? 'Egreso' : 'Ingreso',
-      fecha: m.fecha, banco: m.banco || null,
-      nombre: m.concepto || '', usuario: '',
-      imeis: '',
-      monto: Number(m.monto) || 0,
-      comprobantes: [],
-      estatus: '',
-      validado: !!m.validado,
-      orden_manual: m.orden_manual,
-      raw: m,
-    });
-  }
-  for (const r of retiros.value) {
-    out.push({
-      key: `retiro-${r.id}`, id: r.id, tipo: 'Retiro',
-      fecha: r.creado_fecha, banco: r.banco || null,
-      nombre: r.motivo || 'Retiro de banco', usuario: '',
-      imeis: '',
-      monto: -(Number(r.monto) || 0),
-      comprobantes: r.comprobante_url ? [r.comprobante_url] : [],
-      estatus: r.estatus,
-      validado: !!r.validado,
-      orden_manual: r.orden_manual,
-      raw: r,
-    });
-  }
-  for (const p of pagosNota.value) {
-    out.push({
-      key: `pagonota-${p.id}`, id: p.id, tipo: 'Pago nota',
-      fecha: p.creado_fecha, banco: p.banco || null,
-      nombre: p.nota_cliente || '', usuario: p.nota_usuario || '',
-      imeis: (p.nota_imeis || []).join(', '),
-      monto: Number(p.monto) || 0,
-      comprobantes: p.comprobante_url ? [p.comprobante_url] : [],
-      estatus: '',
-      validado: !!p.validado,
-      orden_manual: p.orden_manual,
-      raw: p,
-    });
-  }
-  return out;
-});
+const saldoGlobal = computed(() => tarjetas.value.reduce((acc, b) => acc + b.saldo, 0));
 
-// Orden manual (flechas subir/bajar) — mismo mecanismo que Reportes de Servicio:
-// orden_manual null (fila nunca reordenada, incluye las recién llegadas) va
-// antes que las ya ordenadas, así lo nuevo aparece arriba sin enterrarse.
-const filasOrdenadas = computed(() => {
-  const arr = [...filas.value];
-  arr.sort((a, b) => {
-    const oa = a.orden_manual, ob = b.orden_manual;
-    if (oa != null && ob != null) return oa - ob;
-    if (oa != null) return 1;
-    if (ob != null) return -1;
-    return 0;
-  });
-  return arr;
-});
-
-function mesKey(fecha) {
-  if (!fecha) return null;
-  const d = new Date(fecha);
-  if (isNaN(d)) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-const nombresMes = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-function labelMes(key) {
-  const [y, m] = key.split('-');
-  return `${nombresMes[Number(m) - 1]} ${y}`;
-}
-
-const busqueda = ref('');
-const filtroMes = ref('todos');
-const filtroBanco = ref('todos');
-const filtroTipo = ref('todos');
-const opcionesFiltroBanco = [
-  { label: 'Todos los bancos', value: 'todos' },
-  { label: 'Sin banco', value: 'sin_banco' },
-  ...lugaresValidos.map(l => ({ label: l, value: l })),
-];
-const opcionesFiltroTipo = [
-  { label: 'Todos', value: 'todos' },
-  { label: 'Nota', value: 'Nota' },
-  { label: 'Factura', value: 'Factura' },
-  { label: 'Ingreso', value: 'Ingreso' },
-  { label: 'Egreso', value: 'Egreso' },
-  { label: 'Retiro', value: 'Retiro' },
-  { label: 'Pago nota', value: 'Pago nota' },
-];
-const opcionesFiltroMes = computed(() => {
-  const keys = [...new Set(filas.value.map(f => mesKey(f.fecha)).filter(Boolean))].sort().reverse();
-  return [{ label: 'Todos los meses', value: 'todos' }, ...keys.map(k => ({ label: labelMes(k), value: k }))];
-});
-
-// filtroMes NO cuenta aquí: arranca en "último mes" por defecto, si contara
-// las flechas quedarían disabled desde siempre. El swap ya opera sobre
-// filasOrdenadas completa (sin filtrar), así que reordenar con mes puesto es seguro.
-const filtrosActivos = computed(() => !!(
-  busqueda.value.trim() || filtroBanco.value !== 'todos' || filtroTipo.value !== 'todos'
-));
-
-const filasFiltradas = computed(() => {
-  const q = busqueda.value.trim().toLowerCase();
-  return filasOrdenadas.value.filter(f => {
-    if (q && !(
-      String(f.nombre || '').toLowerCase().includes(q) ||
-      String(f.usuario || '').toLowerCase().includes(q) ||
-      String(f.imeis || '').toLowerCase().includes(q)
-    )) return false;
-    if (filtroMes.value !== 'todos' && mesKey(f.fecha) !== filtroMes.value) return false;
-    if (filtroBanco.value === 'sin_banco' && f.banco) return false;
-    if (filtroBanco.value !== 'todos' && filtroBanco.value !== 'sin_banco' && f.banco !== filtroBanco.value) return false;
-    if (filtroTipo.value !== 'todos' && f.tipo !== filtroTipo.value) return false;
-    return true;
-  });
-});
-
-// Reactivo a todos los filtros de la tabla (mes, banco, tipo, búsqueda) — el
-// saldo mostrado siempre corresponde a lo que se ve en el datatable.
-const saldoTotal = computed(() => {
-  let total = 0;
-  for (const f of filasFiltradas.value) {
-    if (f.tipo === 'Nota' && f.raw.status === 'cancelado') continue;
-    if (f.tipo === 'Factura' && f.raw.status === 'Cancelado') continue;
-    if (f.tipo === 'Retiro' && f.raw.estatus !== 'aprobado') continue;
-    total += f.monto;
-  }
-  return total;
-});
-
-const etiquetaFiltro = computed(() => {
-  const partes = [];
-  if (filtroBanco.value === 'sin_banco') partes.push('sin banco');
-  else if (filtroBanco.value !== 'todos') partes.push(filtroBanco.value);
-  if (filtroTipo.value !== 'todos') partes.push(filtroTipo.value.toLowerCase());
-  partes.push(filtroMes.value === 'todos' ? 'todos los meses' : labelMes(filtroMes.value));
-  return `de ${partes.join(' · ')}`;
-});
-
-function badgeClaseTipo(tipo) {
-  if (tipo === 'Nota' || tipo === 'Factura' || tipo === 'Ingreso' || tipo === 'Pago nota') return 'success';
-  if (tipo === 'Egreso' || tipo === 'Retiro') return 'danger';
-  return 'info';
-}
-
-// ── Edición inline (banco, nombre, monto) ──
-const editando = ref(null);
-const edicion = ref({ banco: null, nombre: '', monto: 0 });
-const guardando = ref(false);
-
-function esEditable(fila) {
-  return fila.tipo === 'Nota' || fila.tipo === 'Factura' || fila.tipo === 'Ingreso' || fila.tipo === 'Egreso';
-}
-function iniciarEdicion(fila) {
-  editando.value = fila.key;
-  edicion.value = { banco: fila.banco, nombre: fila.nombre, monto: fila.monto };
-}
-function cancelarEdicion() {
-  editando.value = null;
-}
-
-async function guardarEdicion(fila) {
-  guardando.value = true;
+async function cargar() {
+  loading.value = true;
   try {
-    if (fila.tipo === 'Nota') {
-      if (edicion.value.banco !== fila.banco) await actualizarLugarPagoNota(fila.id, edicion.value.banco || '');
-      if (edicion.value.nombre !== fila.nombre || Number(edicion.value.monto) !== fila.monto) {
-        await actualizarCamposNota(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto });
-      }
-    } else if (fila.tipo === 'Factura') {
-      if (edicion.value.banco !== fila.banco) await actualizarLugarPagoFactura(fila.id, edicion.value.banco || '');
-      if (edicion.value.nombre !== fila.nombre || Number(edicion.value.monto) !== fila.monto) {
-        await actualizarCamposFactura(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto });
-      }
-    } else if (fila.tipo === 'Ingreso' || fila.tipo === 'Egreso') {
-      await actualizarMovimientoDinero(fila.id, { banco: edicion.value.banco || null, concepto: edicion.value.nombre, monto: Number(edicion.value.monto) || 0 });
-    }
-    toast.add({ severity: 'success', summary: 'Guardado', detail: 'Cambios guardados.', life: 2500 });
-    editando.value = null;
-    await cargar();
+    const raw = await fetchBancosRaw();
+    filas.value = buildFilas(raw);
+    saldosIncialesPorBanco.value = raw.saldosIncialesPorBanco;
   } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar.', life: 4000 });
-  }
-  guardando.value = false;
-}
-
-// ── Nuevo movimiento manual (Ingreso/Egreso) ──
-const showMovimientoDialog = ref(false);
-const nuevoMovimiento = ref({ tipo: 'Ingreso', banco: null, concepto: '', monto: 0, referencia: '' });
-const guardandoMovimiento = ref(false);
-
-function abrirNuevoMovimiento() {
-  nuevoMovimiento.value = { tipo: 'Ingreso', banco: null, concepto: '', monto: 0, referencia: '' };
-  showMovimientoDialog.value = true;
-}
-async function confirmarNuevoMovimiento() {
-  if (!nuevoMovimiento.value.concepto || !nuevoMovimiento.value.monto) {
-    toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Concepto y monto son obligatorios.', life: 3000 });
-    return;
-  }
-  guardandoMovimiento.value = true;
-  try {
-    await registrarAbonoDinero({
-      fecha: new Date().toISOString().slice(0, 10),
-      tipo: nuevoMovimiento.value.tipo,
-      concepto: nuevoMovimiento.value.concepto,
-      monto: Number(nuevoMovimiento.value.monto),
-      referencia: nuevoMovimiento.value.referencia,
-      banco: nuevoMovimiento.value.banco,
-    });
-    toast.add({ severity: 'success', summary: 'Registrado', detail: 'Movimiento registrado.', life: 2500 });
-    showMovimientoDialog.value = false;
-    await cargar();
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar el movimiento.', life: 4000 });
-  }
-  guardandoMovimiento.value = false;
-}
-
-// ── Nuevo retiro ──
-const showRetiroDialog = ref(false);
-const nuevoRetiro = ref({ banco: null, monto: null, motivo: '' });
-const archivoRetiro = ref(null);
-const guardandoRetiro = ref(false);
-
-function abrirNuevoRetiro() {
-  nuevoRetiro.value = { banco: null, monto: null, motivo: '' };
-  archivoRetiro.value = null;
-  showRetiroDialog.value = true;
-}
-function onArchivoRetiroChange(e) {
-  const files = e?.target?.files;
-  archivoRetiro.value = files && files.length ? files[0] : null;
-}
-async function confirmarNuevoRetiro() {
-  if (!nuevoRetiro.value.banco || !nuevoRetiro.value.monto || !archivoRetiro.value) {
-    toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Banco, monto y comprobante son obligatorios.', life: 3000 });
-    return;
-  }
-  guardandoRetiro.value = true;
-  try {
-    await crearRetiro({ banco: nuevoRetiro.value.banco, monto: nuevoRetiro.value.monto, motivo: nuevoRetiro.value.motivo, archivo: archivoRetiro.value });
-    toast.add({ severity: 'success', summary: 'Registrado', detail: 'Retiro registrado, pendiente de aprobación.', life: 3000 });
-    showRetiroDialog.value = false;
-    await cargar();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo registrar el retiro.', life: 4000 });
-  }
-  guardandoRetiro.value = false;
-}
-
-async function aprobar(fila) {
-  try {
-    await aprobarRetiro(fila.id);
-    toast.add({ severity: 'success', summary: 'Aprobado', detail: 'Retiro aprobado.', life: 2500 });
-    await cargar();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo aprobar.', life: 4000 });
-  }
-}
-async function rechazar(fila) {
-  try {
-    await rechazarRetiro(fila.id);
-    toast.add({ severity: 'success', summary: 'Rechazado', detail: 'Retiro rechazado.', life: 2500 });
-    await cargar();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo rechazar.', life: 4000 });
-  }
-}
-
-// Mover una fila un lugar arriba/abajo (adyacente en filasOrdenadas, sin
-// filtros — igual que Reportes de Servicio: mover con filtros puestos
-// intercambiaría con una fila que ni se ve en pantalla).
-const moviendoKey = ref(null);
-function esPrimeraFila(fila) {
-  return filasOrdenadas.value[0]?.key === fila.key;
-}
-function esUltimaFila(fila) {
-  const lista = filasOrdenadas.value;
-  return lista[lista.length - 1]?.key === fila.key;
-}
-async function moverFila(fila, direccion) {
-  const lista = [...filasOrdenadas.value];
-  const idx = lista.findIndex(f => f.key === fila.key);
-  const destino = idx + direccion;
-  if (idx === -1 || destino < 0 || destino >= lista.length) return;
-  [lista[idx], lista[destino]] = [lista[destino], lista[idx]];
-
-  moviendoKey.value = fila.key;
-  try {
-    const orden = lista.map((f, i) => ({ key: f.key, orden: i }));
-    await reordenarBancos(orden);
-    await cargar(false);
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo mover la fila.', life: 3500 });
-  }
-  moviendoKey.value = null;
-}
-
-const validando = ref(null);
-async function toggleValidado(fila) {
-  validando.value = fila.key;
-  try {
-    const nuevoValor = !fila.validado;
-    if (fila.tipo === 'Nota') await actualizarValidadoNota(fila.id, nuevoValor);
-    else if (fila.tipo === 'Factura') await actualizarValidadoFactura(fila.id, nuevoValor);
-    else if (fila.tipo === 'Retiro') await actualizarValidadoRetiro(fila.id, nuevoValor);
-    else if (fila.tipo === 'Pago nota') await actualizarValidadoPagoNota(fila.raw.nota_id, fila.id, nuevoValor);
-    else await actualizarMovimientoDinero(fila.id, { validado: nuevoValor });
-    fila.raw.validado = nuevoValor;
-    await cargar(false);
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar validado.', life: 4000 });
-  }
-  validando.value = null;
-}
-
-let filtroMesInicializado = false;
-async function cargar(resetLoading = true) {
-  if (resetLoading) loading.value = true;
-  try {
-    [notas.value, facturas.value, movimientos.value, retiros.value, pagosNota.value] = await Promise.all([
-      getNotas(), getFacturas(), getMovimientosDinero(), getRetiros(), getPagosNotaTodos(),
-    ]);
-    if (!filtroMesInicializado) {
-      const meses = opcionesFiltroMes.value.filter(o => o.value !== 'todos');
-      if (meses.length) filtroMes.value = meses[0].value;
-      filtroMesInicializado = true;
-    }
-  } catch {
-    notas.value = []; facturas.value = []; movimientos.value = []; retiros.value = []; pagosNota.value = [];
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los comprobantes.', life: 4000 });
+    filas.value = [];
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los bancos.', life: 4000 });
   }
   loading.value = false;
 }
@@ -658,36 +117,59 @@ onMounted(cargar);
   color: var(--color-title);
 }
 
-.comprobantes-toolbar {
-  display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;
-  margin-bottom: 1.25rem; padding: 1rem 1.1rem; border-radius: 16px;
-  background: var(--color-card); border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-1, 0 1px 4px rgba(0, 0, 0, 0.04));
+.bancos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
 }
-.comprobantes-buscador { flex: 1; min-width: 220px; }
-.comprobantes-filtro { min-width: 180px; }
-.comprobantes-toolbar-acciones { display: flex; gap: 0.5rem; margin-left: auto; flex-wrap: wrap; }
-
-.edit-input { width: 100%; min-width: 130px; }
-.form-group { margin-bottom: 1rem; }
-.form-group label { display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.85rem; }
-.w-full { width: 100%; }
-.modal-actions { display: flex; gap: 1rem; justify-content: flex-end; padding-top: 0.5rem; }
-
-.comprobantes-links { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-.link-comprobante { color: var(--color-primary); font-weight: 600; text-decoration: none; }
-.celda-vacia { color: var(--color-border); }
-.monto-positivo { color: var(--color-success); font-weight: 700; }
-.monto-negativo { color: var(--color-error); font-weight: 700; }
-
-.badge {
-  display: inline-flex; align-items: center; padding: 0.25rem 0.75rem;
-  border-radius: 1rem; font-size: 0.78rem; font-weight: 700;
+.banco-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  border-radius: 16px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-1, 0 1px 4px rgba(0, 0, 0, 0.05));
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
-.badge-success { background: color-mix(in srgb, var(--color-success) 22%, transparent); color: var(--color-success); }
-.badge-warning { background: color-mix(in srgb, var(--color-warning) 25%, transparent); color: var(--color-warning); }
-.badge-danger { background: color-mix(in srgb, var(--color-error) 20%, transparent); color: var(--color-error); }
-.badge-info { background: color-mix(in srgb, var(--color-primary) 18%, transparent); color: var(--color-primary); }
+.banco-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-primary);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+.banco-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-primary);
+}
+.banco-card-nombre {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-title);
+}
+.banco-card-saldo {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--color-success);
+}
+.banco-card-saldo.negativo {
+  color: var(--color-error);
+}
+.banco-card-pendiente {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-warning);
+}
+.banco-card-footer {
+  font-size: 0.78rem;
+  color: var(--color-text);
+  opacity: 0.65;
+  margin-top: auto;
+}
 
 @media (max-width: 768px) {
   .bancos-container {
@@ -697,6 +179,5 @@ onMounted(cargar);
   .bancos-total-card {
     padding: 1.1rem;
   }
-  .comprobantes-toolbar-acciones { margin-left: 0; width: 100%; }
 }
 </style>

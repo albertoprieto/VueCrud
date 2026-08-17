@@ -126,7 +126,7 @@ def build_public_url(rel_path: str, request: Request | None = None) -> str:
             rel = rel.lstrip('/')
         if not rel.startswith('uploads/'):
             rel = f"uploads/{rel}"
-    base_env = _os.getenv('BASE_URL_PUBLIC', '').strip()
+    base_env = _os.getenv('BASE_URL_UPLOADS', '').strip()
     if not base_env and request is not None:
         # Fallback a base_url de la request solo si no hay var de entorno
         base_env = str(request.base_url)
@@ -166,6 +166,25 @@ def crear_tabla_retiros_banco():
             creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             aprobado_por VARCHAR(100) NULL,
             aprobado_fecha DATETIME NULL
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
+@app.on_event("startup")
+def crear_tabla_bancos_saldo_inicial():
+    """Saldo con el que arranca cada banco al pasar a producción — para no
+    tener que inventar movimientos históricos, el saldo mostrado en Bancos
+    es este valor + los movimientos ya registrados en el sistema."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bancos_saldo_inicial (
+            banco VARCHAR(100) NOT NULL PRIMARY KEY,
+            saldo_inicial DECIMAL(12,2) NOT NULL DEFAULT 0,
+            actualizado_por VARCHAR(100) NULL,
+            actualizado_fecha DATETIME NULL
         )
     """)
     db.commit()
@@ -8053,6 +8072,42 @@ def rechazar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
     cursor2.close(); cursor.close(); db.close()
     return {"message": "Retiro rechazado"}
 
+@app.put("/retiros-banco/{retiro_id}")
+def editar_retiro_banco(retiro_id: int, data: dict = Body(...), current=Depends(get_current_user)):
+    """Edita monto/motivo de un retiro. Solo mientras está 'pendiente' — una
+    vez aprobado queda como registro fijo (mismo criterio que /eliminar)."""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, estatus FROM retiros_banco WHERE id=%s", (retiro_id,))
+    retiro = cursor.fetchone()
+    if not retiro:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Retiro no encontrado")
+    if retiro.get("estatus") != "pendiente":
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Solo se puede editar un retiro pendiente")
+
+    campos = []
+    valores = []
+    if "monto" in data:
+        monto = float(data["monto"] or 0)
+        if monto <= 0:
+            cursor.close(); db.close()
+            raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
+        campos.append("monto=%s"); valores.append(monto)
+    if "motivo" in data:
+        campos.append("motivo=%s"); valores.append(data["motivo"] or None)
+    if not campos:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+
+    valores.append(retiro_id)
+    cursor2 = db.cursor()
+    cursor2.execute(f"UPDATE retiros_banco SET {', '.join(campos)} WHERE id=%s", valores)
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+    return {"message": "Retiro actualizado", "id": retiro_id}
+
 @app.delete("/retiros-banco/{retiro_id}")
 def eliminar_retiro_banco(retiro_id: int):
     db = get_db_connection()
@@ -8075,6 +8130,40 @@ def eliminar_retiro_banco(retiro_id: int):
     if path and os.path.exists(path):
         os.remove(path)
     return {"message": "Retiro eliminado"}
+
+
+@app.get("/bancos/saldo-inicial")
+def get_saldos_iniciales():
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT banco, saldo_inicial, actualizado_por, actualizado_fecha FROM bancos_saldo_inicial")
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    for r in rows:
+        r["saldo_inicial"] = float(r["saldo_inicial"])
+        if r.get("actualizado_fecha") and hasattr(r["actualizado_fecha"], "isoformat"):
+            r["actualizado_fecha"] = r["actualizado_fecha"].isoformat()
+    return rows
+
+@app.put("/bancos/saldo-inicial/{banco}")
+def set_saldo_inicial(banco: str, data: dict = Body(...), current=Depends(require_admin)):
+    """Saldo con el que arranca este banco al pasar a producción — se suma
+    a los movimientos ya registrados para calcular el saldo mostrado.
+    Requiere Admin, igual que aprobar/rechazar retiros."""
+    saldo_inicial = float(data.get("saldo_inicial") or 0)
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute(
+        """INSERT INTO bancos_saldo_inicial (banco, saldo_inicial, actualizado_por, actualizado_fecha)
+           VALUES (%s, %s, %s, NOW())
+           ON DUPLICATE KEY UPDATE saldo_inicial=VALUES(saldo_inicial), actualizado_por=VALUES(actualizado_por), actualizado_fecha=NOW()""",
+        (banco, saldo_inicial, current.get("username"))
+    )
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"message": "Saldo inicial actualizado", "banco": banco, "saldo_inicial": saldo_inicial}
 
 
 # ═══════════════════════════════════════════════════════════════════════
