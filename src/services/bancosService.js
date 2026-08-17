@@ -34,6 +34,21 @@ export async function actualizarValidadoRetiro(id, validado) {
   return res.data;
 }
 
+export async function editarRetiro(id, { monto, motivo }) {
+  const res = await axios.put(`${API_URL}/retiros-banco/${id}`, { monto, motivo });
+  return res.data;
+}
+
+export async function getSaldosIniciales() {
+  const res = await axios.get(`${API_URL}/bancos/saldo-inicial`);
+  return res.data;
+}
+
+export async function setSaldoInicial(banco, saldo_inicial) {
+  const res = await axios.put(`${API_URL}/bancos/saldo-inicial/${encodeURIComponent(banco)}`, { saldo_inicial });
+  return res.data;
+}
+
 export async function reordenarBancos(orden) {
   const res = await axios.put(`${API_URL}/bancos/reordenar`, { orden });
   return res.data;
