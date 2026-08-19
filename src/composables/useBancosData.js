@@ -15,6 +15,14 @@ export function urlComprobante(path) {
   return `${API_URL}${p}`;
 }
 
+// Tri-estado de validación (pendiente/aprobado/rechazado) — para Retiro viene
+// directo del campo `estatus`; para el resto se guarda como código 0/1/2 en
+// la columna `validado` (0=pendiente, 1=aprobado, 2=rechazado).
+const ESTADO_POR_CODIGO_VALIDACION = ['pendiente', 'aprobado', 'rechazado'];
+export function estadoValidacion(codigo) {
+  return ESTADO_POR_CODIGO_VALIDACION[Number(codigo) || 0] || 'pendiente';
+}
+
 export function parseComprobantes(raw) {
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') {
@@ -49,6 +57,7 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota })
       comprobantes: parseComprobantes(n.comprobantes).map(urlComprobante),
       estatus: n.status,
       validado: !!n.validado,
+      estatusValidacion: estadoValidacion(n.validado),
       orden_manual: n.orden_manual,
       raw: n,
     });
@@ -65,6 +74,7 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota })
       comprobantes,
       estatus: f.status,
       validado: !!f.validado,
+      estatusValidacion: estadoValidacion(f.validado),
       orden_manual: f.orden_manual,
       raw: f,
     });
@@ -76,9 +86,10 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota })
       nombre: m.concepto || '', usuario: '',
       imeis: '',
       monto: Number(m.monto) || 0,
-      comprobantes: [],
+      comprobantes: m.comprobante_url ? [m.comprobante_url] : [],
       estatus: '',
       validado: !!m.validado,
+      estatusValidacion: estadoValidacion(m.validado),
       orden_manual: m.orden_manual,
       raw: m,
     });
@@ -93,6 +104,7 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota })
       comprobantes: r.comprobante_url ? [r.comprobante_url] : [],
       estatus: r.estatus,
       validado: !!r.validado,
+      estatusValidacion: r.estatus || 'pendiente',
       orden_manual: r.orden_manual,
       raw: r,
     });
@@ -107,6 +119,7 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota })
       comprobantes: p.comprobante_url ? [p.comprobante_url] : [],
       estatus: '',
       validado: !!p.validado,
+      estatusValidacion: estadoValidacion(p.validado),
       orden_manual: p.orden_manual,
       raw: p,
     });

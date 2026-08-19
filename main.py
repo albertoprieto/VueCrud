@@ -1286,32 +1286,92 @@ class MovimientoDinero(BaseModel):
     banco: Optional[str] = None
 
 @app.get("/movimientos-dinero")
-def get_movimientos_dinero():
+def get_movimientos_dinero(request: Request = None):
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM movimientos_dinero ORDER BY fecha DESC")
     movimientos = cursor.fetchall()
+    for m in movimientos:
+        m["comprobante_url"] = build_public_url(m.get("comprobante_path"), request)
     cursor.close()
     db.close()
     return movimientos
 
 @app.post("/movimientos-dinero")
-def add_movimiento_dinero(mov: MovimientoDinero):
+def add_movimiento_dinero(
+    fecha: str = Form(...),
+    tipo: str = Form(...),
+    concepto: str = Form(...),
+    monto: float = Form(...),
+    referencia: str = Form(""),
+    banco: str = Form(None),
+    archivo: UploadFile = File(None),
+    request: Request = None,
+):
+    import shutil
     db = get_db_connection()
     cursor = db.cursor()
-    try:
-        cursor.execute("ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL")
-        db.commit()
-    except Exception:
-        pass
+    for _col_sql in (
+        "ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL",
+        "ALTER TABLE movimientos_dinero ADD COLUMN comprobante_path VARCHAR(500) NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+            db.commit()
+        except Exception:
+            pass
+
+    rel_path = None
+    if archivo is not None and archivo.filename:
+        safe_banco = ''.join(c for c in (banco or '') if c.isalnum() or c in ('-', '_', ' ')).strip() or "SinBanco"
+        base_dir = os.path.join("uploads", "movimientos", safe_banco)
+        os.makedirs(base_dir, exist_ok=True)
+        filename = ''.join(c for c in archivo.filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip() or "comprobante"
+        dest_path = os.path.join(base_dir, filename)
+        base_name, ext = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(dest_path):
+            dest_path = os.path.join(base_dir, f"{base_name}_{counter}{ext}")
+            counter += 1
+        with open(dest_path, "wb") as out:
+            shutil.copyfileobj(archivo.file, out)
+        rel_path = dest_path.replace("\\", "/")
+
     cursor.execute(
-        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia, banco) VALUES (%s, %s, %s, %s, %s, %s)",
-        (mov.fecha, mov.tipo, mov.concepto, mov.monto, mov.referencia, mov.banco)
+        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia, banco, comprobante_path) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (fecha, tipo, concepto, monto, referencia, banco, rel_path)
     )
     db.commit()
+    new_id = cursor.lastrowid
     cursor.close()
     db.close()
-    return {"message": "Movimiento registrado"}
+    return {
+        "message": "Movimiento registrado",
+        "id": new_id,
+        "comprobante_path": rel_path,
+        "comprobante_url": build_public_url(rel_path, request),
+    }
+
+@app.delete("/movimientos-dinero/{movimiento_id}/comprobante")
+def eliminar_comprobante_movimiento_dinero(movimiento_id: int):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT comprobante_path FROM movimientos_dinero WHERE id=%s", (movimiento_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    path = row.get("comprobante_path")
+    cursor2 = db.cursor()
+    cursor2.execute("UPDATE movimientos_dinero SET comprobante_path=NULL WHERE id=%s", (movimiento_id,))
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+    if path and os.path.exists(path):
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+    return {"message": "Comprobante eliminado"}
 
 @app.put("/movimientos-dinero/{movimiento_id}")
 def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
@@ -5656,9 +5716,11 @@ def editar_campos_nota(nota_id: int, data: dict = Body(...)):
     db.close()
     return {"message": "Campos actualizados", "id": nota_id}
 
+_CODIGO_POR_ESTADO_VALIDACION = {'pendiente': 0, 'aprobado': 1, 'rechazado': 2}
+
 @app.put("/notas-pago/{nota_id}/validado")
 def validar_nota_pago(nota_id: int, data: dict = Body(...)):
-    validado = 1 if data.get('validado') else 0
+    validado = _CODIGO_POR_ESTADO_VALIDACION.get(data.get('estado'), 1 if data.get('validado') else 0)
     db = get_db_connection()
     cursor = db.cursor()
     try:
@@ -6919,6 +6981,25 @@ def cancelar_pago_ppd(factura_id: int, pago_id: int, data: CancelarPagoPpdReques
     # se revierte — mejor forzar una revisión manual que dejar 'pagado'
     # mintiendo sobre un CFDI de pago que ya no existe ante el SAT.
     cursor.execute("UPDATE facturas_pago SET pagado=0 WHERE id=%s", (factura_id,))
+
+    # Los complementos restantes quedan con saldo_anterior/saldo_insoluto/
+    # parcialidad calculados contra uno que ya no cuenta — se recalcula la
+    # cadena completa contra los que siguen 'Timbrado', en el mismo orden.
+    cursor.execute("SELECT total FROM facturas_pago WHERE id=%s", (factura_id,))
+    factura_total = float(cursor.fetchone()[0])
+    cursor.execute(
+        "SELECT id, monto FROM pagos_ppd WHERE factura_id=%s AND status='Timbrado' ORDER BY parcialidad ASC, id ASC",
+        (factura_id,)
+    )
+    acumulado = 0.0
+    for idx, (pid, monto) in enumerate(cursor.fetchall(), start=1):
+        saldo_anterior = round(factura_total - acumulado, 2)
+        acumulado += float(monto)
+        saldo_insoluto = round(factura_total - acumulado, 2)
+        cursor.execute(
+            "UPDATE pagos_ppd SET parcialidad=%s, saldo_anterior=%s, saldo_insoluto=%s WHERE id=%s",
+            (idx, saldo_anterior, saldo_insoluto, pid)
+        )
     db.commit()
     cursor.close()
     db.close()
@@ -7015,6 +7096,11 @@ def cancelar_factura_pago(factura_id: int, data: CancelarFacturaPagoRequest, cur
     if not factura.get("cfdi_uuid"):
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="La factura no tiene UUID de CFDI")
+
+    cursor.execute("SELECT COUNT(*) AS n FROM pagos_ppd WHERE factura_id=%s AND status='Timbrado'", (factura_id,))
+    if cursor.fetchone()["n"] > 0:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Esta factura tiene complementos de pago (REP) timbrados — cancélalos primero")
     cursor.close()
     db.close()
 
@@ -7234,7 +7320,7 @@ def editar_campos_factura(factura_id: int, data: dict = Body(...)):
 
 @app.put("/facturas-pago/{factura_id}/validado")
 def validar_factura_pago(factura_id: int, data: dict = Body(...)):
-    validado = 1 if data.get('validado') else 0
+    validado = _CODIGO_POR_ESTADO_VALIDACION.get(data.get('estado'), 1 if data.get('validado') else 0)
     db = get_db_connection()
     cursor = db.cursor()
     try:
@@ -7924,7 +8010,7 @@ def crear_pago_nota_desde_comprobante(nota_id: int, data: dict = Body(...), requ
 
 @app.put("/notas-pago/{nota_id}/pagos/{pago_id}/validado")
 def validar_pago_nota(nota_id: int, pago_id: int, data: dict = Body(...)):
-    validado = 1 if data.get('validado') else 0
+    validado = _CODIGO_POR_ESTADO_VALIDACION.get(data.get('estado'), 1 if data.get('validado') else 0)
     db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE pagos_nota SET validado=%s WHERE id=%s AND nota_id=%s", (validado, pago_id, nota_id))
@@ -8029,9 +8115,9 @@ def aprobar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
     user = cursor.fetchone()
-    if not user or user.get("perfil") != "Admin":
+    if not user:
         cursor.close(); db.close()
-        raise HTTPException(status_code=403, detail="No autorizado")
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     cursor.execute("SELECT id, estatus FROM retiros_banco WHERE id=%s", (retiro_id,))
     retiro = cursor.fetchone()
@@ -8054,9 +8140,9 @@ def rechazar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
     user = cursor.fetchone()
-    if not user or user.get("perfil") != "Admin":
+    if not user:
         cursor.close(); db.close()
-        raise HTTPException(status_code=403, detail="No autorizado")
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     cursor.execute("SELECT id FROM retiros_banco WHERE id=%s", (retiro_id,))
     if not cursor.fetchone():
@@ -8071,6 +8157,23 @@ def rechazar_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
     db.commit()
     cursor2.close(); cursor.close(); db.close()
     return {"message": "Retiro rechazado"}
+
+@app.put("/retiros-banco/{retiro_id}/pendiente")
+def marcar_pendiente_retiro_banco(retiro_id: int, current=Depends(get_current_user)):
+    """Regresa un retiro a 'pendiente' (tercer estado del selector de estatus)."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM retiros_banco WHERE id=%s", (retiro_id,))
+    if not cursor.fetchone():
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Retiro no encontrado")
+    cursor.execute(
+        "UPDATE retiros_banco SET estatus='pendiente', aprobado_por=NULL, aprobado_fecha=NULL WHERE id=%s",
+        (retiro_id,)
+    )
+    db.commit()
+    cursor.close(); db.close()
+    return {"message": "Retiro marcado como pendiente"}
 
 @app.put("/retiros-banco/{retiro_id}")
 def editar_retiro_banco(retiro_id: int, data: dict = Body(...), current=Depends(get_current_user)):
@@ -8117,9 +8220,6 @@ def eliminar_retiro_banco(retiro_id: int):
     if not retiro:
         cursor.close(); db.close()
         raise HTTPException(status_code=404, detail="Retiro no encontrado")
-    if retiro.get("estatus") != "pendiente":
-        cursor.close(); db.close()
-        raise HTTPException(status_code=400, detail="Solo se puede eliminar un retiro pendiente")
 
     cursor2 = db.cursor()
     cursor2.execute("DELETE FROM retiros_banco WHERE id=%s", (retiro_id,))
