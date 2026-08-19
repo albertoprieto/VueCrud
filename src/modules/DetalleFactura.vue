@@ -18,9 +18,12 @@
             class="p-button-outlined p-button-success" @click="abrirAgregarDialog"
           />
           <Button
-            v-if="item.status === 'Timbrado' && esAdmin" icon="pi pi-ban" label="Cancelar factura"
+            v-if="item.status === 'Timbrado' && esAdmin && !tieneRepsTimbrados" icon="pi pi-ban" label="Cancelar factura"
             class="p-button-danger p-button-outlined" @click="abrirCancelarDialog"
           />
+          <span v-if="item.status === 'Timbrado' && esAdmin && tieneRepsTimbrados" style="font-size:0.8rem;opacity:0.7;">
+            Cancela primero los complementos de pago (REP) para poder cancelar esta factura.
+          </span>
         </div>
       </div>
 
@@ -1058,6 +1061,9 @@ const totalPagadoPpd = computed(() =>
   pagosPpd.value.filter(p => p.status === 'Timbrado').reduce((sum, p) => sum + Number(p.monto || 0), 0)
 );
 const saldoPendientePpd = computed(() => Math.max(0, round2(Number(item.value?.total || 0) - totalPagadoPpd.value)));
+// No se puede cancelar el CFDI de ingreso mientras existan complementos de
+// pago (REP) timbrados apuntando a él — el backend lo rechaza igual.
+const tieneRepsTimbrados = computed(() => pagosPpd.value.some(p => p.status === 'Timbrado'));
 function round2(n) { return Math.round(n * 100) / 100; }
 
 function labelFormaPago(codigo) {

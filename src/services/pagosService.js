@@ -48,8 +48,8 @@ export async function eliminarNota(id) {
   return res.data;
 }
 
-export async function actualizarValidadoNota(id, validado) {
-  const res = await axios.put(`${API_URL}/notas-pago/${id}/validado`, { validado });
+export async function actualizarValidadoNota(id, estado) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/validado`, { estado });
   return res.data;
 }
 
@@ -85,8 +85,8 @@ export async function eliminarPagoNota(id, pagoId) {
   return res.data;
 }
 
-export async function actualizarValidadoPagoNota(id, pagoId, validado) {
-  const res = await axios.put(`${API_URL}/notas-pago/${id}/pagos/${pagoId}/validado`, { validado });
+export async function actualizarValidadoPagoNota(id, pagoId, estado) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/pagos/${pagoId}/validado`, { estado });
   return res.data;
 }
 
@@ -167,8 +167,8 @@ export async function eliminarFactura(id) {
   return res.data;
 }
 
-export async function actualizarValidadoFactura(id, validado) {
-  const res = await axios.put(`${API_URL}/facturas-pago/${id}/validado`, { validado });
+export async function actualizarValidadoFactura(id, estado) {
+  const res = await axios.put(`${API_URL}/facturas-pago/${id}/validado`, { estado });
   return res.data;
 }
 

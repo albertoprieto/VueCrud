@@ -29,6 +29,11 @@ export async function rechazarRetiro(id) {
   return res.data;
 }
 
+export async function marcarPendienteRetiro(id) {
+  const res = await axios.put(`${API_URL}/retiros-banco/${id}/pendiente`);
+  return res.data;
+}
+
 export async function actualizarValidadoRetiro(id, validado) {
   const res = await axios.put(`${API_URL}/retiros-banco/${id}/validado`, { validado });
   return res.data;

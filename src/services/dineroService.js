@@ -7,9 +7,20 @@ export const getMovimientosDineroPorReferencia = async (referencia) => {
   return res.data.filter(mov => mov.referencia && mov.referencia.includes(referencia));
 };
 
-export const registrarAbonoDinero = async (movimiento) => {
+export const registrarAbonoDinero = async ({ archivo, ...movimiento }) => {
   const apiUrl = import.meta.env.VITE_API_URL || '';
-  return axios.post(`${apiUrl}/movimientos-dinero`, movimiento);
+  const fd = new FormData();
+  Object.entries(movimiento).forEach(([k, v]) => { if (v !== undefined && v !== null) fd.append(k, v); });
+  if (archivo) fd.append('archivo', archivo);
+  return axios.post(`${apiUrl}/movimientos-dinero`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const eliminarComprobanteMovimientoDinero = async (id) => {
+  const apiUrl = import.meta.env.VITE_API_URL || '';
+  const res = await axios.delete(`${apiUrl}/movimientos-dinero/${id}/comprobante`);
+  return res.data;
 };
 
 export const getMovimientosDinero = async () => {

@@ -31,26 +31,11 @@
       </div>
 
       <div class="movimientos-card">
-        <DataTable :value="filasFiltradas" responsiveLayout="scroll" :paginator="filasFiltradas.length > 30" :rows="30" dataKey="key">
-          <Column header="Orden" headerStyle="width:3.5rem" style="text-align:center;">
-            <template #body="{ data }">
-              <div style="display:flex;flex-direction:column;gap:0.1rem;" :title="filtrosActivos ? 'Quita los filtros para poder reordenar' : ''">
-                <Button
-                  icon="pi pi-chevron-up" class="p-button-sm p-button-text"
-                  style="padding:0.15rem;width:1.8rem;height:1.4rem;"
-                  :disabled="filtrosActivos || esPrimeraFila(data) || moviendoKey !== null"
-                  :loading="moviendoKey === data.key"
-                  @click="moverFila(data, -1)"
-                />
-                <Button
-                  icon="pi pi-chevron-down" class="p-button-sm p-button-text"
-                  style="padding:0.15rem;width:1.8rem;height:1.4rem;"
-                  :disabled="filtrosActivos || esUltimaFila(data) || moviendoKey !== null"
-                  @click="moverFila(data, 1)"
-                />
-              </div>
-            </template>
-          </Column>
+        <DataTable
+          :value="filasFiltradas" responsiveLayout="scroll" :paginator="filasFiltradas.length > 30" :rows="30" dataKey="key"
+          :reorderableRows="!filtrosActivos" @row-reorder="onRowReorder"
+        >
+          <Column rowReorder headerStyle="width:3rem" :reorderableColumn="false" :title="filtrosActivos ? 'Quita los filtros para poder reordenar' : 'Arrastra para reordenar'" />
           <Column field="tipo" header="Tipo" style="width:100px">
             <template #body="{ data }"><span :class="'badge badge-' + badgeClaseTipo(data.tipo)">{{ data.tipo }}</span></template>
           </Column>
@@ -87,20 +72,30 @@
             <template #body="{ data }">
               <span v-if="!data.comprobantes.length" class="celda-vacia">—</span>
               <div v-else class="comprobantes-links">
-                <a v-for="(url, i) in data.comprobantes" :key="i" :href="url" target="_blank" rel="noopener noreferrer" class="link-comprobante" :title="'Ver comprobante ' + (i + 1)">
-                  <i class="pi pi-file" /> {{ data.comprobantes.length > 1 ? i + 1 : '' }}
-                </a>
+                <span v-for="(url, i) in data.comprobantes" :key="i" class="comprobante-item">
+                  <a :href="url" target="_blank" rel="noopener noreferrer" class="link-comprobante" :title="'Ver comprobante ' + (i + 1)">
+                    <i class="pi pi-file" /> {{ data.comprobantes.length > 1 ? i + 1 : '' }}
+                  </a>
+                  <Button
+                    v-if="(data.tipo === 'Ingreso' || data.tipo === 'Egreso')"
+                    icon="pi pi-trash" class="p-button-sm p-button-text p-button-danger" style="padding:0.1rem;"
+                    :loading="eliminandoComprobanteKey === data.key"
+                    title="Eliminar comprobante"
+                    @click="eliminarComprobanteMovimiento(data)"
+                  />
+                </span>
               </div>
             </template>
           </Column>
-          <Column header="Validado" style="width:110px">
+          <Column header="Validado" style="width:150px">
             <template #body="{ data }">
-              <Button
-                :icon="data.validado ? 'pi pi-check-circle' : 'pi pi-circle'"
-                :label="data.validado ? 'Validado' : 'Validar'"
-                :class="'p-button-sm ' + (data.validado ? 'p-button-success' : 'p-button-outlined p-button-secondary')"
-                :loading="validando === data.key"
-                @click="toggleValidado(data)"
+              <Dropdown
+                :modelValue="data.estatusValidacion"
+                :options="opcionesEstatusValidacion"
+                optionLabel="label" optionValue="value"
+                :class="'estatus-dropdown estatus-' + data.estatusValidacion"
+                :disabled="validandoKey === data.key"
+                @update:modelValue="v => cambiarEstadoValidacion(data, v)"
               />
             </template>
           </Column>
@@ -114,19 +109,14 @@
                 <template v-else>
                   <Button v-if="esEditable(data)" icon="pi pi-pencil" class="p-button-sm p-button-text" @click="iniciarEdicion(data)" />
                   <Button
-                    v-if="data.tipo === 'Retiro' && data.estatus === 'pendiente'"
+                    v-if="data.tipo === 'Retiro'"
                     icon="pi pi-trash" class="p-button-sm p-button-text p-button-danger"
                     :loading="procesandoId === data.id" @click="eliminarRetiroFila(data)"
                   />
                   <Button
-                    v-if="data.tipo === 'Retiro' && data.estatus === 'pendiente' && esAdmin"
-                    icon="pi pi-check" label="Aprobar" class="p-button-sm p-button-success"
-                    :loading="procesandoId === data.id" @click="aprobar(data.id)"
-                  />
-                  <Button
-                    v-if="data.tipo === 'Retiro' && data.estatus === 'pendiente' && esAdmin"
-                    icon="pi pi-times" label="Rechazar" class="p-button-sm p-button-danger p-button-outlined"
-                    :loading="procesandoId === data.id" @click="rechazar(data.id)"
+                    v-if="data.tipo === 'Ingreso' || data.tipo === 'Egreso'"
+                    icon="pi pi-trash" class="p-button-sm p-button-text p-button-danger"
+                    :loading="eliminandoMovimientoKey === data.key" @click="eliminarMovimientoFila(data)"
                   />
                   <router-link v-if="data.tipo === 'Nota'" :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
                   <router-link v-else-if="data.tipo === 'Factura'" :to="{ name: 'detalle-factura', params: { id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
@@ -156,6 +146,10 @@
       <div class="form-group">
         <label>Referencia (opcional)</label>
         <InputText v-model="nuevoMovimiento.referencia" class="w-full" />
+      </div>
+      <div class="form-group">
+        <label>Comprobante (opcional)</label>
+        <input type="file" accept="application/pdf,image/*" @change="onMovimientoFileChange" />
       </div>
       <div class="modal-actions">
         <Button label="Registrar" icon="pi pi-check" :loading="guardandoMovimiento" @click="confirmarNuevoMovimiento" />
@@ -233,10 +227,10 @@ import {
   actualizarValidadoPagoNota,
 } from '@/services/pagosService';
 import {
-  crearRetiro, aprobarRetiro, rechazarRetiro, actualizarValidadoRetiro, reordenarBancos,
+  crearRetiro, aprobarRetiro, rechazarRetiro, marcarPendienteRetiro, reordenarBancos,
   editarRetiro, eliminarRetiro, setSaldoInicial,
 } from '@/services/bancosService';
-import { registrarAbonoDinero, actualizarMovimientoDinero } from '@/services/dineroService';
+import { registrarAbonoDinero, actualizarMovimientoDinero, eliminarComprobanteMovimientoDinero, eliminarMovimientoDinero } from '@/services/dineroService';
 import { fetchBancosRaw, buildFilas, calcularSaldoBanco } from '@/composables/useBancosData';
 
 const props = defineProps({ nombre: { type: String, required: true } });
@@ -340,32 +334,19 @@ const filasFiltradas = computed(() => {
   });
 });
 
-// Mover una fila un lugar arriba/abajo (adyacente en filasOrdenadas, sin
-// filtros — mover con filtros puestos intercambiaría con una fila que ni se ve).
-const moviendoKey = ref(null);
-function esPrimeraFila(fila) {
-  return filasOrdenadas.value[0]?.key === fila.key;
-}
-function esUltimaFila(fila) {
-  const lista = filasOrdenadas.value;
-  return lista[lista.length - 1]?.key === fila.key;
-}
-async function moverFila(fila, direccion) {
-  const lista = [...filasOrdenadas.value];
-  const idx = lista.findIndex(f => f.key === fila.key);
-  const destino = idx + direccion;
-  if (idx === -1 || destino < 0 || destino >= lista.length) return;
-  [lista[idx], lista[destino]] = [lista[destino], lista[idx]];
-
-  moviendoKey.value = fila.key;
+// Reordenar arrastrando filas (PrimeVue rowReorder) — reemplaza las flechas
+// subir/bajar, permite mover una fila varios lugares de un solo jalón.
+// Deshabilitado con filtros activos (event.value vendría de la lista filtrada,
+// no de filasOrdenadas completa, y desalinearía los índices).
+async function onRowReorder(event) {
+  const orden = event.value.map((f, i) => ({ key: f.key, orden: i }));
   try {
-    const orden = lista.map((f, i) => ({ key: f.key, orden: i }));
     await reordenarBancos(orden);
+    toast.add({ severity: 'success', summary: 'Orden actualizado', detail: 'Fila movida.', life: 2000 });
     await cargar(false);
   } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo mover la fila.', life: 3500 });
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo reordenar.', life: 3500 });
   }
-  moviendoKey.value = null;
 }
 
 // ── Edición inline (nombre, monto) ──
@@ -398,11 +379,24 @@ async function guardarEdicion(fila) {
     }
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Cambios guardados.', life: 2500 });
     editando.value = null;
-    await cargar();
+    await cargar(false);
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo guardar.', life: 4000 });
   }
   guardando.value = false;
+}
+
+const eliminandoMovimientoKey = ref(null);
+async function eliminarMovimientoFila(fila) {
+  eliminandoMovimientoKey.value = fila.key;
+  try {
+    await eliminarMovimientoDinero(fila.id);
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Movimiento eliminado.', life: 2500 });
+    await cargar(false);
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo eliminar el movimiento.', life: 4000 });
+  }
+  eliminandoMovimientoKey.value = null;
 }
 
 async function eliminarRetiroFila(fila) {
@@ -410,38 +404,65 @@ async function eliminarRetiroFila(fila) {
   try {
     await eliminarRetiro(fila.id);
     toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Retiro eliminado.', life: 2500 });
-    await cargar();
+    await cargar(false);
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo eliminar el retiro.', life: 4000 });
   }
   procesandoId.value = null;
 }
 
-const validando = ref(null);
-async function toggleValidado(fila) {
-  validando.value = fila.key;
+// Un solo selector con 3 estados (pendiente/validado/rechazado) para toda fila
+// — reemplaza el toggle booleano de Validado y los botones separados de
+// Aprobar/Rechazar de Retiro. Cualquier usuario logueado puede moverlo, no
+// solo Admin. cargar(false) para no tapar la tabla con el spinner de carga
+// inicial en cada cambio, solo refresca los datos en su lugar.
+const opcionesEstatusValidacion = [
+  { label: 'Pendiente', value: 'pendiente' },
+  { label: 'Validado', value: 'aprobado' },
+  { label: 'Rechazado', value: 'rechazado' },
+];
+const CODIGO_POR_ESTADO = { pendiente: 0, aprobado: 1, rechazado: 2 };
+const validandoKey = ref(null);
+async function cambiarEstadoValidacion(fila, nuevoEstado) {
+  if (nuevoEstado === fila.estatusValidacion) return;
+  validandoKey.value = fila.key;
   try {
-    const nuevoValor = !fila.validado;
-    if (fila.tipo === 'Nota') await actualizarValidadoNota(fila.id, nuevoValor);
-    else if (fila.tipo === 'Factura') await actualizarValidadoFactura(fila.id, nuevoValor);
-    else if (fila.tipo === 'Retiro') await actualizarValidadoRetiro(fila.id, nuevoValor);
-    else if (fila.tipo === 'Pago nota') await actualizarValidadoPagoNota(fila.raw.nota_id, fila.id, nuevoValor);
-    else await actualizarMovimientoDinero(fila.id, { validado: nuevoValor });
-    await cargar();
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar validado.', life: 4000 });
+    if (fila.tipo === 'Retiro') {
+      if (nuevoEstado === 'aprobado') await aprobarRetiro(fila.id);
+      else if (nuevoEstado === 'rechazado') await rechazarRetiro(fila.id);
+      else await marcarPendienteRetiro(fila.id);
+    } else if (fila.tipo === 'Nota') {
+      await actualizarValidadoNota(fila.id, nuevoEstado);
+    } else if (fila.tipo === 'Factura') {
+      await actualizarValidadoFactura(fila.id, nuevoEstado);
+    } else if (fila.tipo === 'Pago nota') {
+      await actualizarValidadoPagoNota(fila.raw.nota_id, fila.id, nuevoEstado);
+    } else {
+      await actualizarMovimientoDinero(fila.id, { validado: CODIGO_POR_ESTADO[nuevoEstado] });
+    }
+    const etiqueta = opcionesEstatusValidacion.find(o => o.value === nuevoEstado)?.label || nuevoEstado;
+    toast.add({ severity: 'success', summary: 'Estatus actualizado', detail: `Marcado como ${etiqueta}.`, life: 2000 });
+    await cargar(false);
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo actualizar el estatus.', life: 4000 });
   }
-  validando.value = null;
+  validandoKey.value = null;
 }
 
 // ── Nuevo movimiento manual (banco fijo = este) ──
 const movimientoDialogVisible = ref(false);
 const nuevoMovimiento = ref({ tipo: 'Ingreso', concepto: '', monto: 0, referencia: '' });
+const nuevoMovimientoArchivo = ref(null);
 const guardandoMovimiento = ref(false);
 
 function abrirNuevoMovimiento() {
   nuevoMovimiento.value = { tipo: 'Ingreso', concepto: '', monto: 0, referencia: '' };
+  nuevoMovimientoArchivo.value = null;
   movimientoDialogVisible.value = true;
+}
+function onMovimientoFileChange(event) {
+  const files = event?.target?.files;
+  nuevoMovimientoArchivo.value = files && files.length ? files[0] : null;
 }
 async function confirmarNuevoMovimiento() {
   if (!nuevoMovimiento.value.concepto || !nuevoMovimiento.value.monto) {
@@ -457,14 +478,28 @@ async function confirmarNuevoMovimiento() {
       monto: Number(nuevoMovimiento.value.monto),
       referencia: nuevoMovimiento.value.referencia,
       banco: nombre.value,
+      archivo: nuevoMovimientoArchivo.value,
     });
     toast.add({ severity: 'success', summary: 'Registrado', detail: 'Movimiento registrado.', life: 2500 });
     movimientoDialogVisible.value = false;
-    await cargar();
+    await cargar(false);
   } catch {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar el movimiento.', life: 4000 });
   }
   guardandoMovimiento.value = false;
+}
+
+const eliminandoComprobanteKey = ref(null);
+async function eliminarComprobanteMovimiento(fila) {
+  eliminandoComprobanteKey.value = fila.key;
+  try {
+    await eliminarComprobanteMovimientoDinero(fila.id);
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Comprobante eliminado.', life: 2500 });
+    await cargar(false);
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el comprobante.', life: 4000 });
+  }
+  eliminandoComprobanteKey.value = null;
 }
 
 // ── Registrar retiro (banco fijo = este) ──
@@ -494,34 +529,11 @@ async function confirmarRetiro() {
     });
     toast.add({ severity: 'success', summary: 'Registrado', detail: 'Retiro registrado, pendiente de aprobación.', life: 3000 });
     retiroDialogVisible.value = false;
-    await cargar();
+    await cargar(false);
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo registrar el retiro.', life: 4000 });
   }
   guardandoRetiro.value = false;
-}
-
-async function aprobar(id) {
-  procesandoId.value = id;
-  try {
-    await aprobarRetiro(id);
-    toast.add({ severity: 'success', summary: 'Aprobado', detail: 'Retiro aprobado correctamente.', life: 3000 });
-    await cargar();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo aprobar el retiro.', life: 4000 });
-  }
-  procesandoId.value = null;
-}
-async function rechazar(id) {
-  procesandoId.value = id;
-  try {
-    await rechazarRetiro(id);
-    toast.add({ severity: 'success', summary: 'Rechazado', detail: 'Retiro rechazado.', life: 3000 });
-    await cargar();
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo rechazar el retiro.', life: 4000 });
-  }
-  procesandoId.value = null;
 }
 
 async function cargar(resetLoading = true) {
@@ -561,7 +573,7 @@ async function confirmarSaldoInicial() {
     await setSaldoInicial(nombre.value, Number(saldoInicialForm.value) || 0);
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Saldo inicial actualizado.', life: 2500 });
     saldoInicialDialogVisible.value = false;
-    await cargar();
+    await cargar(false);
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo guardar el saldo inicial.', life: 4000 });
   }
@@ -638,6 +650,7 @@ onMounted(cargar);
 .monto-positivo { color: var(--color-success); font-weight: 700; }
 .monto-negativo { color: var(--color-error); font-weight: 700; }
 .comprobantes-links { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.comprobante-item { display: flex; align-items: center; gap: 0.1rem; }
 .link-comprobante { color: var(--color-primary); font-weight: 600; text-decoration: none; }
 .celda-vacia { color: var(--color-border); }
 .edit-input { width: 100%; min-width: 130px; }
@@ -664,6 +677,10 @@ onMounted(cargar);
   font-size: 0.85rem;
 }
 .w-full { width: 100%; }
+.estatus-dropdown { width: 100%; }
+.estatus-dropdown.estatus-aprobado :deep(.p-dropdown-label) { color: var(--color-success); font-weight: 700; }
+.estatus-dropdown.estatus-rechazado :deep(.p-dropdown-label) { color: var(--color-error); font-weight: 700; }
+.estatus-dropdown.estatus-pendiente :deep(.p-dropdown-label) { color: var(--color-warning); font-weight: 700; }
 
 @media (max-width: 768px) {
   .detalle-banco-container {
