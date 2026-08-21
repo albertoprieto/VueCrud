@@ -209,7 +209,8 @@
                 icon="pi pi-file-pdf"
                 class="p-button-sm p-button-warning"
                 label="Reporte"
-                @click="consultarReporteServicio(slotProps.data)"
+                :loading="loading"
+                @click="verReporteServicio(slotProps.data)"
               />
               <!-- Ver comprobante cuando existe -->
               <a v-if="slotProps.data.comprobante_path" :href="urlComprobante(slotProps.data)" target="_blank" rel="noopener noreferrer" style="display: contents;">
@@ -448,24 +449,6 @@
         </div>
       </form>
     </Dialog>
-
-    <!-- Dialog: Adjuntar comprobante al PDF de servicio -->
-    <Dialog v-model:visible="showDescargarReporteDialog" header="Reporte de Servicio" :modal="true" :style="{ width: '440px' }">
-      <div style="margin-bottom:1.2rem;">
-        <label style="font-weight:600;display:block;margin-bottom:0.5rem;">Adjuntar comprobante de pago al PDF <span style="font-weight:400;color:#888;">(opcional)</span></label>
-        <div v-if="reporteDescargando?.comprobante_path" style="background:#e3f2fd;border-radius:6px;padding:0.5rem 0.75rem;margin-bottom:0.6rem;color:#1565c0;font-size:0.9em;">
-          ✓ Este reporte tiene comprobante guardado — se incluirá automáticamente en el PDF.
-        </div>
-        <input type="file" accept="image/png,image/jpeg,image/jpg" @change="onComprobanteReporteChange" style="width:100%;" />
-        <small v-if="comprobanteReporteDataUrl" style="color:#28a745;display:block;margin-top:0.4rem;">Nueva imagen cargada ✓{{ reporteDescargando?.comprobante_path ? ' (reemplazará el guardado)' : '' }}</small>
-        <small v-else-if="!reporteDescargando?.comprobante_path" style="color:#888;display:block;margin-top:0.4rem;">Si no adjuntas ninguna imagen, el PDF se genera solo con el reporte.</small>
-      </div>
-      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
-        <Button label="Descargar PDF" icon="pi pi-download" @click="confirmarDescargarReporte('download')" :loading="loading" />
-        <Button label="Ver en línea" icon="pi pi-eye" class="p-button-info" @click="confirmarDescargarReporte('open')" :loading="loading" />
-        <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary" @click="showDescargarReporteDialog = false" />
-      </div>
-    </Dialog>
   </div>
 </template>
 
@@ -530,7 +513,6 @@ const reporteAEliminar = ref(null);
 const showComprobanteDialog = ref(false);
 const archivoComprobante = ref(null);
 const showNuevoReporteDialog = ref(false);
-const showDescargarReporteDialog = ref(false);
 const reporteDescargando = ref(null);
 const comprobanteReporteDataUrl = ref(null);
 
@@ -1275,27 +1257,13 @@ async function descargarOrdenVenta(reporte) {
   }
 }
 
-function descargarReporteServicio(reporte) {
+async function verReporteServicio(reporte) {
   reporteDescargando.value = reporte;
   comprobanteReporteDataUrl.value = null;
-  showDescargarReporteDialog.value = true;
+  await confirmarDescargarReporte('open');
 }
 
-function consultarReporteServicio(reporte) {
-  reporteDescargando.value = reporte;
-  comprobanteReporteDataUrl.value = null;
-  showDescargarReporteDialog.value = true;
-}
-
-function onComprobanteReporteChange(e) {
-  const file = e.target.files?.[0];
-  if (!file) { comprobanteReporteDataUrl.value = null; return; }
-  const reader = new FileReader();
-  reader.onload = () => { comprobanteReporteDataUrl.value = reader.result; };
-  reader.readAsDataURL(file);
-}
-
-async function confirmarDescargarReporte(mode = 'download') {
+async function confirmarDescargarReporte(mode = 'open') {
   if (!reporteDescargando.value) return;
   loading.value = true;
   try {
@@ -1334,7 +1302,6 @@ async function confirmarDescargarReporte(mode = 'download') {
       comprobante: comprobanteParaPDF,
       mode,
     });
-    showDescargarReporteDialog.value = false;
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el PDF.', life: 3500 });
   } finally {
