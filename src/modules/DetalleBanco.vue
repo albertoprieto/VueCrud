@@ -66,6 +66,11 @@
             <template #body="{ data }">
               <span v-if="data.estatus" :class="'badge badge-' + badgeClaseEstatus(data.estatus)">{{ data.estatus }}</span>
               <span v-else class="celda-vacia">—</span>
+              <i
+                v-if="data.tipo === 'Ingreso banco' && data.raw.tiene_justificacion"
+                class="pi pi-exclamation-triangle icono-justificacion"
+                v-tooltip.top="textoJustificaciones(data.raw)"
+              />
             </template>
           </Column>
           <Column header="Comprobante">
@@ -109,6 +114,11 @@
                 <template v-else>
                   <Button v-if="esEditable(data)" icon="pi pi-pencil" class="p-button-sm p-button-text" @click="iniciarEdicion(data)" />
                   <Button
+                    v-if="data.tipo === 'Ingreso banco'"
+                    icon="pi pi-pencil" class="p-button-sm p-button-text" title="Editar ingreso"
+                    @click="abrirEditarIngreso(data.raw)"
+                  />
+                  <Button
                     v-if="data.tipo === 'Retiro'"
                     icon="pi pi-trash" class="p-button-sm p-button-text p-button-danger"
                     :loading="procesandoId === data.id" @click="eliminarRetiroFila(data)"
@@ -118,9 +128,20 @@
                     icon="pi pi-trash" class="p-button-sm p-button-text p-button-danger"
                     :loading="eliminandoMovimientoKey === data.key" @click="eliminarMovimientoFila(data)"
                   />
+                  <Button
+                    v-if="data.tipo === 'Ingreso banco'"
+                    icon="pi pi-trash" class="p-button-sm p-button-text p-button-danger"
+                    title="Eliminar ingreso"
+                    :loading="eliminandoIngresoId === data.id" @click="eliminarIngresoFila(data)"
+                  />
                   <router-link v-if="data.tipo === 'Nota'" :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
                   <router-link v-else-if="data.tipo === 'Factura'" :to="{ name: 'detalle-factura', params: { id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
                   <router-link v-else-if="data.tipo === 'Pago nota'" :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.raw.nota_id } }" class="p-button p-button-sm p-button-text p-button-icon-only" v-tooltip.top="'Ver nota'"><i class="pi pi-eye" /></router-link>
+                  <router-link
+                    v-else-if="data.tipo === 'Ingreso banco' && (data.raw.links || []).length"
+                    :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.raw.links[0].nota_id } }"
+                    class="p-button p-button-sm p-button-text p-button-icon-only" v-tooltip.top="'Ver nota ligada'"
+                  ><i class="pi pi-eye" /></router-link>
                 </template>
               </div>
             </template>
@@ -154,6 +175,45 @@
       <div class="modal-actions">
         <Button label="Registrar" icon="pi pi-check" :loading="guardandoMovimiento" @click="confirmarNuevoMovimiento" />
         <Button label="Cancelar" class="p-button-secondary" @click="movimientoDialogVisible = false" />
+      </div>
+    </Dialog>
+
+    <!-- Dialog: editar ingreso bancario (crearlo se hace desde Bancos.vue,
+         un banco antes, con Dropdown para elegir el banco de destino) -->
+    <Dialog v-model:visible="ingresoDialogVisible" header="Editar ingreso" :modal="true" :style="{ width: '460px', maxWidth: '95vw' }" :draggable="false">
+      <div class="form-group">
+        <label>Monto*</label>
+        <InputNumber v-model="ingresoForm.monto" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
+      </div>
+      <div class="form-group">
+        <label>IMEI(s)* — separados por coma</label>
+        <InputText v-model="ingresoForm.imeis" class="w-full" placeholder="Ej: 359123456789012, 359123456789013" />
+      </div>
+      <div class="form-group">
+        <label>Fecha de la transacción*</label>
+        <Calendar v-model="ingresoFechaDate" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="w-full" />
+      </div>
+      <div class="form-group">
+        <label>Usuario (opcional)</label>
+        <InputText v-model="ingresoForm.usuario" class="w-full" />
+      </div>
+      <p style="margin:0.25rem 0 0.5rem;font-size:0.8rem;opacity:0.75;">Al menos uno de estos tres es obligatorio:</p>
+      <div class="form-group">
+        <label>Cuenta origen (últimos dígitos)</label>
+        <InputText v-model="ingresoForm.cuenta_origen" class="w-full" />
+      </div>
+      <div class="form-group">
+        <label>Referencia de comprobante</label>
+        <InputText v-model="ingresoForm.referencia_comprobante" class="w-full" />
+      </div>
+      <div class="form-group">
+        <label>Clave de rastreo (últimos dígitos)</label>
+        <InputText v-model="ingresoForm.clave_rastreo" class="w-full" />
+      </div>
+      <p style="font-size:0.78rem;opacity:0.65;">El comprobante no se reemplaza aquí — elimina el ingreso y crea uno nuevo si hace falta.</p>
+      <div class="modal-actions">
+        <Button label="Guardar" icon="pi pi-check" :loading="guardandoIngreso" @click="confirmarIngreso" />
+        <Button label="Cancelar" class="p-button-secondary" @click="ingresoDialogVisible = false" />
       </div>
     </Dialog>
 
@@ -219,6 +279,7 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Dropdown from 'primevue/dropdown';
+import Calendar from 'primevue/calendar';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
 import {
@@ -231,6 +292,7 @@ import {
   editarRetiro, eliminarRetiro, setSaldoInicial,
 } from '@/services/bancosService';
 import { registrarAbonoDinero, actualizarMovimientoDinero, eliminarComprobanteMovimientoDinero, eliminarMovimientoDinero } from '@/services/dineroService';
+import { editarIngresoBanco, eliminarIngresoBanco } from '@/services/ingresosBancoService';
 import { fetchBancosRaw, buildFilas, calcularSaldoBanco } from '@/composables/useBancosData';
 
 const props = defineProps({ nombre: { type: String, required: true } });
@@ -261,9 +323,19 @@ function badgeClaseTipo(tipo) {
   return 'info';
 }
 function badgeClaseEstatus(estatus) {
-  if (estatus === 'aprobado') return 'success';
+  if (estatus === 'aprobado' || estatus === 'asignado') return 'success';
   if (estatus === 'rechazado' || estatus === 'Cancelado' || estatus === 'cancelado') return 'danger';
+  if (estatus === 'parcial' || estatus === 'sin_asignar') return 'warning';
   return 'warning';
+}
+// Tooltip del ⚠️ de conciliación: junta las justificaciones de todas las
+// notas ligadas a este ingreso cuyo monto no cuadró exacto (ver
+// requiere_justificacion en ingreso_banco_notas, backend main.py).
+function textoJustificaciones(ingresoRaw) {
+  return (ingresoRaw.links || [])
+    .filter(l => l.requiere_justificacion)
+    .map(l => `Nota #${l.nota_id} (dif. $${Number(l.diferencia).toFixed(2)}): ${l.justificacion || 'sin texto'}`)
+    .join('\n') || 'Requiere justificación';
 }
 
 const filasBanco = computed(() => filasRaw.value.filter(f => f.banco === nombre.value));
@@ -293,6 +365,7 @@ const opcionesFiltroTipo = [
   { label: 'Egreso', value: 'Egreso' },
   { label: 'Retiro', value: 'Retiro' },
   { label: 'Pago nota', value: 'Pago nota' },
+  { label: 'Ingreso banco', value: 'Ingreso banco' },
 ];
 const opcionesFiltroMes = computed(() => {
   const keys = [...new Set(filasBanco.value.map(f => mesKey(f.fecha)).filter(Boolean))].sort().reverse();
@@ -502,6 +575,88 @@ async function eliminarComprobanteMovimiento(fila) {
   eliminandoComprobanteKey.value = null;
 }
 
+// ── Editar/eliminar ingreso bancario (crearlo vive un paso antes, en
+// Bancos.vue, donde sí se elige el banco de destino — aquí ya estás dentro
+// de un banco fijo). Ver ingresosBancoService.js y el bloque "Ingresos
+// bancarios" en main.py para el flujo completo de conciliación con nota. ──
+const ingresoDialogVisible = ref(false);
+const ingresoEditandoId = ref(null);
+const ingresoForm = ref({ monto: null, imeis: '', usuario: '', cuenta_origen: '', referencia_comprobante: '', clave_rastreo: '' });
+const ingresoFechaDate = ref(new Date());
+const guardandoIngreso = ref(false);
+const eliminandoIngresoId = ref(null);
+
+function abrirEditarIngreso(raw) {
+  ingresoEditandoId.value = raw.id;
+  ingresoForm.value = {
+    monto: Number(raw.monto) || 0,
+    imeis: (raw.imeis || []).join(', '),
+    usuario: raw.usuario || '',
+    cuenta_origen: raw.cuenta_origen || '',
+    referencia_comprobante: raw.referencia_comprobante || '',
+    clave_rastreo: raw.clave_rastreo || '',
+  };
+  ingresoFechaDate.value = raw.fecha_transaccion ? new Date(raw.fecha_transaccion) : new Date();
+  ingresoDialogVisible.value = true;
+}
+function fechaISO(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+async function confirmarIngreso() {
+  const f = ingresoForm.value;
+  if (!f.monto || !f.imeis.trim()) {
+    toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Monto e IMEI(s) son obligatorios.', life: 3000 });
+    return;
+  }
+  if (!(f.cuenta_origen.trim() || f.referencia_comprobante.trim() || f.clave_rastreo.trim())) {
+    toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Captura al menos: cuenta origen, referencia o clave de rastreo.', life: 3500 });
+    return;
+  }
+  guardandoIngreso.value = true;
+  try {
+    await editarIngresoBanco(ingresoEditandoId.value, {
+      monto: Number(f.monto), imeis: f.imeis.split(',').map(s => s.trim()).filter(Boolean),
+      fecha_transaccion: fechaISO(ingresoFechaDate.value), usuario: f.usuario || null,
+      cuenta_origen: f.cuenta_origen || null, referencia_comprobante: f.referencia_comprobante || null,
+      clave_rastreo: f.clave_rastreo || null,
+    });
+    toast.add({ severity: 'success', summary: 'Guardado', detail: 'Ingreso actualizado.', life: 2500 });
+    ingresoDialogVisible.value = false;
+    await cargar(false);
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo guardar el ingreso.', life: 4000 });
+  }
+  guardandoIngreso.value = false;
+}
+// Si ya está ligado a nota(s), el backend rechaza el borrado a menos que se
+// mande forzar=true — confirmamos con el usuario mostrando cuáles notas se
+// desligarían antes de reintentar con forzar.
+async function eliminarIngresoFila(fila) {
+  eliminandoIngresoId.value = fila.id;
+  try {
+    await eliminarIngresoBanco(fila.id);
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Ingreso eliminado.', life: 2500 });
+    await cargar(false);
+  } catch (e) {
+    const detail = e?.response?.data?.detail || '';
+    if (detail.includes('Ligado a nota')) {
+      if (confirm(`${detail}\n\n¿Eliminar de todas formas? Esto desliga el ingreso de esa(s) nota(s).`)) {
+        try {
+          await eliminarIngresoBanco(fila.id, true);
+          toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Ingreso eliminado y desligado.', life: 2500 });
+          await cargar(false);
+        } catch (e2) {
+          toast.add({ severity: 'error', summary: 'Error', detail: e2?.response?.data?.detail || 'No se pudo eliminar el ingreso.', life: 4000 });
+        }
+      }
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: detail || 'No se pudo eliminar el ingreso.', life: 4000 });
+    }
+  }
+  eliminandoIngresoId.value = null;
+}
+
 // ── Registrar retiro (banco fijo = este) ──
 const retiroDialogVisible = ref(false);
 const retiroForm = ref({ monto: null, motivo: '' });
@@ -665,6 +820,7 @@ onMounted(cargar);
 .badge-warning { background: color-mix(in srgb, var(--color-warning) 25%, transparent); color: var(--color-warning); }
 .badge-danger  { background: color-mix(in srgb, var(--color-error) 20%, transparent); color: var(--color-error); }
 .badge-info { background: color-mix(in srgb, var(--color-primary) 18%, transparent); color: var(--color-primary); }
+.icono-justificacion { color: var(--color-warning); margin-left: 0.4rem; cursor: help; }
 .retiro-form {
   display: flex;
   flex-direction: column;

@@ -1,6 +1,7 @@
 import { getNotas, getFacturas, getPagosNotaTodos } from '@/services/pagosService';
 import { getRetiros, getSaldosIniciales } from '@/services/bancosService';
 import { getMovimientosDinero } from '@/services/dineroService';
+import { getIngresosBanco } from '@/services/ingresosBancoService';
 
 export const LUGARES_VALIDOS = [
   'ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU',
@@ -32,20 +33,21 @@ export function parseComprobantes(raw) {
 }
 
 // Trae las fuentes que alimentan el estado de cuenta de un banco: notas,
-// facturas, movimientos manuales, retiros, pagos adicionales de nota y el
-// saldo inicial (con el que arrancó el banco al pasar a producción).
+// facturas, movimientos manuales, retiros, pagos adicionales de nota,
+// ingresos bancarios "comprobante primero" y el saldo inicial (con el que
+// arrancó el banco al pasar a producción).
 export async function fetchBancosRaw() {
-  const [notas, facturas, movimientos, retiros, pagosNota, saldosIniciales] = await Promise.all([
-    getNotas(), getFacturas(), getMovimientosDinero(), getRetiros(), getPagosNotaTodos(), getSaldosIniciales(),
+  const [notas, facturas, movimientos, retiros, pagosNota, ingresosBanco, saldosIniciales] = await Promise.all([
+    getNotas(), getFacturas(), getMovimientosDinero(), getRetiros(), getPagosNotaTodos(), getIngresosBanco(), getSaldosIniciales(),
   ]);
   const saldosIncialesPorBanco = {};
   for (const s of saldosIniciales) saldosIncialesPorBanco[s.banco] = s;
-  return { notas, facturas, movimientos, retiros, pagosNota, saldosIncialesPorBanco };
+  return { notas, facturas, movimientos, retiros, pagosNota, ingresosBanco, saldosIncialesPorBanco };
 }
 
-// Unifica las 5 fuentes en una sola lista de filas, cada una con su campo
+// Unifica las 6 fuentes en una sola lista de filas, cada una con su campo
 // "banco" — mismo shape que usaba la tabla combinada de Bancos.vue.
-export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota }) {
+export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, ingresosBanco }) {
   const out = [];
   for (const n of notas || []) {
     out.push({
@@ -122,6 +124,28 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota })
       estatusValidacion: estadoValidacion(p.validado),
       orden_manual: p.orden_manual,
       raw: p,
+    });
+  }
+  // Ingreso bancario "comprobante primero" — puede estar sin asignar, ligado
+  // parcialmente (varios IMEIs, una nota cubierta y otras pendientes) o
+  // asignado por completo. `estatus` refleja eso; `raw.tiene_justificacion`
+  // dice si alguna liga se conciliÓ con diferencia (ver DetalleBanco.vue,
+  // que pinta el ⚠️ cuando esto es true).
+  for (const g of ingresosBanco || []) {
+    const notasLigadas = [...new Set((g.links || []).map(l => l.nota_cliente).filter(Boolean))];
+    out.push({
+      key: `ingreso-${g.id}`, id: g.id, tipo: 'Ingreso banco',
+      fecha: g.fecha_transaccion, banco: g.banco || null,
+      nombre: notasLigadas.length ? `Ligado: ${notasLigadas.join(', ')}` : 'Sin asignar',
+      usuario: g.usuario || '',
+      imeis: (g.imeis || []).join(', '),
+      monto: Number(g.monto) || 0,
+      comprobantes: g.comprobante_url ? [g.comprobante_url] : [],
+      estatus: g.estado_asignacion,
+      validado: !!g.validado,
+      estatusValidacion: estadoValidacion(g.validado),
+      orden_manual: g.orden_manual,
+      raw: g,
     });
   }
   return out;

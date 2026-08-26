@@ -179,6 +179,35 @@
         </div>
       </div>
 
+      <!-- Ingresos bancarios ligados (comprobante primero, ver DetalleBanco.vue
+           "Agregar ingreso") — alternativa a "Pagos adicionales" de arriba:
+           el comprobante se sube desde Bancos ANTES de saber a qué nota
+           corresponde, y aquí se liga. Si el monto no cubre exacto el saldo
+           pendiente, el backend exige justificación (ver conciliación en
+           main.py, TOLERANCIA_CONCILIACION_PAGOS). -->
+      <div class="comprobante-section">
+        <h3>Ingresos bancarios ligados</h3>
+        <div v-if="ingresosLigados.length" class="comprobantes-lista">
+          <div v-for="link in ingresosLigados" :key="link.id" class="comprobante-item">
+            <i class="pi pi-wallet" style="color:#1976d2;margin-right:0.5rem;"></i>
+            <span style="flex:1;">
+              <strong>{{ link.banco }}</strong> — ${{ Number(link.monto_aplicado).toFixed(2) }}
+              <span v-if="link.requiere_justificacion" class="pi pi-exclamation-triangle" style="color:#b26a00;margin-left:0.4rem;" v-tooltip.top="`Diferencia $${Number(link.diferencia).toFixed(2)}: ${link.justificacion}`" />
+              <a v-if="link.comprobante_url" :href="link.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:#1976d2;">ver comprobante</a>
+            </span>
+            <Button
+              icon="pi pi-times"
+              label="Desligar"
+              class="p-button-text p-button-warning p-button-sm"
+              :loading="desligandoIngresoId === link.id"
+              @click="desligarIngreso(link)"
+            />
+          </div>
+        </div>
+        <div v-else style="color:#999;margin-bottom:0.75rem;">Sin ingresos bancarios ligados.</div>
+        <Button label="Ligar ingreso bancario" icon="pi pi-link" class="p-button-outlined p-button-info" @click="abrirLigarIngreso" />
+      </div>
+
       <!-- Datos de pago y fiscales (para el PDF) -->
       <div class="datos-pago-section">
         <h3>Datos de pago y fiscales</h3>
@@ -393,6 +422,46 @@
         </div>
       </template>
     </Dialog>
+
+    <!-- Dialog: ligar ingreso bancario a esta nota (conciliación) -->
+    <Dialog v-model:visible="ligarDialogVisible" header="Ligar ingreso bancario" :modal="true" :style="{ width: '520px', maxWidth: '95vw' }" :draggable="false">
+      <div v-if="!ingresoSeleccionado">
+        <InputText v-model="filtroLigarBusqueda" placeholder="Buscar por banco o IMEI..." class="w-full" style="margin-bottom:0.75rem;" />
+        <div v-if="loadingIngresosDisponibles" style="text-align:center;padding:1.5rem;"><i class="pi pi-spin pi-spinner"></i></div>
+        <p v-else-if="!ingresosDisponiblesFiltrados.length" style="color:#999;text-align:center;">No hay ingresos bancarios disponibles para ligar.</p>
+        <div v-else style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:0.5rem;">
+          <div
+            v-for="g in ingresosDisponiblesFiltrados" :key="g.id"
+            class="ingreso-opcion" @click="seleccionarIngreso(g)"
+          >
+            <strong>{{ g.banco }}</strong> — disponible ${{ Number(g.monto_disponible).toFixed(2) }} de ${{ Number(g.monto).toFixed(2) }}
+            <div style="font-size:0.8rem;opacity:0.75;">IMEI: {{ (g.imeis || []).join(', ') || '-' }} · {{ formatFecha(g.fecha_transaccion) }}</div>
+          </div>
+        </div>
+      </div>
+      <div v-else>
+        <p style="margin-top:0;"><strong>{{ ingresoSeleccionado.banco }}</strong> — disponible ${{ Number(ingresoSeleccionado.monto_disponible).toFixed(2) }}</p>
+        <div class="form-group">
+          <label style="font-weight:bold;display:block;margin-bottom:0.3rem;">Monto a aplicar a esta nota</label>
+          <InputNumber v-model="montoAplicadoForm" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
+        </div>
+        <p style="font-size:0.8rem;opacity:0.75;">Saldo pendiente de la nota: ${{ saldoPendienteNota.toFixed(2) }}</p>
+        <div v-if="mostrarJustificacion" class="form-group">
+          <label style="font-weight:bold;display:block;margin-bottom:0.3rem;color:#b26a00;">
+            El monto no cubre exacto el saldo pendiente — justifica la diferencia
+          </label>
+          <Textarea v-model="justificacionForm" rows="2" class="w-full" placeholder="Ej: cliente pagó de menos, se descontó comisión bancaria..." />
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin:0.75rem 0;">
+          <input type="checkbox" id="marcarPagadaChk" v-model="marcarPagadaForm" />
+          <label for="marcarPagadaChk">Marcar la nota como pagada al ligar</label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;">
+          <Button label="Volver" class="p-button-text" @click="ingresoSeleccionado = null" />
+          <Button label="Ligar" icon="pi pi-check" class="p-button-success" :loading="ligando" :disabled="!montoAplicadoForm" @click="confirmarLigarIngreso" />
+        </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -407,6 +476,7 @@ import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import Textarea from 'primevue/textarea';
 import InputText from 'primevue/inputtext';
+import InputNumber from 'primevue/inputnumber';
 import { useToast } from 'primevue/usetoast';
 import {
   getNotaById,
@@ -426,6 +496,7 @@ import {
   getFacturas
 } from '@/services/pagosService';
 import { generarPagoPDF } from '@/services/PagoPdfService.js';
+import { getIngresosBanco, getIngresosLigadosANota, asignarIngresoANota, desligarIngresoNota } from '@/services/ingresosBancoService';
 
 const route = useRoute();
 const router = useRouter();
@@ -465,6 +536,38 @@ const asignando = ref(null);
 const formAsignar = ref({ banco: '', monto: null });
 const asignandoGuardando = ref(false);
 const detalleOrdenesMap = ref({});
+
+// Ingresos bancarios ligados (ver ingresosBancoService.js) — alternativa a
+// "Pagos adicionales": el comprobante se sube desde Bancos.vue/DetalleBanco.vue
+// sin nota, y aquí se liga con conciliación de monto (backend calcula la
+// diferencia contra el saldo pendiente y exige justificación si no cuadra).
+const ingresosLigados = ref([]);
+const ligarDialogVisible = ref(false);
+const loadingIngresosDisponibles = ref(false);
+const ingresosDisponibles = ref([]);
+const filtroLigarBusqueda = ref('');
+const ingresoSeleccionado = ref(null);
+const montoAplicadoForm = ref(null);
+const justificacionForm = ref('');
+const marcarPagadaForm = ref(true);
+const mostrarJustificacion = ref(false);
+const ligando = ref(false);
+const desligandoIngresoId = ref(null);
+
+const saldoPendienteNota = computed(() => {
+  const total = Number(item.value?.total) || 0;
+  const cubiertoPagos = pagosAdicionales.value.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+  const cubiertoIngresos = ingresosLigados.value.reduce((s, l) => s + (Number(l.monto_aplicado) || 0), 0);
+  return total - cubiertoPagos - cubiertoIngresos;
+});
+const ingresosDisponiblesFiltrados = computed(() => {
+  const q = filtroLigarBusqueda.value.trim().toLowerCase();
+  return ingresosDisponibles.value.filter(g => {
+    if (g.estado_asignacion === 'asignado') return false;
+    if (!q) return true;
+    return (g.banco || '').toLowerCase().includes(q) || (g.imeis || []).some(i => String(i).toLowerCase().includes(q));
+  });
+});
 
 // Agregar servicios
 const agregarDialogVisible = ref(false);
@@ -611,6 +714,7 @@ async function cargarDetalle() {
     await cargarDetalleOrdenesEnriquecido();
     await cargarClienteFiscal();
     pagosAdicionales.value = await getPagosNota(id.value);
+    ingresosLigados.value = await getIngresosLigadosANota(id.value);
   } catch {
     item.value = null;
     detalleOrdenesMap.value = {};
@@ -773,6 +877,65 @@ async function eliminarPagoAdicional(pago) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el pago.', life: 4000 });
   }
   eliminandoPago.value = null;
+}
+
+async function abrirLigarIngreso() {
+  ingresoSeleccionado.value = null;
+  filtroLigarBusqueda.value = '';
+  ligarDialogVisible.value = true;
+  loadingIngresosDisponibles.value = true;
+  try {
+    ingresosDisponibles.value = await getIngresosBanco();
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los ingresos bancarios.', life: 4000 });
+  }
+  loadingIngresosDisponibles.value = false;
+}
+
+function seleccionarIngreso(g) {
+  ingresoSeleccionado.value = g;
+  const pendiente = Math.max(saldoPendienteNota.value, 0);
+  montoAplicadoForm.value = Math.min(Number(g.monto_disponible) || 0, pendiente) || Number(g.monto_disponible) || 0;
+  justificacionForm.value = '';
+  mostrarJustificacion.value = false;
+  marcarPagadaForm.value = Math.abs(montoAplicadoForm.value - pendiente) <= 1;
+}
+
+async function confirmarLigarIngreso() {
+  if (!ingresoSeleccionado.value || !montoAplicadoForm.value) return;
+  ligando.value = true;
+  try {
+    await asignarIngresoANota(ingresoSeleccionado.value.id, {
+      nota_id: Number(id.value),
+      monto_aplicado: Number(montoAplicadoForm.value),
+      justificacion: justificacionForm.value,
+      marcar_pagada: marcarPagadaForm.value,
+    });
+    toast.add({ severity: 'success', summary: 'Ligado', detail: 'Ingreso ligado a la nota.', life: 3000 });
+    ligarDialogVisible.value = false;
+    await cargarDetalle();
+  } catch (e) {
+    const detail = e?.response?.data?.detail || '';
+    if (detail.includes('justificaci')) {
+      mostrarJustificacion.value = true;
+      toast.add({ severity: 'warn', summary: 'Requiere justificación', detail, life: 5000 });
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: detail || 'No se pudo ligar el ingreso.', life: 4000 });
+    }
+  }
+  ligando.value = false;
+}
+
+async function desligarIngreso(link) {
+  desligandoIngresoId.value = link.id;
+  try {
+    await desligarIngresoNota(link.id);
+    toast.add({ severity: 'success', summary: 'Desligado', detail: 'Ingreso desligado de la nota.', life: 3000 });
+    await cargarDetalle();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo desligar.', life: 4000 });
+  }
+  desligandoIngresoId.value = null;
 }
 
 async function abrirReportesDialog() {
@@ -1003,4 +1166,15 @@ async function confirmarAgregar() {
 .badge-warning { background: #fff3cd; color: #856404; }
 .badge-danger  { background: #f8d7da; color: #721c24; }
 .mb-3 { margin-bottom: 1rem; }
+.ingreso-opcion {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ingreso-opcion:hover {
+  background: var(--color-bg-light, #f5f5f5);
+}
+.w-full { width: 100%; }
+.form-group { margin-bottom: 1rem; }
 </style>

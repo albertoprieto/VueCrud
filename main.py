@@ -217,6 +217,69 @@ def crear_tabla_pagos_nota():
 
 
 @app.on_event("startup")
+def crear_tabla_ingresos_banco():
+    """Ingreso bancario 'comprobante primero': se sube la evidencia de un
+    pago (banco, IMEIs, fecha, datos de rastreo) ANTES de saber a qué nota
+    corresponde — flujo inverso al de pagos_nota (que parte de la nota).
+    Se liga después a una o varias notas vía ingreso_banco_notas. Ver
+    TOLERANCIA_CONCILIACION_PAGOS y POST /ingresos-banco/{id}/asignar-nota
+    para la lógica de conciliación."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ingresos_banco (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            banco VARCHAR(100) NOT NULL,
+            monto DECIMAL(12,2) NOT NULL,
+            imeis JSON NOT NULL,
+            fecha_transaccion DATE NOT NULL,
+            usuario VARCHAR(150) NULL,
+            cuenta_origen VARCHAR(50) NULL,
+            referencia_comprobante VARCHAR(100) NULL,
+            clave_rastreo VARCHAR(50) NULL,
+            comprobante_path VARCHAR(500) NOT NULL,
+            validado TINYINT(1) NOT NULL DEFAULT 0,
+            orden_manual INT NULL,
+            creado_por VARCHAR(100) NULL,
+            creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
+
+@app.on_event("startup")
+def crear_tabla_ingreso_banco_notas():
+    """Liga muchos-a-muchos entre ingresos_banco y notas_pago — una sola
+    transferencia puede cubrir varias notas/IMEIs, y una nota puede recibir
+    de varios ingresos (mismo espíritu que ya permite pagos_nota). Guarda la
+    conciliación de cada liga: diferencia = monto_aplicado - saldo pendiente
+    de la nota en ese momento; si |diferencia| > TOLERANCIA_CONCILIACION_PAGOS,
+    requiere_justificacion=1 y `justificacion` es obligatoria."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ingreso_banco_notas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            ingreso_id INT NOT NULL,
+            nota_id INT NOT NULL,
+            monto_aplicado DECIMAL(12,2) NOT NULL,
+            diferencia DECIMAL(12,2) NOT NULL DEFAULT 0,
+            requiere_justificacion TINYINT(1) NOT NULL DEFAULT 0,
+            justificacion TEXT NULL,
+            creado_por VARCHAR(100) NULL,
+            creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_ibn_ingreso (ingreso_id),
+            INDEX idx_ibn_nota (nota_id)
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
+
+@app.on_event("startup")
 def crear_tabla_pagos_ppd():
     """Complementos de pago (REP) — obligatorios cuando una factura se
     timbró con MetodoPago=PPD. Una factura puede tener varios (parcialidades),
@@ -8035,6 +8098,337 @@ def eliminar_pago_nota(nota_id: int, pago_id: int):
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     return {"message": "Pago eliminado"}
 
+
+# ── Ingresos bancarios (comprobante primero) ──────────────────────────────
+# Diferencia (en pesos) entre lo aplicado a una nota y su saldo pendiente que
+# se tolera sin pedir justificación — cubre solo redondeo de centavos del
+# banco, no diferencias reales. Fuera de este rango, asignar-nota exige el
+# campo `justificacion` y marca requiere_justificacion=1 en el link (eso es
+# lo que pinta el ⚠️ en DetalleBanco.vue y DetallePago.vue).
+TOLERANCIA_CONCILIACION_PAGOS = 1.00
+
+
+def _saldo_pendiente_nota(cursor, nota_id: int) -> float:
+    """Total de la nota menos lo ya cubierto por pagos_nota + ingreso_banco_notas.
+    `cursor` debe ser un cursor plano (no dictionary=True)."""
+    cursor.execute("SELECT total FROM notas_pago WHERE id=%s", (nota_id,))
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    total = float(row[0])
+    cursor.execute("SELECT COALESCE(SUM(monto),0) FROM pagos_nota WHERE nota_id=%s", (nota_id,))
+    cubierto = float(cursor.fetchone()[0])
+    cursor.execute("SELECT COALESCE(SUM(monto_aplicado),0) FROM ingreso_banco_notas WHERE nota_id=%s", (nota_id,))
+    cubierto += float(cursor.fetchone()[0])
+    return total - cubierto
+
+
+@app.get("/ingresos-banco")
+def get_ingresos_banco(request: Request = None):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM ingresos_banco ORDER BY creado_fecha DESC")
+    ingresos = cursor.fetchall()
+    links_por_ingreso = {}
+    if ingresos:
+        ids = [i['id'] for i in ingresos]
+        formato = ','.join(['%s'] * len(ids))
+        cursor.execute(
+            f"""SELECT ibn.*, n.cliente AS nota_cliente
+                FROM ingreso_banco_notas ibn
+                JOIN notas_pago n ON n.id = ibn.nota_id
+                WHERE ibn.ingreso_id IN ({formato})""",
+            ids
+        )
+        for l in cursor.fetchall():
+            links_por_ingreso.setdefault(l['ingreso_id'], []).append(l)
+    for i in ingresos:
+        i['imeis'] = json.loads(i['imeis']) if isinstance(i['imeis'], str) else (i['imeis'] or [])
+        i['comprobante_url'] = build_public_url(i.get('comprobante_path'), request)
+        if i.get('fecha_transaccion') and hasattr(i['fecha_transaccion'], 'isoformat'):
+            i['fecha_transaccion'] = i['fecha_transaccion'].isoformat()
+        if i.get('creado_fecha') and hasattr(i['creado_fecha'], 'isoformat'):
+            i['creado_fecha'] = i['creado_fecha'].isoformat()
+        links = links_por_ingreso.get(i['id'], [])
+        for l in links:
+            if l.get('creado_fecha') and hasattr(l['creado_fecha'], 'isoformat'):
+                l['creado_fecha'] = l['creado_fecha'].isoformat()
+            l['monto_aplicado'] = float(l['monto_aplicado'])
+            l['diferencia'] = float(l['diferencia'])
+        i['links'] = links
+        i['monto'] = float(i['monto'])
+        i['monto_aplicado_total'] = sum(l['monto_aplicado'] for l in links)
+        i['monto_disponible'] = i['monto'] - i['monto_aplicado_total']
+        i['tiene_justificacion'] = any(l.get('requiere_justificacion') for l in links)
+        i['estado_asignacion'] = (
+            'asignado' if links and i['monto_disponible'] <= TOLERANCIA_CONCILIACION_PAGOS
+            else ('parcial' if links else 'sin_asignar')
+        )
+    cursor.close()
+    db.close()
+    return ingresos
+
+
+@app.post("/ingresos-banco")
+def crear_ingreso_banco(
+    banco: str = Form(...),
+    monto: float = Form(...),
+    imeis: str = Form(...),
+    fecha_transaccion: str = Form(...),
+    usuario: str = Form(""),
+    cuenta_origen: str = Form(""),
+    referencia_comprobante: str = Form(""),
+    clave_rastreo: str = Form(""),
+    comprobante: UploadFile = File(...),
+    current=Depends(get_current_user),
+    request: Request = None,
+):
+    """Comprobante-primero: se sube antes de saber a qué nota corresponde.
+    Se liga después con POST /ingresos-banco/{id}/asignar-nota."""
+    import shutil
+    if monto <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
+    lista_imeis = [x.strip() for x in imeis.replace(';', ',').split(',') if x.strip()]
+    if not lista_imeis:
+        raise HTTPException(status_code=400, detail="Se requiere al menos un IMEI")
+    if not (cuenta_origen.strip() or referencia_comprobante.strip() or clave_rastreo.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Se requiere al menos uno: cuenta origen, referencia de comprobante o clave de rastreo"
+        )
+    if not comprobante or not comprobante.filename:
+        raise HTTPException(status_code=400, detail="Se requiere el comprobante (imagen o PDF)")
+
+    safe_banco = ''.join(c for c in banco if c.isalnum() or c in ('-', '_', ' ')).strip() or "SinBanco"
+    base_dir = os.path.join("uploads", "ingresos_banco", safe_banco)
+    os.makedirs(base_dir, exist_ok=True)
+    filename = ''.join(c for c in comprobante.filename if c.isalnum() or c in ('-', '_', '.', ' ')).strip() or "comprobante"
+    dest_path = os.path.join(base_dir, filename)
+    base_name, ext = os.path.splitext(filename)
+    counter = 1
+    while os.path.exists(dest_path):
+        dest_path = os.path.join(base_dir, f"{base_name}_{counter}{ext}")
+        counter += 1
+    with open(dest_path, "wb") as out:
+        shutil.copyfileobj(comprobante.file, out)
+    rel_path = dest_path.replace("\\", "/")
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute(
+        """INSERT INTO ingresos_banco
+           (banco, monto, imeis, fecha_transaccion, usuario, cuenta_origen,
+            referencia_comprobante, clave_rastreo, comprobante_path, creado_por)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (banco, monto, json.dumps(lista_imeis), fecha_transaccion, usuario or None,
+         cuenta_origen or None, referencia_comprobante or None, clave_rastreo or None,
+         rel_path, current.get("username"))
+    )
+    db.commit()
+    new_id = cursor.lastrowid
+    cursor.close()
+    db.close()
+    return {
+        "message": "Ingreso registrado",
+        "id": new_id,
+        "comprobante_path": rel_path,
+        "comprobante_url": build_public_url(rel_path, request),
+    }
+
+
+@app.put("/ingresos-banco/{ingreso_id}")
+def editar_ingreso_banco(ingreso_id: int, data: dict = Body(...)):
+    """Edición libre salvo `monto`: no se puede bajar por debajo de lo ya
+    aplicado a notas (rompería la conciliación de los links existentes) —
+    el front debe desligar primero si necesita corregir el monto."""
+    campos_validos = {
+        'banco', 'monto', 'imeis', 'fecha_transaccion', 'usuario',
+        'cuenta_origen', 'referencia_comprobante', 'clave_rastreo', 'validado'
+    }
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM ingresos_banco WHERE id=%s", (ingreso_id,))
+    if not cursor.fetchone():
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Ingreso no encontrado")
+
+    if 'monto' in data:
+        cursor.execute(
+            "SELECT COALESCE(SUM(monto_aplicado),0) AS s FROM ingreso_banco_notas WHERE ingreso_id=%s",
+            (ingreso_id,)
+        )
+        aplicado = float(cursor.fetchone()['s'])
+        if float(data['monto']) < aplicado:
+            cursor.close(); db.close()
+            raise HTTPException(
+                status_code=400,
+                detail=f"El monto no puede ser menor a lo ya aplicado a notas (${aplicado:.2f}). Desliga primero."
+            )
+
+    campos, valores = [], []
+    for k, v in data.items():
+        if k not in campos_validos:
+            continue
+        if k == 'imeis' and isinstance(v, list):
+            v = json.dumps(v)
+        campos.append(f"{k}=%s")
+        valores.append(v)
+    if not campos:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+    valores.append(ingreso_id)
+    cursor2 = db.cursor()
+    cursor2.execute(f"UPDATE ingresos_banco SET {', '.join(campos)} WHERE id=%s", valores)
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+    return {"message": "Ingreso actualizado", "id": ingreso_id}
+
+
+@app.delete("/ingresos-banco/{ingreso_id}")
+def eliminar_ingreso_banco(ingreso_id: int, forzar: bool = False):
+    """Si tiene notas ligadas, exige `forzar=true` (borra también los links,
+    liberando saldo en esas notas) — evita borrar por accidente algo ya
+    conciliado. El front debe pedir confirmación explícita antes de mandar
+    forzar=true."""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT comprobante_path FROM ingresos_banco WHERE id=%s", (ingreso_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Ingreso no encontrado")
+
+    cursor.execute("SELECT nota_id FROM ingreso_banco_notas WHERE ingreso_id=%s", (ingreso_id,))
+    links = cursor.fetchall()
+    if links and not forzar:
+        cursor.close(); db.close()
+        notas = ', '.join(str(l['nota_id']) for l in links)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ligado a nota(s) {notas}. Desliga primero o reenvía con forzar=true."
+        )
+
+    cursor2 = db.cursor()
+    cursor2.execute("DELETE FROM ingreso_banco_notas WHERE ingreso_id=%s", (ingreso_id,))
+    cursor2.execute("DELETE FROM ingresos_banco WHERE id=%s", (ingreso_id,))
+    db.commit()
+    cursor2.close(); cursor.close(); db.close()
+
+    path = row.get('comprobante_path')
+    if path and os.path.exists(path):
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+    return {"message": "Ingreso eliminado"}
+
+
+@app.post("/ingresos-banco/{ingreso_id}/asignar-nota")
+def asignar_ingreso_a_nota(ingreso_id: int, data: dict = Body(...), current=Depends(get_current_user)):
+    """Liga (total o parcialmente) un ingreso bancario a una nota y concilia:
+    si `monto_aplicado` no cubre exactamente el saldo pendiente de la nota
+    (tolerancia $TOLERANCIA_CONCILIACION_PAGOS), exige `justificacion` y
+    marca requiere_justificacion=1 en el link — eso es lo que pinta el ⚠️ en
+    el datatable de bancos y en el detalle de la nota. `marcar_pagada=true`
+    además cambia el status de la nota a 'pagado' en la misma transacción."""
+    nota_id = data.get('nota_id')
+    monto_aplicado = data.get('monto_aplicado')
+    justificacion = (data.get('justificacion') or '').strip()
+    marcar_pagada = bool(data.get('marcar_pagada'))
+    if not nota_id or monto_aplicado is None or float(monto_aplicado) <= 0:
+        raise HTTPException(status_code=400, detail="Se requiere 'nota_id' y 'monto_aplicado' (> 0)")
+    monto_aplicado = float(monto_aplicado)
+
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT monto FROM ingresos_banco WHERE id=%s", (ingreso_id,))
+    ingreso = cursor.fetchone()
+    if not ingreso:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Ingreso no encontrado")
+    cursor.execute(
+        "SELECT COALESCE(SUM(monto_aplicado),0) AS s FROM ingreso_banco_notas WHERE ingreso_id=%s",
+        (ingreso_id,)
+    )
+    ya_aplicado = float(cursor.fetchone()['s'])
+    disponible = float(ingreso['monto']) - ya_aplicado
+    if monto_aplicado > disponible + TOLERANCIA_CONCILIACION_PAGOS:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail=f"El ingreso solo tiene ${disponible:.2f} disponibles")
+
+    plain = db.cursor()
+    saldo_pendiente = _saldo_pendiente_nota(plain, nota_id)
+    diferencia = round(monto_aplicado - saldo_pendiente, 2)
+    requiere_justificacion = abs(diferencia) > TOLERANCIA_CONCILIACION_PAGOS
+    if requiere_justificacion and not justificacion:
+        plain.close(); cursor.close(); db.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"El pago no cubre exactamente el saldo de la nota (diferencia: ${diferencia:.2f}). Se requiere justificación."
+        )
+
+    plain.execute(
+        """INSERT INTO ingreso_banco_notas
+           (ingreso_id, nota_id, monto_aplicado, diferencia, requiere_justificacion, justificacion, creado_por)
+           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+        (ingreso_id, nota_id, monto_aplicado, diferencia, int(requiere_justificacion),
+         justificacion or None, current.get("username"))
+    )
+    new_id = plain.lastrowid
+    if marcar_pagada:
+        plain.execute("UPDATE notas_pago SET status='pagado' WHERE id=%s", (nota_id,))
+    db.commit()
+    plain.close(); cursor.close(); db.close()
+    return {
+        "message": "Ingreso ligado a la nota",
+        "id": new_id,
+        "diferencia": diferencia,
+        "requiere_justificacion": requiere_justificacion,
+    }
+
+
+@app.delete("/ingreso-banco-notas/{link_id}")
+def desligar_ingreso_nota(link_id: int):
+    """Quita la liga — libera el monto de vuelta al ingreso y reabre el
+    saldo pendiente de la nota. No borra el ingreso ni su comprobante."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM ingreso_banco_notas WHERE id=%s", (link_id,))
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Liga no encontrada")
+    return {"message": "Ingreso desligado de la nota"}
+
+
+@app.get("/notas-pago/{nota_id}/ingresos-banco")
+def get_ingresos_ligados_a_nota(nota_id: int, request: Request = None):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        """SELECT ibn.*, ib.banco, ib.imeis, ib.fecha_transaccion, ib.comprobante_path
+           FROM ingreso_banco_notas ibn
+           JOIN ingresos_banco ib ON ib.id = ibn.ingreso_id
+           WHERE ibn.nota_id=%s ORDER BY ibn.id DESC""",
+        (nota_id,)
+    )
+    rows = cursor.fetchall()
+    for r in rows:
+        r['imeis'] = json.loads(r['imeis']) if isinstance(r['imeis'], str) else (r['imeis'] or [])
+        r['comprobante_url'] = build_public_url(r.get('comprobante_path'), request)
+        r['monto_aplicado'] = float(r['monto_aplicado'])
+        r['diferencia'] = float(r['diferencia'])
+        if r.get('fecha_transaccion') and hasattr(r['fecha_transaccion'], 'isoformat'):
+            r['fecha_transaccion'] = r['fecha_transaccion'].isoformat()
+        if r.get('creado_fecha') and hasattr(r['creado_fecha'], 'isoformat'):
+            r['creado_fecha'] = r['creado_fecha'].isoformat()
+    cursor.close()
+    db.close()
+    return rows
+
+
 @app.put("/retiros-banco/{retiro_id}/validado")
 def validar_retiro_banco(retiro_id: int, data: dict = Body(...)):
     validado = 1 if data.get('validado') else 0
@@ -8063,6 +8457,7 @@ _TABLA_POR_PREFIJO_BANCOS = {
     'mov': 'movimientos_dinero',
     'retiro': 'retiros_banco',
     'pagonota': 'pagos_nota',
+    'ingreso': 'ingresos_banco',
 }
 
 @app.put("/bancos/reordenar")
