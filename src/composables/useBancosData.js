@@ -49,21 +49,6 @@ export async function fetchBancosRaw() {
 // "banco" — mismo shape que usaba la tabla combinada de Bancos.vue.
 export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, ingresosBanco }) {
   const out = [];
-  for (const n of notas || []) {
-    out.push({
-      key: `nota-${n.id}`, id: n.id, tipo: 'Nota',
-      fecha: n.fecha, banco: n.lugar_pago || null,
-      nombre: n.cliente || '', usuario: n.usuario || '',
-      imeis: (n.imeis || []).join(', '),
-      monto: Number(n.total) || 0,
-      comprobantes: parseComprobantes(n.comprobantes).map(urlComprobante),
-      estatus: n.status,
-      validado: !!n.validado,
-      estatusValidacion: estadoValidacion(n.validado),
-      orden_manual: n.orden_manual,
-      raw: n,
-    });
-  }
   for (const f of facturas || []) {
     const comprobantes = parseComprobantes(f.comprobantes).map(urlComprobante);
     if (f.cfdi_pdf_path) comprobantes.push(urlComprobante(f.cfdi_pdf_path));

@@ -340,14 +340,17 @@ const comprobantesActivos = ref([]);
 
 function parseComprobantes(row) {
   const raw = row?.comprobantes;
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw !== 'string' || !raw.trim()) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+  let base = [];
+  if (Array.isArray(raw)) base = raw;
+  else if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      base = Array.isArray(parsed) ? parsed : [];
+    } catch { base = []; }
   }
+  // comprobantes_extra: los de pagos ligados (ingresos_banco / pagos_nota)
+  const extra = Array.isArray(row?.comprobantes_extra) ? row.comprobantes_extra : [];
+  return [...base, ...extra];
 }
 
 function urlComprobante(path) {

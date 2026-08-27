@@ -78,7 +78,7 @@
       </div>
 
       <!-- Comprobantes de pago -->
-      <div class="comprobante-section">
+      <!-- <div class="comprobante-section">
         <h3>Comprobantes de pago</h3>
         <div v-if="item.comprobantes && item.comprobantes.length" class="comprobantes-lista">
           <div v-for="(comp, idx) in item.comprobantes" :key="idx">
@@ -91,7 +91,7 @@
                 icon="pi pi-wallet"
                 label="Asignar a banco"
                 class="p-button-outlined p-button-info p-button-sm"
-                @click="asignando = asignando === comp ? null : comp"
+                @click="toggleAsignar(comp)"
               />
               <Button
                 icon="pi pi-trash"
@@ -133,10 +133,10 @@
             @click="subirComprobante"
           />
         </div>
-      </div>
+      </div> -->
 
       <!-- Pagos adicionales a otro banco (ej. nota se paga en dos partes a bancos distintos) -->
-      <div class="comprobante-section">
+     <!--  <div class="comprobante-section">
         <h3>Pagos adicionales a otro banco</h3>
         <div v-if="pagosAdicionales.length" class="comprobantes-lista">
           <div v-for="pago in pagosAdicionales" :key="pago.id" class="comprobante-item">
@@ -178,7 +178,7 @@
           />
         </div>
       </div>
-
+ -->
       <!-- Ingresos bancarios ligados (comprobante primero, ver DetalleBanco.vue
            "Agregar ingreso") — alternativa a "Pagos adicionales" de arriba:
            el comprobante se sube desde Bancos ANTES de saber a qué nota
@@ -188,20 +188,45 @@
       <div class="comprobante-section">
         <h3>Ingresos bancarios ligados</h3>
         <div v-if="ingresosLigados.length" class="comprobantes-lista">
-          <div v-for="link in ingresosLigados" :key="link.id" class="comprobante-item">
-            <i class="pi pi-wallet" style="color:#1976d2;margin-right:0.5rem;"></i>
-            <span style="flex:1;">
-              <strong>{{ link.banco }}</strong> — ${{ Number(link.monto_aplicado).toFixed(2) }}
-              <span v-if="link.requiere_justificacion" class="pi pi-exclamation-triangle" style="color:#b26a00;margin-left:0.4rem;" v-tooltip.top="`Diferencia $${Number(link.diferencia).toFixed(2)}: ${link.justificacion}`" />
-              <a v-if="link.comprobante_url" :href="link.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:#1976d2;">ver comprobante</a>
-            </span>
-            <Button
-              icon="pi pi-times"
-              label="Desligar"
-              class="p-button-text p-button-warning p-button-sm"
-              :loading="desligandoIngresoId === link.id"
-              @click="desligarIngreso(link)"
-            />
+          <div v-for="link in ingresosLigados" :key="link.id" class="ingreso-ligado">
+            <div class="comprobante-item">
+              <i class="pi pi-wallet" style="color:#1976d2;margin-right:0.5rem;"></i>
+              <span style="flex:1;">
+                <strong>{{ link.banco }}</strong> — ${{ Number(link.monto_aplicado).toFixed(2) }}
+                <span v-if="link.requiere_justificacion" class="pi pi-exclamation-triangle" style="color:#b26a00;margin-left:0.4rem;" />
+                <a v-if="link.comprobante_url" :href="link.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:#1976d2;">ver comprobante</a>
+              </span>
+              <Button
+                icon="pi pi-times"
+                label="Desligar"
+                class="p-button-text p-button-warning p-button-sm"
+                :loading="desligandoIngresoId === link.id"
+                @click="desligarIngreso(link)"
+              />
+            </div>
+            <!-- Detalle e historia del pago ligado -->
+            <div class="ingreso-ligado-detalle">
+              <div><strong>Monto del ingreso:</strong> {{ link.ingreso_monto != null ? '$' + Number(link.ingreso_monto).toFixed(2) : '-' }} · aplicado a esta nota: ${{ Number(link.monto_aplicado).toFixed(2) }}</div>
+              <div v-if="Math.abs(Number(link.diferencia)) > 0.01">
+                <strong>Diferencia:</strong>
+                <span :style="{ color: Number(link.diferencia) > 0 ? '#b26a00' : '#1976d2' }">
+                  {{ Number(link.diferencia) > 0 ? 'sobró ' : 'faltó ' }}${{ Math.abs(Number(link.diferencia)).toFixed(2) }}
+                </span>
+              </div>
+              <div v-if="link.conceptos && link.conceptos.length">
+                <strong>Conceptos:</strong>
+                <ul style="margin:0.2rem 0 0.2rem 1.1rem;padding:0;">
+                  <li v-for="(c, i) in link.conceptos" :key="i">{{ c.concepto }} — ${{ Number(c.monto).toFixed(2) }}</li>
+                </ul>
+              </div>
+              <div><strong>Fecha de transacción:</strong> {{ formatFecha(link.fecha_transaccion) || '-' }}</div>
+              <div v-if="link.imeis && link.imeis.length"><strong>IMEI(s):</strong> {{ link.imeis.join(', ') }}</div>
+              <div v-if="link.referencia_comprobante"><strong>Referencia:</strong> {{ link.referencia_comprobante }}</div>
+              <div v-if="link.clave_rastreo"><strong>Clave de rastreo:</strong> {{ link.clave_rastreo }}</div>
+              <div v-if="link.cuenta_origen"><strong>Cuenta origen:</strong> {{ link.cuenta_origen }}</div>
+              <div v-if="link.usuario"><strong>Usuario del ingreso:</strong> {{ link.usuario }}</div>
+              <div><strong>Ligado por:</strong> {{ link.creado_por || '-' }}<span v-if="link.creado_fecha"> · {{ formatFechaHora(link.creado_fecha) }}</span></div>
+            </div>
           </div>
         </div>
         <div v-else style="color:#999;margin-bottom:0.75rem;">Sin ingresos bancarios ligados.</div>
@@ -443,22 +468,45 @@
         <p style="margin-top:0;"><strong>{{ ingresoSeleccionado.banco }}</strong> — disponible ${{ Number(ingresoSeleccionado.monto_disponible).toFixed(2) }}</p>
         <div class="form-group">
           <label style="font-weight:bold;display:block;margin-bottom:0.3rem;">Monto a aplicar a esta nota</label>
-          <InputNumber v-model="montoAplicadoForm" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
+          <InputNumber v-model="montoAplicadoForm" mode="currency" currency="MXN" locale="es-MX" class="w-full" :min="0" :max="Number(ingresoSeleccionado.monto_disponible) || 0" />
         </div>
-        <p style="font-size:0.8rem;opacity:0.75;">Saldo pendiente de la nota: ${{ saldoPendienteNota.toFixed(2) }}</p>
-        <div v-if="mostrarJustificacion" class="form-group">
+        <p style="font-size:0.8rem;opacity:0.75;display:flex;align-items:center;gap:0.5rem;">
+          <span v-if="!editandoTotalNota">
+            Saldo pendiente de la nota: ${{ saldoPendienteNota.toFixed(2) }} (total ${{ Number(item.total).toFixed(2) }})
+            <a href="#" @click.prevent="abrirEditarTotalNota" style="margin-left:0.4rem;">corregir total</a>
+          </span>
+          <span v-else style="display:flex;align-items:center;gap:0.4rem;">
+            Total real de la nota:
+            <InputNumber v-model="totalNotaForm" mode="currency" currency="MXN" locale="es-MX" style="width:140px;" />
+            <Button icon="pi pi-check" class="p-button-text p-button-success p-button-sm" :loading="guardandoTotalNota" @click="guardarTotalNota" />
+            <Button icon="pi pi-times" class="p-button-text p-button-sm" @click="editandoTotalNota = false" />
+          </span>
+        </p>
+        <p v-if="esUnderpay && !conceptosLlenados" style="font-size:0.8rem;color:#1976d2;">
+          Pago parcial — quedan ${{ Math.abs(diferenciaLigar).toFixed(2) }} pendientes. La nota sigue abierta y se puede completar después con otro pago.
+        </p>
+        <div v-if="!cubierto" class="form-group">
           <label style="font-weight:bold;display:block;margin-bottom:0.3rem;color:#b26a00;">
-            El monto no cubre exacto el saldo pendiente — justifica la diferencia
+            {{ esOverpay ? 'Se está aplicando de más a esta nota — obligatorio justificar' : 'Justificar el faltante cierra la nota como pagada (opcional)' }} —
+            desglosa la diferencia (${{ Math.abs(diferenciaLigar).toFixed(2) }}) en conceptos
           </label>
-          <Textarea v-model="justificacionForm" rows="2" class="w-full" placeholder="Ej: cliente pagó de menos, se descontó comisión bancaria..." />
-        </div>
-        <div style="display:flex;align-items:center;gap:0.5rem;margin:0.75rem 0;">
-          <input type="checkbox" id="marcarPagadaChk" v-model="marcarPagadaForm" />
-          <label for="marcarPagadaChk">Marcar la nota como pagada al ligar</label>
+          <div v-for="(c, idx) in conceptosForm" :key="idx" style="display:flex;gap:0.5rem;margin-bottom:0.4rem;align-items:center;">
+            <InputText v-model="c.concepto" placeholder="Concepto (ej: descuento, recargo...)" style="flex:2;" />
+            <InputNumber v-model="c.monto" mode="currency" currency="MXN" locale="es-MX" style="flex:1;" />
+            <Button icon="pi pi-trash" class="p-button-text p-button-danger p-button-sm" :disabled="conceptosForm.length === 1" @click="quitarConcepto(idx)" />
+          </div>
+          <Button label="Agregar concepto" icon="pi pi-plus" class="p-button-text p-button-sm" @click="agregarConcepto" />
+          <p v-if="conceptosLlenados || esOverpay" style="font-size:0.8rem;margin-top:0.4rem;" :style="{ color: conceptosCuadran ? '#2e7d32' : '#c62828' }">
+            Suma de conceptos: ${{ totalConceptos.toFixed(2) }} / ${{ Math.abs(diferenciaLigar).toFixed(2) }} requerido
+          </p>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:0.75rem;">
           <Button label="Volver" class="p-button-text" @click="ingresoSeleccionado = null" />
-          <Button label="Ligar" icon="pi pi-check" class="p-button-success" :loading="ligando" :disabled="!montoAplicadoForm" @click="confirmarLigarIngreso" />
+          <Button
+            label="Ligar" icon="pi pi-check" class="p-button-success" :loading="ligando"
+            :disabled="!montoAplicadoForm || !puedeLigar"
+            @click="confirmarLigarIngreso"
+          />
         </div>
       </div>
     </Dialog>
@@ -481,6 +529,7 @@ import { useToast } from 'primevue/usetoast';
 import {
   getNotaById,
   actualizarStatusNota,
+  actualizarCamposNota,
   actualizarLugarPagoNota,
   actualizarObservacionesNota,
   actualizarDatosPagoNota,
@@ -534,6 +583,13 @@ const eliminandoPago = ref(null);
 
 const asignando = ref(null);
 const formAsignar = ref({ banco: '', monto: null });
+// Al asignar un comprobante a banco se preselecciona el banco donde se
+// registró el pago (lugar_pago de la nota).
+function toggleAsignar(comp) {
+  if (asignando.value === comp) { asignando.value = null; return; }
+  asignando.value = comp;
+  formAsignar.value = { banco: item.value?.lugar_pago || '', monto: null };
+}
 const asignandoGuardando = ref(false);
 const detalleOrdenesMap = ref({});
 
@@ -548,11 +604,32 @@ const ingresosDisponibles = ref([]);
 const filtroLigarBusqueda = ref('');
 const ingresoSeleccionado = ref(null);
 const montoAplicadoForm = ref(null);
-const justificacionForm = ref('');
-const marcarPagadaForm = ref(true);
-const mostrarJustificacion = ref(false);
+const conceptosForm = ref([{ concepto: '', monto: null }]);
 const ligando = ref(false);
 const desligandoIngresoId = ref(null);
+// Corregir el total de la nota directo desde el diálogo de ligar — para
+// cuando la diferencia no es un descuento/recargo real sino que el total
+// capturado en la nota está mal, así se elimina en vez de "justificarla".
+const editandoTotalNota = ref(false);
+const totalNotaForm = ref(null);
+const guardandoTotalNota = ref(false);
+function abrirEditarTotalNota() {
+  totalNotaForm.value = Number(item.value?.total) || 0;
+  editandoTotalNota.value = true;
+}
+async function guardarTotalNota() {
+  if (totalNotaForm.value == null) return;
+  guardandoTotalNota.value = true;
+  try {
+    await actualizarCamposNota(item.value.id, { total: Number(totalNotaForm.value) });
+    item.value.total = Number(totalNotaForm.value);
+    editandoTotalNota.value = false;
+    toast.add({ severity: 'success', summary: 'Total actualizado', life: 2500 });
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el total.', life: 4000 });
+  }
+  guardandoTotalNota.value = false;
+}
 
 const saldoPendienteNota = computed(() => {
   const total = Number(item.value?.total) || 0;
@@ -560,6 +637,29 @@ const saldoPendienteNota = computed(() => {
   const cubiertoIngresos = ingresosLigados.value.reduce((s, l) => s + (Number(l.monto_aplicado) || 0), 0);
   return total - cubiertoPagos - cubiertoIngresos;
 });
+// diferencia = lo que se va a aplicar menos lo que la nota realmente debe.
+// El status "pagada" se decide solo (sin checkbox), igual que el backend:
+// cuadra exacto -> pagada sin conceptos. Sobra (overpay) -> conceptos
+// obligatorios, pagada. Falta (underpay) -> conceptos opcionales: vacíos
+// deja la nota abierta (pago parcial), llenados y cuadrando la cierra pagada.
+const diferenciaLigar = computed(() => (Number(montoAplicadoForm.value) || 0) - saldoPendienteNota.value);
+const cubierto = computed(() => Math.abs(diferenciaLigar.value) <= 1);
+const esOverpay = computed(() => diferenciaLigar.value > 1);
+const esUnderpay = computed(() => diferenciaLigar.value < -1);
+const totalConceptos = computed(() => conceptosForm.value.reduce((s, c) => s + (Number(c.monto) || 0), 0));
+const conceptosLlenados = computed(() => conceptosForm.value.some(c => c.concepto.trim() || Number(c.monto) > 0));
+const conceptosCuadran = computed(() => conceptosLlenados.value && Math.abs(totalConceptos.value - Math.abs(diferenciaLigar.value)) <= 1);
+const puedeLigar = computed(() => {
+  if (cubierto.value) return true;
+  if (esOverpay.value) return conceptosCuadran.value;
+  return !conceptosLlenados.value || conceptosCuadran.value;
+});
+function agregarConcepto() {
+  conceptosForm.value.push({ concepto: '', monto: null });
+}
+function quitarConcepto(idx) {
+  conceptosForm.value.splice(idx, 1);
+}
 const ingresosDisponiblesFiltrados = computed(() => {
   const q = filtroLigarBusqueda.value.trim().toLowerCase();
   return ingresosDisponibles.value.filter(g => {
@@ -647,8 +747,16 @@ const opcionesStatus = [
 
 function formatFecha(f) {
   if (!f) return '';
-  const d = new Date(f);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  const [y, m, d] = String(f).slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function formatFechaHora(f) {
+  if (!f) return '';
+  const s = String(f);
+  const fecha = formatFecha(s);
+  const hora = s.slice(11, 16);
+  return hora ? `${fecha} ${hora}` : fecha;
 }
 
 function badgeClass(status) {
@@ -713,6 +821,7 @@ async function cargarDetalle() {
     };
     await cargarDetalleOrdenesEnriquecido();
     await cargarClienteFiscal();
+    if (!nuevoPago.value.banco) nuevoPago.value.banco = item.value?.lugar_pago || '';
     pagosAdicionales.value = await getPagosNota(id.value);
     ingresosLigados.value = await getIngresosLigadosANota(id.value);
   } catch {
@@ -896,32 +1005,28 @@ function seleccionarIngreso(g) {
   ingresoSeleccionado.value = g;
   const pendiente = Math.max(saldoPendienteNota.value, 0);
   montoAplicadoForm.value = Math.min(Number(g.monto_disponible) || 0, pendiente) || Number(g.monto_disponible) || 0;
-  justificacionForm.value = '';
-  mostrarJustificacion.value = false;
-  marcarPagadaForm.value = Math.abs(montoAplicadoForm.value - pendiente) <= 1;
+  conceptosForm.value = [{ concepto: '', monto: null }];
+  editandoTotalNota.value = false;
 }
 
 async function confirmarLigarIngreso() {
   if (!ingresoSeleccionado.value || !montoAplicadoForm.value) return;
   ligando.value = true;
   try {
+    const conceptos = conceptosForm.value
+      .filter(c => c.concepto.trim() && Number(c.monto) > 0)
+      .map(c => ({ concepto: c.concepto.trim(), monto: Number(c.monto) }));
     await asignarIngresoANota(ingresoSeleccionado.value.id, {
       nota_id: Number(id.value),
       monto_aplicado: Number(montoAplicadoForm.value),
-      justificacion: justificacionForm.value,
-      marcar_pagada: marcarPagadaForm.value,
+      conceptos,
     });
     toast.add({ severity: 'success', summary: 'Ligado', detail: 'Ingreso ligado a la nota.', life: 3000 });
     ligarDialogVisible.value = false;
     await cargarDetalle();
   } catch (e) {
     const detail = e?.response?.data?.detail || '';
-    if (detail.includes('justificaci')) {
-      mostrarJustificacion.value = true;
-      toast.add({ severity: 'warn', summary: 'Requiere justificación', detail, life: 5000 });
-    } else {
-      toast.add({ severity: 'error', summary: 'Error', detail: detail || 'No se pudo ligar el ingreso.', life: 4000 });
-    }
+    toast.add({ severity: detail.includes('conceptos') ? 'warn' : 'error', summary: detail.includes('conceptos') ? 'Faltan conceptos' : 'Error', detail: detail || 'No se pudo ligar el ingreso.', life: 5000 });
   }
   ligando.value = false;
 }
@@ -1104,7 +1209,7 @@ async function confirmarAgregar() {
   color: var(--color-title);
 }
 .cliente-fiscal-info {
-  background: var(--color-bg-light, #f5f5f5);
+
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
@@ -1177,4 +1282,18 @@ async function confirmarAgregar() {
 }
 .w-full { width: 100%; }
 .form-group { margin-bottom: 1rem; }
+.ingreso-ligado {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+.ingreso-ligado:last-child { border-bottom: none; }
+.ingreso-ligado .comprobante-item { border-bottom: none; }
+.ingreso-ligado-detalle {
+  font-size: 0.83rem;
+  opacity: 0.85;
+  padding: 0.25rem 0 0.4rem 1.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
 </style>

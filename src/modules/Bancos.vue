@@ -111,8 +111,8 @@ const formatoMoneda = new Intl.NumberFormat('es-MX', {
 function formatTotal(value) { return formatoMoneda.format(Number(value) || 0); }
 function formatFecha(f) {
   if (!f) return '';
-  const d = new Date(f);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  const [y, m, d] = String(f).slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
 }
 
 const tarjetas = computed(() => LUGARES_VALIDOS.map(nombre => ({

@@ -255,8 +255,9 @@ def crear_tabla_ingreso_banco_notas():
     transferencia puede cubrir varias notas/IMEIs, y una nota puede recibir
     de varios ingresos (mismo espíritu que ya permite pagos_nota). Guarda la
     conciliación de cada liga: diferencia = monto_aplicado - saldo pendiente
-    de la nota en ese momento; si |diferencia| > TOLERANCIA_CONCILIACION_PAGOS,
-    requiere_justificacion=1 y `justificacion` es obligatoria."""
+    de la nota en ese momento; si aplica (ver asignar-nota),
+    requiere_justificacion=1 y se exigen conceptos en
+    ingreso_banco_notas_conceptos."""
     db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("""
@@ -272,6 +273,28 @@ def crear_tabla_ingreso_banco_notas():
             creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_ibn_ingreso (ingreso_id),
             INDEX idx_ibn_nota (nota_id)
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
+
+@app.on_event("startup")
+def crear_tabla_ingreso_banco_notas_conceptos():
+    """Desglose de la diferencia de un link ingreso↔nota — reemplaza el
+    campo `justificacion` de texto libre por N renglones {concepto, monto}
+    cuya suma debe cuadrar exacto con |diferencia| (ver validación en
+    POST /ingresos-banco/{id}/asignar-nota)."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ingreso_banco_notas_conceptos (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            link_id INT NOT NULL,
+            concepto VARCHAR(255) NOT NULL,
+            monto DECIMAL(12,2) NOT NULL,
+            INDEX idx_ibnc_link (link_id)
         )
     """)
     db.commit()
@@ -5628,6 +5651,19 @@ def get_notas_pago():
                 r['comprobantes'] = []
         if r.get('comprobantes') is None:
             r['comprobantes'] = []
+        # Comprobantes de pagos ligados (ingresos_banco ligados + pagos_nota):
+        # el botón "Comprobante" del histórico también los expone, no solo los
+        # subidos directo a la nota (ver Pagos.vue parseComprobantes).
+        extra = []
+        cursor.execute(
+            "SELECT ib.comprobante_path AS p FROM ingreso_banco_notas ibn "
+            "JOIN ingresos_banco ib ON ib.id = ibn.ingreso_id WHERE ibn.nota_id=%s",
+            (r['id'],)
+        )
+        extra += [x['p'] for x in cursor.fetchall() if x.get('p')]
+        cursor.execute("SELECT comprobante_path AS p FROM pagos_nota WHERE nota_id=%s", (r['id'],))
+        extra += [x['p'] for x in cursor.fetchall() if x.get('p')]
+        r['comprobantes_extra'] = extra
     cursor.close()
     db.close()
     return rows
@@ -8123,6 +8159,23 @@ def _saldo_pendiente_nota(cursor, nota_id: int) -> float:
     return total - cubierto
 
 
+def _conceptos_por_link(cursor, link_ids):
+    """Agrupa ingreso_banco_notas_conceptos por link_id. `cursor` debe ser
+    dictionary=True."""
+    if not link_ids:
+        return {}
+    formato = ','.join(['%s'] * len(link_ids))
+    cursor.execute(
+        f"SELECT * FROM ingreso_banco_notas_conceptos WHERE link_id IN ({formato}) ORDER BY id",
+        link_ids
+    )
+    out = {}
+    for c in cursor.fetchall():
+        c['monto'] = float(c['monto'])
+        out.setdefault(c['link_id'], []).append(c)
+    return out
+
+
 @app.get("/ingresos-banco")
 def get_ingresos_banco(request: Request = None):
     db = get_db_connection()
@@ -8142,6 +8195,8 @@ def get_ingresos_banco(request: Request = None):
         )
         for l in cursor.fetchall():
             links_por_ingreso.setdefault(l['ingreso_id'], []).append(l)
+    todos_los_links = [l for links in links_por_ingreso.values() for l in links]
+    conceptos_por_link = _conceptos_por_link(cursor, [l['id'] for l in todos_los_links])
     for i in ingresos:
         i['imeis'] = json.loads(i['imeis']) if isinstance(i['imeis'], str) else (i['imeis'] or [])
         i['comprobante_url'] = build_public_url(i.get('comprobante_path'), request)
@@ -8155,6 +8210,7 @@ def get_ingresos_banco(request: Request = None):
                 l['creado_fecha'] = l['creado_fecha'].isoformat()
             l['monto_aplicado'] = float(l['monto_aplicado'])
             l['diferencia'] = float(l['diferencia'])
+            l['conceptos'] = conceptos_por_link.get(l['id'], [])
         i['links'] = links
         i['monto'] = float(i['monto'])
         i['monto_aplicado_total'] = sum(l['monto_aplicado'] for l in links)
@@ -8325,16 +8381,25 @@ def eliminar_ingreso_banco(ingreso_id: int, forzar: bool = False):
 
 @app.post("/ingresos-banco/{ingreso_id}/asignar-nota")
 def asignar_ingreso_a_nota(ingreso_id: int, data: dict = Body(...), current=Depends(get_current_user)):
-    """Liga (total o parcialmente) un ingreso bancario a una nota y concilia:
-    si `monto_aplicado` no cubre exactamente el saldo pendiente de la nota
-    (tolerancia $TOLERANCIA_CONCILIACION_PAGOS), exige `justificacion` y
-    marca requiere_justificacion=1 en el link — eso es lo que pinta el ⚠️ en
-    el datatable de bancos y en el detalle de la nota. `marcar_pagada=true`
-    además cambia el status de la nota a 'pagado' en la misma transacción."""
+    """Liga (total o parcialmente) un ingreso bancario a una nota y concilia.
+    El status 'pagado' de la nota se decide solo, no hay checkbox manual:
+
+    diferencia = monto_aplicado - saldo_pendiente_nota.
+      - cuadra exacto (|diferencia| <= tolerancia): nota queda pagada, sin
+        conceptos.
+      - overpay (diferencia > 0): aplicar de más A ESTA nota es siempre
+        deliberado — exige `conceptos` que sumen exacto el excedente, nota
+        queda pagada.
+      - underpay (diferencia < 0): `conceptos` es OPCIONAL.
+          * vacíos → pago parcial, la nota sigue abierta para completarse
+            después con otro ingreso/pago.
+          * con conceptos que sumen exacto el faltante → se está cerrando
+            la nota aceptando el faltante (p.ej. descuento), queda pagada.
+    `conceptos` es una lista de {concepto, monto>0} — ver
+    ingreso_banco_notas_conceptos."""
     nota_id = data.get('nota_id')
     monto_aplicado = data.get('monto_aplicado')
-    justificacion = (data.get('justificacion') or '').strip()
-    marcar_pagada = bool(data.get('marcar_pagada'))
+    conceptos = data.get('conceptos') or []
     if not nota_id or monto_aplicado is None or float(monto_aplicado) <= 0:
         raise HTTPException(status_code=400, detail="Se requiere 'nota_id' y 'monto_aplicado' (> 0)")
     monto_aplicado = float(monto_aplicado)
@@ -8359,22 +8424,60 @@ def asignar_ingreso_a_nota(ingreso_id: int, data: dict = Body(...), current=Depe
     plain = db.cursor()
     saldo_pendiente = _saldo_pendiente_nota(plain, nota_id)
     diferencia = round(monto_aplicado - saldo_pendiente, 2)
-    requiere_justificacion = abs(diferencia) > TOLERANCIA_CONCILIACION_PAGOS
-    if requiere_justificacion and not justificacion:
-        plain.close(); cursor.close(); db.close()
-        raise HTTPException(
-            status_code=400,
-            detail=f"El pago no cubre exactamente el saldo de la nota (diferencia: ${diferencia:.2f}). Se requiere justificación."
-        )
+    cubierto_exacto = abs(diferencia) <= TOLERANCIA_CONCILIACION_PAGOS
+    es_overpay = diferencia > TOLERANCIA_CONCILIACION_PAGOS
+
+    conceptos_limpios = []
+    for c in conceptos:
+        texto = str(c.get('concepto') or '').strip()
+        monto_c = float(c.get('monto') or 0)
+        if not texto or monto_c <= 0:
+            continue
+        conceptos_limpios.append((texto, round(monto_c, 2)))
+    suma_conceptos = round(sum(m for _, m in conceptos_limpios), 2)
+    conceptos_cuadran = conceptos_limpios and abs(suma_conceptos - abs(diferencia)) <= TOLERANCIA_CONCILIACION_PAGOS
+
+    if cubierto_exacto:
+        marcar_pagada = True
+        requiere_justificacion = False
+        conceptos = []
+    elif es_overpay:
+        if not conceptos_cuadran:
+            plain.close(); cursor.close(); db.close()
+            raise HTTPException(
+                status_code=400,
+                detail=f"El pago excede el saldo de la nota (diferencia: ${diferencia:.2f}). "
+                       f"Agrega conceptos que sumen ${abs(diferencia):.2f}."
+            )
+        marcar_pagada = True
+        requiere_justificacion = True
+        conceptos = conceptos_limpios
+    else:
+        # underpay: conceptos opcionales — vacíos = pago parcial (nota sigue
+        # abierta); si se llenaron deben cuadrar exacto o se rechaza.
+        if conceptos_limpios and not conceptos_cuadran:
+            plain.close(); cursor.close(); db.close()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Los conceptos no cuadran con el faltante (${abs(diferencia):.2f}). "
+                       f"Complétalos o bórralos para dejarlo como pago parcial."
+            )
+        marcar_pagada = bool(conceptos_cuadran)
+        requiere_justificacion = bool(conceptos_cuadran)
+        conceptos = conceptos_limpios if conceptos_cuadran else []
 
     plain.execute(
         """INSERT INTO ingreso_banco_notas
-           (ingreso_id, nota_id, monto_aplicado, diferencia, requiere_justificacion, justificacion, creado_por)
-           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-        (ingreso_id, nota_id, monto_aplicado, diferencia, int(requiere_justificacion),
-         justificacion or None, current.get("username"))
+           (ingreso_id, nota_id, monto_aplicado, diferencia, requiere_justificacion, creado_por)
+           VALUES (%s,%s,%s,%s,%s,%s)""",
+        (ingreso_id, nota_id, monto_aplicado, diferencia, int(requiere_justificacion), current.get("username"))
     )
     new_id = plain.lastrowid
+    for texto, monto_c in conceptos:
+        plain.execute(
+            "INSERT INTO ingreso_banco_notas_conceptos (link_id, concepto, monto) VALUES (%s,%s,%s)",
+            (new_id, texto, monto_c)
+        )
     if marcar_pagada:
         plain.execute("UPDATE notas_pago SET status='pagado' WHERE id=%s", (nota_id,))
     db.commit()
@@ -8393,6 +8496,7 @@ def desligar_ingreso_nota(link_id: int):
     saldo pendiente de la nota. No borra el ingreso ni su comprobante."""
     db = get_db_connection()
     cursor = db.cursor()
+    cursor.execute("DELETE FROM ingreso_banco_notas_conceptos WHERE link_id=%s", (link_id,))
     cursor.execute("DELETE FROM ingreso_banco_notas WHERE id=%s", (link_id,))
     db.commit()
     affected = cursor.rowcount
@@ -8408,18 +8512,24 @@ def get_ingresos_ligados_a_nota(nota_id: int, request: Request = None):
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute(
-        """SELECT ibn.*, ib.banco, ib.imeis, ib.fecha_transaccion, ib.comprobante_path
+        """SELECT ibn.*, ib.banco, ib.imeis, ib.fecha_transaccion, ib.comprobante_path,
+                  ib.monto AS ingreso_monto, ib.usuario, ib.cuenta_origen,
+                  ib.referencia_comprobante, ib.clave_rastreo
            FROM ingreso_banco_notas ibn
            JOIN ingresos_banco ib ON ib.id = ibn.ingreso_id
            WHERE ibn.nota_id=%s ORDER BY ibn.id DESC""",
         (nota_id,)
     )
     rows = cursor.fetchall()
+    conceptos_por_link = _conceptos_por_link(cursor, [r['id'] for r in rows])
     for r in rows:
         r['imeis'] = json.loads(r['imeis']) if isinstance(r['imeis'], str) else (r['imeis'] or [])
         r['comprobante_url'] = build_public_url(r.get('comprobante_path'), request)
         r['monto_aplicado'] = float(r['monto_aplicado'])
         r['diferencia'] = float(r['diferencia'])
+        if r.get('ingreso_monto') is not None:
+            r['ingreso_monto'] = float(r['ingreso_monto'])
+        r['conceptos'] = conceptos_por_link.get(r['id'], [])
         if r.get('fecha_transaccion') and hasattr(r['fecha_transaccion'], 'isoformat'):
             r['fecha_transaccion'] = r['fecha_transaccion'].isoformat()
         if r.get('creado_fecha') and hasattr(r['creado_fecha'], 'isoformat'):

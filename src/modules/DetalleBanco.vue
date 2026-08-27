@@ -314,8 +314,8 @@ const formatoMoneda = new Intl.NumberFormat('es-MX', {
 function formatTotal(value) { return formatoMoneda.format(Number(value) || 0); }
 function formatFecha(f) {
   if (!f) return '';
-  const d = new Date(f);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  const [y, m, d] = String(f).slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
 }
 function badgeClaseTipo(tipo) {
   if (tipo === 'Nota' || tipo === 'Factura' || tipo === 'Ingreso' || tipo === 'Pago nota') return 'success';
@@ -334,7 +334,7 @@ function badgeClaseEstatus(estatus) {
 function textoJustificaciones(ingresoRaw) {
   return (ingresoRaw.links || [])
     .filter(l => l.requiere_justificacion)
-    .map(l => `Nota #${l.nota_id} (dif. $${Number(l.diferencia).toFixed(2)}): ${l.justificacion || 'sin texto'}`)
+    .map(l => `Nota #${l.nota_id} (dif. $${Number(l.diferencia).toFixed(2)}): ${(l.conceptos || []).map(c => `${c.concepto} $${Number(c.monto).toFixed(2)}`).join(', ') || 'sin conceptos'}`)
     .join('\n') || 'Requiere justificación';
 }
 

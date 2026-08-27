@@ -40,12 +40,15 @@ export async function eliminarIngresoBanco(id, forzar = false) {
   return res.data;
 }
 
-// Liga (total o parcial) un ingreso a una nota. Si el monto no cubre exacto
-// el saldo pendiente de la nota (tolerancia $1 MXN), el backend responde 400
-// pidiendo `justificacion` — reintentar mandándola resuelve la conciliación.
-export async function asignarIngresoANota(ingresoId, { nota_id, monto_aplicado, justificacion, marcar_pagada }) {
+// Liga (total o parcial) un ingreso a una nota. El status "pagada" de la
+// nota lo decide el backend solo: cuadra exacto -> pagada; sobra (overpay)
+// -> exige `conceptos` ([{concepto, monto}], deben sumar exacto la
+// diferencia) y queda pagada; falta (underpay) -> `conceptos` opcional,
+// vacío deja la nota abierta como pago parcial, lleno y cuadrando la cierra
+// pagada. Si los conceptos no cuadran, el backend responde 400.
+export async function asignarIngresoANota(ingresoId, { nota_id, monto_aplicado, conceptos }) {
   const res = await axios.post(`${API_URL}/ingresos-banco/${ingresoId}/asignar-nota`, {
-    nota_id, monto_aplicado, justificacion, marcar_pagada,
+    nota_id, monto_aplicado, conceptos,
   });
   return res.data;
 }
