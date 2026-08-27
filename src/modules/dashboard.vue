@@ -150,6 +150,8 @@ const showSidebar = ref(false);
 const overlayRef = ref();
 const user = computed(() => loginStore.user || {});
 const esAdmin = computed(() => (user.value.perfil || '').toLowerCase() === 'admin');
+// Instalaciones / Renovaciones Recientes: admin y vendedores.
+const veRecientes = computed(() => ['admin', 'vendedor'].includes((user.value.perfil || '').toLowerCase()));
 
 const handleLogout = () => {
   loginStore.logout();
@@ -250,8 +252,8 @@ const items = computed(() => {
       items: [
         // { label: 'Asignaciones a Técnicos', route: '/calendario-tecnicos', icon: 'pi pi-fw pi-calendar-plus' },
         { label: 'Reportes de Servicio', route: '/consultar-reportes', icon: 'pi pi-fw pi-file-edit', badge: reportesNuevos.value || undefined },
-        ...(esAdmin.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
-        ...(esAdmin.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
+        ...(veRecientes.value ? [{ label: 'Instalaciones Recientes', route: '/recientes', icon: 'pi pi-fw pi-clock' }] : []),
+        ...(veRecientes.value ? [{ label: 'Renovaciones Recientes', route: '/renovaciones-recientes', icon: 'pi pi-fw pi-refresh' }] : [])
       ]
     },
     // {

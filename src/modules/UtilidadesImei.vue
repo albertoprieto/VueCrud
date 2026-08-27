@@ -2,74 +2,10 @@
   <section class="util-page">
     <header class="util-hero">
       <h1>SIM ESPAÑOL</h1>
-      <p>Agrega un nuevo registro arriba y usa los filtros dentro de la tabla para buscar en el histórico.</p>
+      <p>Listado de SIMs. Usa los filtros dentro de la tabla para buscar en el histórico.</p>
     </header>
 
-    <div class="util-card util-form-card">
-      <div class="section-head">
-        <div>
-          <h2>Nuevo registro</h2>
-          <p>Captura IMEI y plataforma para consultar y guardar un nuevo movimiento.</p>
-        </div>
-      </div>
-
-      <div class="util-grid">
-        <div class="field">
-          <label for="tipo">Tipo</label>
-          <Dropdown
-            id="tipo"
-            v-model="tipo"
-            :options="tiposOptions"
-            optionLabel="label"
-            optionValue="value"
-            class="w-full"
-          />
-        </div>
-
-        <div class="field">
-          <label for="imei">IMEI</label>
-          <InputText
-            id="imei"
-            v-model="imei"
-            placeholder="Ej. 353549093223336"
-            @input="sanitizeImei"
-            inputmode="numeric"
-          />
-        </div>
-
-        <div class="field">
-          <label for="simTelefono">SIM ESPAÑOL (teléfono)</label>
-          <InputText
-            id="simTelefono"
-            v-model="simTelefono"
-            placeholder="Ej. 8713056103"
-            @input="sanitizeSimTelefono"
-            inputmode="numeric"
-          />
-        </div>
-
-        <div class="field">
-          <label for="plataforma">Plataforma</label>
-          <Dropdown
-            id="plataforma"
-            v-model="plataforma"
-            :options="plataformas"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Selecciona una plataforma"
-            class="w-full"
-          />
-        </div>
-      </div>
-
-      <div class="actions">
-        <Button :label="loading ? 'Agregando...' : 'Agregar'" icon="pi pi-search" :loading="loading" :disabled="loading" @click="consultar" />
-        <Button label="Exportar Excel" icon="pi pi-file-excel" :disabled="!rows.length || loading" @click="exportarExcel" />
-        <Button label="Limpiar" icon="pi pi-eraser" severity="secondary" outlined :disabled="loading" @click="limpiar" />
-      </div>
-    </div>
-
-    <div class="util-card">
+<!--     <div class="util-card">
       <div class="section-head">
         <div>
           <h2>Carga inicial SIMPRO</h2>
@@ -84,8 +20,30 @@
           :disabled="importando"
           @click="importarSimpro()"
         />
+        <Button
+          :label="completando ? 'Completando...' : 'Completar datos faltantes (SIMPRO)'"
+          icon="pi pi-database"
+          severity="secondary"
+          :loading="completando"
+          :disabled="completando"
+          @click="completarDatos()"
+        />
+        <Button
+          :label="refrescando ? (refrescarProgreso || 'Refrescando...') : 'Refrescar estado y consumo (SIMPRO)'"
+          icon="pi pi-sync"
+          severity="secondary"
+          outlined
+          :loading="refrescando"
+          :disabled="refrescando"
+          @click="refrescarSimpro()"
+        />
       </div>
-    </div>
+      <p class="hint">
+        "Completar datos" recorre los registros incompletos que tienen ICCID, consulta SIMPRO en tandas
+        y llena solo lo que esté vacío (activación, vigencia, usuario, cliente, IMEI, estado). Deduce la
+        plataforma cruzando el IMEI con reportes de servicio. Se puede correr varias veces.
+      </p>
+    </div> -->
 
       <p v-if="message" :class="['status', messageError ? 'is-error' : 'is-ok']">{{ message }}</p>
 
@@ -104,6 +62,16 @@
               <div class="table-tools__summary">
                 <span class="summary-pill">Histórico: {{ historicalRecords }}</span>
                 <span class="summary-pill">Filtrados: {{ filteredRecords }}</span>
+                <button
+                  v-for="opt in filterTipoOptions"
+                  :key="opt.value"
+                  type="button"
+                  class="summary-pill summary-pill--tipo"
+                  :class="{ 'is-active': filters.tipo === opt.value }"
+                  @click="toggleTipoFiltro(opt.value)"
+                >
+                  {{ opt.label }}: {{ countsByTipo[opt.value] || 0 }}
+                </button>
               </div>
               <div class="table-tools__filters">
                 <Dropdown
@@ -141,19 +109,32 @@
                   placeholder="Vigencia SIM"
                   showClear
                 />
+                <Dropdown
+                  v-model="filters.estado_simpro"
+                  :options="estadoSimproOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Estado SIMPRO"
+                  @change="aplicarFiltros"
+                />
                 <div class="table-tools__buttons">
                   <Button label="Buscar" icon="pi pi-search" @click="aplicarFiltros" :loading="loading" />
                   <Button label="Limpiar" icon="pi pi-filter-slash" severity="secondary" outlined @click="limpiarFiltros" :disabled="loading" />
+                  <Button
+                    :label="refrescando ? (refrescarProgreso || 'Actualizando...') : 'Actualizar desde SIMPRO'"
+                    icon="pi pi-sync"
+                    severity="secondary"
+                    :loading="refrescando"
+                    :disabled="refrescando"
+                    @click="refrescarSimpro"
+                  />
                 </div>
               </div>
             </div>
           </template>
           <Column field="tipo" header="TIPO" sortable>
             <template #body="{ data }">
-              <Tag
-                :value="data.tipo"
-                :severity="data.tipo === 'activacion' ? 'success' : data.tipo === 'renovacion' ? 'info' : 'danger'"
-              />
+              <Tag :value="TIPO_LABELS[data.tipo] || data.tipo" :severity="tipoSeverity(data.tipo)" />
             </template>
           </Column>
           <Column field="activation_date" header="Fecha. Act" sortable>
@@ -183,17 +164,35 @@
               <Tag v-if="esVencido(data.vigencia_sim)" value="Vencido" severity="danger" style="margin-left: 6px;" />
             </template>
           </Column>
-          <Column header="ESTADO" style="min-width: 120px">
+          <Column header="ESTADO SIMPRO" style="min-width: 150px">
             <template #body="{ data }">
-              <Tag v-if="isIncompleto(data)" value="Sin datos" severity="danger" />
-              <Tag v-else value="Completo" severity="success" />
+              <Tag
+                v-if="data.sim_state === 'suspendido_temporal'"
+                value="Suspendido temporal"
+                severity="warning"
+              />
+              <Tag
+                v-else-if="data.sim_state === 'cancelacion_programada'"
+                value="Cancelación programada"
+                severity="danger"
+              />
+              <span v-else-if="data.sim_customer_status">{{ data.sim_customer_status }}</span>
+              <span v-else class="muted">—</span>
+              <div v-if="data.verificado_en" class="muted-small">rev. {{ fechaCorta(data.verificado_en) }}</div>
             </template>
           </Column>
-          <Column header="ACCIONES" style="min-width: 140px">
+          <Column header="CONSUMO" style="min-width: 120px">
+            <template #body="{ data }">
+              <span v-if="data.data_usage_mb != null">{{ data.data_usage_mb }} MB</span>
+              <span v-else class="muted">—</span>
+              <Tag v-if="data.sin_trafico" value="Sin tráfico" severity="danger" style="margin-left:6px;" />
+            </template>
+          </Column>
+          <Column header="ACCIONES" style="min-width: 180px">
             <template #body="{ data }">
               <div class="row-actions">
-                <Button icon="pi pi-pencil" text rounded severity="info" @click="openEdit(data)" />
-                <Button icon="pi pi-trash" text rounded severity="danger" @click="removeRecord(data)" />
+                <Button icon="pi pi-pencil" text rounded severity="info" @click="openEdit(data)" v-tooltip.top="'Editar'" />
+                <Button icon="pi pi-server" text rounded severity="secondary" @click="abrirAccionesSimpro(data)" v-tooltip.top="'Acciones SIMPRO'" />
               </div>
             </template>
           </Column>
@@ -202,7 +201,7 @@
         <div v-else-if="!hasMore && rows.length" class="loading-more">No hay más registros.</div>
       </div>
 
-    <Dialog v-model:visible="showEditDialog" :header="editRow.id ? 'Editar Registro' : 'Nuevo Registro Manual'" :style="{ width: '520px' }" modal>
+    <Dialog v-model:visible="showEditDialog" header="Editar registro" :style="{ width: '520px' }" modal>
       <div class="edit-grid">
         <div class="field">
           <label>Tipo</label>
@@ -246,11 +245,13 @@
         <Button :label="editRow.id ? 'Guardar' : 'Guardar nuevo'" icon="pi pi-save" @click="saveEdit" />
       </template>
     </Dialog>
+
   </section>
 </template>
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import * as XLSX from 'xlsx';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
@@ -267,8 +268,17 @@ import {
   getUtilidadesPlataformas,
   importarSimsSimpro,
   saveConsultaSim,
-  updateConsultaSim
+  updateConsultaSim,
+  completarDatosSims,
+  refrescarSimproSims,
+  getCustomerSolutions,
+  getBillingAccounts,
+  activarSimsSimpro,
+  getAlertasConsumoSimpro,
+  getFacturasSimpro
 } from '@/services/utilidadesImeiService';
+
+const router = useRouter();
 
 const imei = ref('');
 const simTelefono = ref('');
@@ -278,12 +288,25 @@ const tipo = ref('activacion');
 const tiposOptions = [
   { label: 'Activación', value: 'activacion' },
   { label: 'Renovación', value: 'renovacion' },
-  { label: 'Cancelado', value: 'cancelado' }
+  { label: 'Cancelado', value: 'cancelado' },
+  { label: 'Desinstalado', value: 'desinstalado' },
+  { label: 'Reutilizado', value: 'reutilizado' }
 ];
-const filterTipoOptions = [
-  { label: 'Activación', value: 'activacion' },
-  { label: 'Renovación', value: 'renovacion' },
-  { label: 'Cancelado', value: 'cancelado' }
+const filterTipoOptions = tiposOptions;
+const TIPO_LABELS = Object.fromEntries(tiposOptions.map(o => [o.value, o.label]));
+function tipoSeverity(t) {
+  return {
+    activacion: 'success',
+    renovacion: 'info',
+    cancelado: 'danger',
+    desinstalado: 'warning',
+    reutilizado: 'contrast'
+  }[t] || null;
+}
+const estadoSimproOptions = [
+  { label: 'Solo activos', value: 'activos' },
+  { label: 'Solo cancelados / cesados', value: 'baja' },
+  { label: 'Todos', value: '' },
 ];
 const vigenciaSimOptions = [
   { label: 'Vencidos (7+ días)', value: 'vencidos_7_dias' }
@@ -295,6 +318,7 @@ const messageError = ref(false);
 const totalRecords = ref(0);
 const historicalRecords = ref(0);
 const filteredRecords = ref(0);
+const countsByTipo = ref({});
 const pageSize = ref(30);
 const currentPage = ref(1);
 const hasMore = ref(true);
@@ -304,6 +328,23 @@ const sortOrder = ref(null);
 const showEditDialog = ref(false);
 const editRow = ref({});
 const importando = ref(false);
+const completando = ref(false);
+const refrescando = ref(false);
+const refrescarProgreso = ref('');
+const solucionesSimpro = ref([]);
+const cargandoSoluciones = ref(false);
+
+// Administración SIMPRO
+const showAdmin = ref(false);
+const adminBusy = ref('');
+const cuentasSimpro = ref([]);
+const cargandoCuentas = ref(false);
+const activarIccids = ref('');
+const activarSolucion = ref('');
+const activarCuenta = ref('');
+const alertasTexto = ref('');
+const facturasCuenta = ref('');
+const facturasTexto = ref('');
 const filters = ref({
   tipo: '',
   deaccount: '',
@@ -312,6 +353,7 @@ const filters = ref({
   vigencia_sim: '',
   fecha_desde: null,
   fecha_hasta: null,
+  estado_simpro: 'activos',
 });
 
 function sanitizeImei() {
@@ -353,6 +395,7 @@ async function cargarDesdeDB() {
     const data = await getConsultasSim(currentPage.value, pageSize.value, activeFilters(), sort);
     totalRecords.value = data.total || 0;
     filteredRecords.value = data.total || 0;
+    countsByTipo.value = data.counts_by_tipo || {};
     const mapped = (data.items || []).map(mapDbRow);
     rows.value = sortField.value ? mapped : sortRows(mapped);
     hasMore.value = rows.value.length < totalRecords.value;
@@ -458,11 +501,118 @@ function mapDbRow(r) {
     imei: r.imei || '',
     iccid: r.iccid || '',
     deviceMobile: r.device_mobile || '',
-    vigencia_sim: r.vigencia_sim || ''
+    vigencia_sim: r.vigencia_sim || '',
+    sim_state: r.sim_state || '',
+    sim_customer_status: r.sim_customer_status || '',
+    suspendido_desde: r.suspendido_desde || '',
+    verificado_en: r.verificado_en || '',
+    data_usage_mb: r.data_usage_mb ?? null,
+    sin_trafico: !!r.sin_trafico
   };
 }
 
+function fechaCorta(v) {
+  if (!v) return '';
+  return String(v).slice(0, 10);
+}
+
+async function cargarSolucionesSimpro() {
+  if (solucionesSimpro.value.length || cargandoSoluciones.value) return;
+  cargandoSoluciones.value = true;
+  try {
+    const data = await getCustomerSolutions();
+    const arr = Array.isArray(data) ? data : (data?.customer_solutions || data?.solutions || []);
+    solucionesSimpro.value = arr.map(s => {
+      const name = s.customer_solution || s.name || String(s);
+      return { label: name, value: name };
+    });
+  } catch {
+    solucionesSimpro.value = [];
+  }
+  cargandoSoluciones.value = false;
+}
+
+async function cargarCuentasSimpro() {
+  if (cuentasSimpro.value.length || cargandoCuentas.value) return;
+  cargandoCuentas.value = true;
+  try {
+    const data = await getBillingAccounts();
+    const arr = Array.isArray(data) ? data : (data?.billing_accounts || []);
+    cuentasSimpro.value = arr.map(a => ({
+      label: `${a.account_number || ''} ${a.name || ''}`.trim() || String(a),
+      value: a.account_number || ''
+    }));
+  } catch {
+    cuentasSimpro.value = [];
+  }
+  cargandoCuentas.value = false;
+}
+
+function abrirAccionesSimpro(rowData) {
+  router.push({ name: 'acciones-simpro', params: { id: rowData.id } });
+}
+
+function toggleAdmin() {
+  showAdmin.value = !showAdmin.value;
+  if (showAdmin.value) {
+    cargarSolucionesSimpro();
+    cargarCuentasSimpro();
+  }
+}
+
+async function ejecutarActivar() {
+  const iccids = activarIccids.value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+  if (!iccids.length || !activarSolucion.value) return;
+  adminBusy.value = 'activar';
+  message.value = '';
+  try {
+    await activarSimsSimpro({
+      iccids,
+      customerSolution: activarSolucion.value,
+      billingAccountNumber: activarCuenta.value || undefined
+    });
+    message.value = `Activación solicitada para ${iccids.length} SIM(s).`;
+    messageError.value = false;
+    activarIccids.value = '';
+  } catch (error) {
+    message.value = error?.response?.data?.detail || error?.message || 'No se pudo activar.';
+    messageError.value = true;
+  } finally {
+    adminBusy.value = '';
+  }
+}
+
+async function cargarAlertas() {
+  adminBusy.value = 'alertas';
+  try {
+    const data = await getAlertasConsumoSimpro();
+    alertasTexto.value = JSON.stringify(data, null, 2).slice(0, 4000);
+  } catch (error) {
+    alertasTexto.value = 'Error: ' + (error?.response?.data?.detail || error?.message || 'falló');
+  } finally {
+    adminBusy.value = '';
+  }
+}
+
+async function cargarFacturas() {
+  adminBusy.value = 'facturas';
+  try {
+    const data = await getFacturasSimpro(facturasCuenta.value || undefined);
+    facturasTexto.value = JSON.stringify(data, null, 2).slice(0, 4000);
+  } catch (error) {
+    facturasTexto.value = 'Error: ' + (error?.response?.data?.detail || error?.message || 'falló');
+  } finally {
+    adminBusy.value = '';
+  }
+}
+
 async function aplicarFiltros() {
+  currentPage.value = 1;
+  await cargarDesdeDB();
+}
+
+async function toggleTipoFiltro(tipo) {
+  filters.value.tipo = filters.value.tipo === tipo ? '' : tipo;
   currentPage.value = 1;
   await cargarDesdeDB();
 }
@@ -476,6 +626,7 @@ async function limpiarFiltros() {
     vigencia_sim: '',
     fecha_desde: null,
     fecha_hasta: null,
+    estado_simpro: 'activos',
   };
   currentPage.value = 1;
   await cargarDesdeDB();
@@ -511,6 +662,14 @@ async function consultar() {
     const row = await buildRowFromDispositivo(data);
     row.tipo = tipo.value;
 
+    // SIMPRO reporta el SIM dado de baja pero se está registrando como
+    // activación/renovación: ajustar a "cancelado" y avisar.
+    let avisoBaja = '';
+    if (esBajaSimpro(row.sim_customer_status) && ['activacion', 'renovacion'].includes(row.tipo)) {
+      row.tipo = 'cancelado';
+      avisoBaja = ` El SIM figura como "${row.sim_customer_status}" en SIMPRO — se guardó como Cancelado.`;
+    }
+
     validateRow(row);
 
     await saveConsultaSim({
@@ -529,7 +688,7 @@ async function consultar() {
     currentPage.value = 1;
     await cargarDesdeDB();
 
-    message.value = 'Consulta completada y guardada.';
+    message.value = 'Consulta completada y guardada.' + avisoBaja;
     messageError.value = false;
   } catch (error) {
     message.value = error?.response?.data?.detail || error?.message || 'Error al consultar IMEI.';
@@ -679,6 +838,9 @@ async function buildRowFromDispositivo(apiResponse) {
   const firstItem = Array.isArray(simInfo?.items) && simInfo.items.length ? simInfo.items[0] : null;
   const activeConn = firstItem?.active_connection || {};
   const vigencia = simInfo?.contract_end_date || activeConn?.contract_end_date || '';
+  const customerStatus = simInfo?.customer_status
+    || (typeof activeConn?.customer_status === 'object' ? activeConn.customer_status?.ident : activeConn?.customer_status)
+    || '';
 
   return {
     activation_date: simInfo?.activation_date || activeConn?.activation_date || '',
@@ -689,8 +851,14 @@ async function buildRowFromDispositivo(apiResponse) {
     imei: imei.value,
     iccid: simInfo?.iccid || firstItem?.iccid || '',
     deviceMobile,
-    vigencia_sim: vigencia
+    vigencia_sim: vigencia,
+    sim_customer_status: String(customerStatus || '')
   };
+}
+
+const SIMPRO_ESTADOS_BAJA = ['ceased', 'cancelled', 'canceled', 'terminated', 'stopped'];
+function esBajaSimpro(status) {
+  return SIMPRO_ESTADOS_BAJA.includes(String(status || '').trim().toLowerCase());
 }
 
 async function prepararRegistroManualDesdeTelefono() {
@@ -764,6 +932,56 @@ async function importarSimpro() {
   }
 }
 
+async function refrescarSimpro() {
+  refrescando.value = true;
+  refrescarProgreso.value = '';
+  message.value = '';
+  messageError.value = false;
+  let totalEstado = 0;
+  let totalConsumo = 0;
+  let totalProcesados = 0;
+  let totalNuevos = 0;
+  try {
+    // Recorre TODO en tandas hasta que no queden pendientes (tope de vueltas
+    // por seguridad).
+    for (let vuelta = 0; vuelta < 40; vuelta++) {
+      const r = await refrescarSimproSims();
+      totalEstado += r.estado_ok || 0;
+      totalConsumo += r.consumo_ok || 0;
+      totalProcesados += r.procesados || 0;
+      totalNuevos += r.nuevos || 0;
+      refrescarProgreso.value = `Procesados ${totalProcesados}, faltan ${r.restantes}...`;
+      if (!r.procesados || !r.restantes) break;
+    }
+    message.value = `Actualización SIMPRO: ${totalNuevos} SIM nuevo(s), estado en ${totalEstado}, consumo en ${totalConsumo} (${totalProcesados} revisados).`;
+    currentPage.value = 1;
+    await cargarDesdeDB();
+  } catch (error) {
+    message.value = error?.response?.data?.detail || error?.message || 'El refresco SIMPRO falló.';
+    messageError.value = true;
+  } finally {
+    refrescando.value = false;
+    refrescarProgreso.value = '';
+  }
+}
+
+async function completarDatos() {
+  completando.value = true;
+  message.value = '';
+  try {
+    const r = await completarDatosSims();
+    message.value = `Completar datos: ${r.actualizados} registro(s) actualizado(s) de ${r.procesados} revisado(s). Quedan ${r.restantes} incompleto(s)${r.restantes ? ' — vuelve a correr para seguir.' : '.'}`;
+    messageError.value = false;
+    currentPage.value = 1;
+    await cargarDesdeDB();
+  } catch (error) {
+    message.value = error?.response?.data?.detail || error?.message || 'No se pudo completar datos.';
+    messageError.value = true;
+  } finally {
+    completando.value = false;
+  }
+}
+
 function exportarExcel() {
   if (!rows.value.length) return;
 
@@ -806,7 +1024,7 @@ function stamp() {
 }
 
 onMounted(() => {
-  loadPlataformas();
+  cargarDesdeDB();
   window.addEventListener('scroll', onWindowScroll);
 });
 
@@ -954,6 +1172,19 @@ onUnmounted(() => {
   font-size: 0.85rem;
 }
 
+.summary-pill--tipo {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.summary-pill--tipo.is-active {
+  background: var(--color-title);
+  color: var(--color-bg);
+  border-color: var(--color-title);
+}
+
 .table-tools__filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -982,6 +1213,71 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+.hint {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--color-text);
+  opacity: 0.75;
+}
+
+.filtro-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.muted { color: var(--color-border); }
+.muted-small { font-size: 0.72rem; color: var(--color-border); }
+
+.admin-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--color-title);
+  font-size: 1rem;
+}
+.admin-toggle span { display: flex; align-items: center; gap: 0.5rem; }
+.admin-body {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.admin-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.admin-block h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-title);
+}
+.admin-block textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-family: inherit;
+}
+.admin-pre {
+  background: var(--color-bg-light, #f5f5f5);
+  border-radius: 8px;
+  padding: 0.6rem;
+  font-size: 0.75rem;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .edit-grid {

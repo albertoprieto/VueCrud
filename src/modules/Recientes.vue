@@ -372,16 +372,16 @@ const router = useRouter();
 const toast = useToast();
 const loginStore = useLoginStore();
 
-// Verificar si es admin
-const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
+// Admin y vendedores pueden ver esta pantalla.
+const puedeVer = computed(() => ['admin', 'vendedor'].includes((loginStore.user?.perfil || '').toLowerCase()));
 
-// Redirigir si no es admin, o cargar datos
+// Redirigir si no tiene acceso, o cargar datos
 onMounted(async () => {
-  if (!esAdmin.value) {
+  if (!puedeVer.value) {
     toast.add({
       severity: 'error',
       summary: 'Acceso denegado',
-      detail: 'Solo los administradores pueden acceder a esta pantalla',
+      detail: 'No tienes acceso a esta pantalla',
       life: 4000
     });
     router.push('/');

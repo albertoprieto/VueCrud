@@ -41,6 +41,7 @@ import Facturacion from '@/modules/Facturacion.vue';
 import NuevaPrefactura from '@/modules/NuevaPrefactura.vue';
 import DetalleFactura from '@/modules/DetalleFactura.vue';
 import UtilidadesImei from '@/modules/UtilidadesImei.vue';
+import AccionesSimpro from '@/modules/AccionesSimpro.vue';
 import Bancos from '@/modules/Bancos.vue';
 import DetalleBanco from '@/modules/DetalleBanco.vue';
 import CasosWhatsapp from '@/modules/CasosWhatsapp.vue';
@@ -92,6 +93,7 @@ const routes = [
   ,{ path: '/facturacion/nueva', name: 'nueva-prefactura', component: NuevaPrefactura }
   ,{ path: '/facturacion/:id', name: 'detalle-factura', component: DetalleFactura, props: true }
   ,{ path: '/utilidades-imei', name: 'utilidades-imei', component: UtilidadesImei }
+  ,{ path: '/utilidades-imei/:id/simpro', name: 'acciones-simpro', component: AccionesSimpro, props: true }
   ,{ path: '/bancos', name: 'bancos', component: Bancos }
   ,{ path: '/bancos/:nombre', name: 'detalle-banco', component: DetalleBanco, props: true }
   ,{ path: '/casos-whatsapp', name: 'casos-whatsapp', component: CasosWhatsapp }

@@ -95,6 +95,15 @@ export async function verificarReportesRenovaciones() {
 }
 
 /**
+ * Mueve a Instalaciones los registros cuyo tipo de servicio es "Importar(...)".
+ * @returns {Promise<{movidos:number, encontrados:number, errores:Array}>}
+ */
+export async function moverImportacionesAInstalaciones() {
+  const response = await axios.post(`${API_URL}/renovaciones-recientes/mover-importaciones`);
+  return response.data;
+}
+
+/**
  * Actualiza el status de una renovación específica
  * @param {number} id - ID de la renovación
  * @param {string} status - Nuevo status
