@@ -1,6 +1,6 @@
 <template>
   <div class="detalle-pago-container">
-    <Button icon="pi pi-arrow-left" label="Volver a Pagos" class="p-button-text mb-3" @click="router.push('/pagos')" />
+    <Button icon="pi pi-arrow-left" label="Volver a Notas" class="p-button-text mb-3" @click="router.push('/pagos')" />
 
     <div v-if="loading" style="text-align:center;padding:3rem;">
       <i class="pi pi-spin pi-spinner" style="font-size:2rem;"></i>
@@ -460,6 +460,7 @@
             class="ingreso-opcion" @click="seleccionarIngreso(g)"
           >
             <strong>{{ g.banco }}</strong> — disponible ${{ Number(g.monto_disponible).toFixed(2) }} de ${{ Number(g.monto).toFixed(2) }}
+            <span v-if="ingresoCoincideImei(g)" style="margin-left:0.4rem;font-size:0.7rem;font-weight:bold;color:#fff;background:#2e7d32;border-radius:4px;padding:1px 5px;">IMEI coincide</span>
             <div style="font-size:0.8rem;opacity:0.75;">IMEI: {{ (g.imeis || []).join(', ') || '-' }} · {{ formatFecha(g.fecha_transaccion) }}</div>
           </div>
         </div>
@@ -660,13 +661,29 @@ function agregarConcepto() {
 function quitarConcepto(idx) {
   conceptosForm.value.splice(idx, 1);
 }
+// IMEIs de la nota (de sus órdenes/reportes) para sugerir el ingreso a ligar:
+// si un ingreso trae un IMEI que también está en la nota, va primero y marcado.
+const imeisNota = computed(() => {
+  const set = new Set();
+  for (const orden of detalleOrdenesEnriquecido.value) {
+    if (orden?.imei) set.add(String(orden.imei).trim());
+    for (const art of (orden?.imeis_articulos || []))
+      for (const im of (art?.imeis || [])) if (im) set.add(String(im).trim());
+  }
+  return set;
+});
+function ingresoCoincideImei(g) {
+  return (g.imeis || []).some(i => imeisNota.value.has(String(i).trim()));
+}
 const ingresosDisponiblesFiltrados = computed(() => {
   const q = filtroLigarBusqueda.value.trim().toLowerCase();
-  return ingresosDisponibles.value.filter(g => {
-    if (g.estado_asignacion === 'asignado') return false;
-    if (!q) return true;
-    return (g.banco || '').toLowerCase().includes(q) || (g.imeis || []).some(i => String(i).toLowerCase().includes(q));
-  });
+  return ingresosDisponibles.value
+    .filter(g => {
+      if (g.estado_asignacion === 'asignado') return false;
+      if (!q) return true;
+      return (g.banco || '').toLowerCase().includes(q) || (g.imeis || []).some(i => String(i).toLowerCase().includes(q));
+    })
+    .sort((a, b) => (ingresoCoincideImei(b) ? 1 : 0) - (ingresoCoincideImei(a) ? 1 : 0));
 });
 
 // Agregar servicios

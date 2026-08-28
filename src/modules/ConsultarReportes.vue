@@ -419,6 +419,13 @@
           <label>Estatus</label>
           <Dropdown v-model="crearPagoStatus" :options="opcionesStatusFactura" optionLabel="label" optionValue="value" placeholder="Seleccionar" class="w-full" />
         </div>
+        <div class="form-group">
+          <label>Ligar pago (ingreso bancario) — opcional</label>
+          <Dropdown v-model="ingresoLigarSel" :options="opcionesIngresoLigar" optionLabel="label" optionValue="value" placeholder="Sin ligar" showClear filter class="w-full" />
+          <small v-if="opcionesIngresoLigar.find(o => o.value === ingresoLigarSel)?.coincide" style="color:var(--color-success, #28a745);">
+            Sugerido: el IMEI del ingreso coincide con la nota.
+          </small>
+        </div>
       </div>
       <div class="modal-actions">
         <Button :label="crearPagoTipo === 'nota' ? 'Crear Nota' : 'Crear Factura'" icon="pi pi-check" @click="confirmarCrearPago" :loading="creandoPago" />
@@ -469,6 +476,7 @@ import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
 import { crearNota, crearFactura, getNotas, getFacturas, actualizarCamposNota } from '@/services/pagosService';
 import { generarNotaServicioPDF } from '@/services/NotaServicioPdfService.js';
+import { getIngresosBanco, asignarIngresoANota, asignarIngresoAFactura } from '@/services/ingresosBancoService';
 import * as XLSX from 'xlsx';
 import NuevoReporteDeServicio from './NuevoReporteDeServicio.vue';
 
@@ -516,6 +524,31 @@ const crearPagoCliente = ref('');
 const crearPagoTotal = ref(0);
 const crearPagoStatus = ref('');
 const creandoPago = ref(false);
+
+// ── Ligar un ingreso bancario a la nota al momento de crearla ──
+// Sugerencia: ingreso cuyo IMEI coincide con alguno de los IMEIs de los
+// reportes seleccionados (mismo criterio que el ligado manual en DetallePago).
+const ingresosParaLigar = ref([]);
+const ingresoLigarSel = ref(null);
+const imeisSeleccionados = computed(() => {
+  const s = new Set();
+  for (const r of seleccionados.value)
+    for (const im of imeisDeReporte(r)) if (im) s.add(String(im).trim());
+  return s;
+});
+function ingresoCoincideImei(g) {
+  return (g.imeis || []).some(i => imeisSeleccionados.value.has(String(i).trim()));
+}
+const opcionesIngresoLigar = computed(() =>
+  [...ingresosParaLigar.value]
+    .filter(g => g.estado_asignacion !== 'asignado' && Number(g.monto_disponible) > 0)
+    .sort((a, b) => (ingresoCoincideImei(b) ? 1 : 0) - (ingresoCoincideImei(a) ? 1 : 0))
+    .map(g => ({
+      value: g.id,
+      coincide: ingresoCoincideImei(g),
+      label: `${ingresoCoincideImei(g) ? '★ ' : ''}${g.banco} — $${Number(g.monto_disponible).toFixed(2)} · IMEI: ${(g.imeis || []).join(', ') || '-'}`,
+    }))
+);
 
 // ── Notas y Facturas cargadas (para saber qué reportes ya están asignados) ──
 const notasCargadas = ref([]);
@@ -591,20 +624,34 @@ function obtenerMontoParaPago(reporte) {
   return Number.isFinite(numero) ? numero : 0;
 }
 
-function abrirCrearNota() {
+async function cargarIngresosParaLigar() {
+  ingresoLigarSel.value = null;
+  ingresosParaLigar.value = [];
+  try {
+    ingresosParaLigar.value = await getIngresosBanco();
+    const primera = opcionesIngresoLigar.value[0];
+    if (primera?.coincide) ingresoLigarSel.value = primera.value; // preseleccionar sugerencia por IMEI
+  } catch {
+    ingresosParaLigar.value = [];
+  }
+}
+
+async function abrirCrearNota() {
   crearPagoTipo.value = 'nota';
   crearPagoCliente.value = seleccionados.value[0]?.nombre_cliente || '';
   crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + obtenerMontoParaPago(r), 0);
   crearPagoStatus.value = 'pendiente de pago';
   showCrearPagoDialog.value = true;
+  await cargarIngresosParaLigar();
 }
 
-function abrirCrearFactura() {
+async function abrirCrearFactura() {
   crearPagoTipo.value = 'factura';
   crearPagoCliente.value = seleccionados.value[0]?.nombre_cliente || '';
   crearPagoTotal.value = seleccionados.value.reduce((sum, r) => sum + obtenerMontoParaPago(r), 0);
   crearPagoStatus.value = 'Pendiente timbre';
   showCrearPagoDialog.value = true;
+  await cargarIngresosParaLigar();
 }
 
 async function confirmarCrearPago() {
@@ -639,6 +686,17 @@ async function confirmarCrearPago() {
       const notaResp = await crearNota(payload);
       const notaId = notaResp?.id || notaResp?.data?.id || null;
       toast.add({ severity: 'success', summary: 'Nota creada', detail: 'La nota se creó correctamente.', life: 3000 });
+      if (notaId && ingresoLigarSel.value) {
+        try {
+          const g = ingresosParaLigar.value.find(x => x.id === ingresoLigarSel.value);
+          const disp = Number(g?.monto_disponible) || 0;
+          const monto = Math.min(disp, Number(crearPagoTotal.value) || 0) || disp;
+          await asignarIngresoANota(ingresoLigarSel.value, { nota_id: notaId, monto_aplicado: monto, conceptos: [] });
+          toast.add({ severity: 'success', summary: 'Pago ligado', detail: 'El ingreso bancario se ligó a la nota.', life: 3000 });
+        } catch (e) {
+          toast.add({ severity: 'warn', summary: 'Nota creada, pago sin ligar', detail: e?.response?.data?.detail || 'Liga el pago desde el detalle de la nota.', life: 5000 });
+        }
+      }
       try {
         await generarNotaServicioPDF({
           notaId,
@@ -651,8 +709,20 @@ async function confirmarCrearPago() {
         console.error('generarNotaServicioPDF:', pdfErr);
       }
     } else {
-      await crearFactura(payload);
+      const facResp = await crearFactura(payload);
+      const facturaId = facResp?.id || facResp?.data?.id || null;
       toast.add({ severity: 'success', summary: 'Factura creada', detail: 'La factura se creó correctamente.', life: 3000 });
+      if (facturaId && ingresoLigarSel.value) {
+        try {
+          const g = ingresosParaLigar.value.find(x => x.id === ingresoLigarSel.value);
+          const disp = Number(g?.monto_disponible) || 0;
+          const monto = Math.min(disp, Number(crearPagoTotal.value) || 0) || disp;
+          await asignarIngresoAFactura(ingresoLigarSel.value, { factura_id: facturaId, monto_aplicado: monto, conceptos: [] });
+          toast.add({ severity: 'success', summary: 'Pago ligado', detail: 'El ingreso bancario se ligó a la factura.', life: 3000 });
+        } catch (e) {
+          toast.add({ severity: 'warn', summary: 'Factura creada, pago sin ligar', detail: e?.response?.data?.detail || 'Liga el pago desde el detalle de la factura.', life: 5000 });
+        }
+      }
     }
     showCrearPagoDialog.value = false;
     seleccionados.value = [];

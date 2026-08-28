@@ -358,6 +358,97 @@
         </div>
       </div>
 
+      <!-- Ingresos bancarios ligados (conciliación) — mismo mecanismo que en
+           las notas: un ingreso bancario capturado en Bancos se liga aquí y,
+           si cuadra el saldo (o los conceptos justifican la diferencia), la
+           factura queda marcada como pagada. -->
+      <div class="comprobante-section">
+        <h3>Ingresos bancarios ligados</h3>
+        <div v-if="ingresosLigados.length" class="comprobantes-lista">
+          <div v-for="link in ingresosLigados" :key="link.id" class="ingreso-ligado">
+            <div class="comprobante-item">
+              <i class="pi pi-wallet" style="color:var(--color-primary);margin-right:0.5rem;"></i>
+              <span style="flex:1;">
+                <strong>{{ link.banco }}</strong> — ${{ Number(link.monto_aplicado).toFixed(2) }}
+                <span v-if="link.requiere_justificacion" class="pi pi-exclamation-triangle" style="color:#b26a00;margin-left:0.4rem;" />
+                <a v-if="link.comprobante_url" :href="link.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:var(--color-primary);">ver comprobante</a>
+              </span>
+              <Button icon="pi pi-times" label="Desligar" class="p-button-text p-button-warning p-button-sm"
+                :loading="desligandoIngresoId === link.id" @click="desligarIngreso(link)" />
+            </div>
+            <div class="ingreso-ligado-detalle">
+              <div><strong>Monto del ingreso:</strong> {{ link.ingreso_monto != null ? '$' + Number(link.ingreso_monto).toFixed(2) : '-' }} · aplicado a esta factura: ${{ Number(link.monto_aplicado).toFixed(2) }}</div>
+              <div v-if="Math.abs(Number(link.diferencia)) > 0.01">
+                <strong>Diferencia:</strong>
+                <span :style="{ color: Number(link.diferencia) > 0 ? '#b26a00' : '#1976d2' }">
+                  {{ Number(link.diferencia) > 0 ? 'sobró ' : 'faltó ' }}${{ Math.abs(Number(link.diferencia)).toFixed(2) }}
+                </span>
+              </div>
+              <div v-if="link.conceptos && link.conceptos.length">
+                <strong>Conceptos:</strong>
+                <ul style="margin:0.2rem 0 0.2rem 1.1rem;padding:0;">
+                  <li v-for="(c, i) in link.conceptos" :key="i">{{ c.concepto }} — ${{ Number(c.monto).toFixed(2) }}</li>
+                </ul>
+              </div>
+              <div><strong>Fecha de transacción:</strong> {{ formatFecha(link.fecha_transaccion) || '-' }}</div>
+              <div v-if="link.imeis && link.imeis.length"><strong>IMEI(s):</strong> {{ link.imeis.join(', ') }}</div>
+              <div v-if="link.referencia_comprobante"><strong>Referencia:</strong> {{ link.referencia_comprobante }}</div>
+              <div v-if="link.clave_rastreo"><strong>Clave de rastreo:</strong> {{ link.clave_rastreo }}</div>
+              <div v-if="link.cuenta_origen"><strong>Cuenta origen:</strong> {{ link.cuenta_origen }}</div>
+              <div><strong>Ligado por:</strong> {{ link.creado_por || '-' }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-else style="color:var(--color-border);margin-bottom:0.75rem;">Sin ingresos bancarios ligados.</div>
+        <Button label="Ligar ingreso bancario" icon="pi pi-link" class="p-button-outlined p-button-info" @click="abrirLigarIngreso" />
+      </div>
+
+      <Dialog v-model:visible="ligarDialogVisible" header="Ligar ingreso bancario" :modal="true" :style="{ width: '520px', maxWidth: '95vw' }" :draggable="false">
+        <div v-if="!ingresoSeleccionado">
+          <InputText v-model="filtroLigarBusqueda" placeholder="Buscar por banco o IMEI..." class="w-full" style="margin-bottom:0.75rem;" />
+          <div v-if="loadingIngresosDisponibles" style="text-align:center;padding:1.5rem;"><i class="pi pi-spin pi-spinner"></i></div>
+          <p v-else-if="!ingresosDisponiblesFiltrados.length" style="color:#999;text-align:center;">No hay ingresos bancarios disponibles para ligar.</p>
+          <div v-else style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:0.5rem;">
+            <div v-for="g in ingresosDisponiblesFiltrados" :key="g.id" class="ingreso-opcion" @click="seleccionarIngreso(g)">
+              <strong>{{ g.banco }}</strong> — disponible ${{ Number(g.monto_disponible).toFixed(2) }} de ${{ Number(g.monto).toFixed(2) }}
+              <span v-if="ingresoCoincideImei(g)" style="margin-left:0.4rem;font-size:0.7rem;font-weight:bold;color:#fff;background:#2e7d32;border-radius:4px;padding:1px 5px;">IMEI coincide</span>
+              <div style="font-size:0.8rem;opacity:0.75;">IMEI: {{ (g.imeis || []).join(', ') || '-' }} · {{ formatFecha(g.fecha_transaccion) }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-else>
+          <p style="margin-top:0;"><strong>{{ ingresoSeleccionado.banco }}</strong> — disponible ${{ Number(ingresoSeleccionado.monto_disponible).toFixed(2) }}</p>
+          <div class="form-group">
+            <label style="font-weight:bold;display:block;margin-bottom:0.3rem;">Monto a aplicar a esta factura</label>
+            <InputNumber v-model="montoAplicadoForm" mode="currency" currency="MXN" locale="es-MX" class="w-full" :min="0" :max="Number(ingresoSeleccionado.monto_disponible) || 0" />
+          </div>
+          <p style="font-size:0.8rem;opacity:0.75;">Saldo pendiente de la factura: ${{ saldoPendienteFactura.toFixed(2) }} (total ${{ Number(item.total).toFixed(2) }})</p>
+          <p v-if="esUnderpay && !conceptosLlenados" style="font-size:0.8rem;color:#1976d2;">
+            Pago parcial — quedan ${{ Math.abs(diferenciaLigar).toFixed(2) }} pendientes. La factura sigue abierta.
+          </p>
+          <div v-if="!cubierto" class="form-group">
+            <label style="font-weight:bold;display:block;margin-bottom:0.3rem;color:#b26a00;">
+              {{ esOverpay ? 'Se está aplicando de más a esta factura — obligatorio justificar' : 'Justificar el faltante cierra la factura como pagada (opcional)' }} —
+              desglosa la diferencia (${{ Math.abs(diferenciaLigar).toFixed(2) }}) en conceptos
+            </label>
+            <div v-for="(c, idx) in conceptosForm" :key="idx" style="display:flex;gap:0.5rem;margin-bottom:0.4rem;align-items:center;">
+              <InputText v-model="c.concepto" placeholder="Concepto (ej: descuento, recargo...)" style="flex:2;" />
+              <InputNumber v-model="c.monto" mode="currency" currency="MXN" locale="es-MX" style="flex:1;" />
+              <Button icon="pi pi-trash" class="p-button-text p-button-danger p-button-sm" :disabled="conceptosForm.length === 1" @click="quitarConcepto(idx)" />
+            </div>
+            <Button label="Agregar concepto" icon="pi pi-plus" class="p-button-text p-button-sm" @click="agregarConcepto" />
+            <p v-if="conceptosLlenados || esOverpay" style="font-size:0.8rem;margin-top:0.4rem;" :style="{ color: conceptosCuadran ? '#2e7d32' : '#c62828' }">
+              Suma de conceptos: ${{ totalConceptos.toFixed(2) }} / ${{ Math.abs(diferenciaLigar).toFixed(2) }} requerido
+            </p>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:0.75rem;">
+            <Button label="Volver" class="p-button-text" @click="ingresoSeleccionado = null" />
+            <Button label="Ligar" icon="pi pi-check" class="p-button-success" :loading="ligando"
+              :disabled="!montoAplicadoForm || !puedeLigar" @click="confirmarLigarIngreso" />
+          </div>
+        </div>
+      </Dialog>
+
       <!-- Observaciones -->
       <div class="observaciones-section">
         <h3>Observaciones</h3>
@@ -488,6 +579,7 @@ import {
   getPagosPpd, registrarPagoPpd, cancelarPagoPpd, verificarCancelacionPagoPpd,
 } from '@/services/pagosService';
 import { getClientes, addCliente, updateCliente } from '@/services/clientesService';
+import { getIngresosBanco, asignarIngresoAFactura, getIngresosLigadosAFactura, desligarIngresoNota } from '@/services/ingresosBancoService';
 import { generarReporteServicioPDF } from '@/components/GeneraReporteServicioPDF.js';
 
 const route = useRoute();
@@ -1014,6 +1106,7 @@ async function cargarDetalle() {
     observacionesTexto.value = item.value?.observaciones || '';
     if (item.value?.status === 'Pendiente timbre') await cargarClienteFiscal();
     if (esPPD.value && item.value?.status === 'Timbrado') await cargarPagosPpd();
+    await cargarIngresosLigados();
   } catch {
     item.value = null;
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el detalle.', life: 4000 });
@@ -1074,6 +1167,126 @@ function repBadgeClass(status) {
   if (status === 'Error') return 'danger';
   if (status === 'Cancelado') return 'danger';
   return 'warning';
+}
+
+// ── Ingresos bancarios ligados a la factura (conciliación) ──
+const ingresosLigados = ref([]);
+const ligarDialogVisible = ref(false);
+const loadingIngresosDisponibles = ref(false);
+const ingresosDisponibles = ref([]);
+const filtroLigarBusqueda = ref('');
+const ingresoSeleccionado = ref(null);
+const montoAplicadoForm = ref(null);
+const conceptosForm = ref([{ concepto: '', monto: null }]);
+const ligando = ref(false);
+const desligandoIngresoId = ref(null);
+
+const imeisFactura = computed(() => {
+  const set = new Set();
+  for (const orden of (item.value?.detalle_ordenes || [])) {
+    if (orden?.imei) set.add(String(orden.imei).trim());
+    for (const art of (orden?.imeis_articulos || []))
+      for (const im of (art?.imeis || [])) if (im) set.add(String(im).trim());
+  }
+  return set;
+});
+function ingresoCoincideImei(g) {
+  return (g.imeis || []).some(i => imeisFactura.value.has(String(i).trim()));
+}
+const ingresosDisponiblesFiltrados = computed(() => {
+  const q = filtroLigarBusqueda.value.trim().toLowerCase();
+  return ingresosDisponibles.value
+    .filter(g => {
+      if (g.estado_asignacion === 'asignado') return false;
+      if (!q) return true;
+      return (g.banco || '').toLowerCase().includes(q) || (g.imeis || []).some(i => String(i).toLowerCase().includes(q));
+    })
+    .sort((a, b) => (ingresoCoincideImei(b) ? 1 : 0) - (ingresoCoincideImei(a) ? 1 : 0));
+});
+
+const saldoPendienteFactura = computed(() => {
+  const total = Number(item.value?.total) || 0;
+  const ppd = pagosPpd.value.reduce((s, p) => s + (p.status === 'Timbrado' ? (Number(p.monto) || 0) : 0), 0);
+  const ing = ingresosLigados.value.reduce((s, l) => s + (Number(l.monto_aplicado) || 0), 0);
+  return total - ppd - ing;
+});
+const diferenciaLigar = computed(() => (Number(montoAplicadoForm.value) || 0) - saldoPendienteFactura.value);
+const cubierto = computed(() => Math.abs(diferenciaLigar.value) <= 1);
+const esOverpay = computed(() => diferenciaLigar.value > 1);
+const esUnderpay = computed(() => diferenciaLigar.value < -1);
+const totalConceptos = computed(() => conceptosForm.value.reduce((s, c) => s + (Number(c.monto) || 0), 0));
+const conceptosLlenados = computed(() => conceptosForm.value.some(c => c.concepto.trim() || Number(c.monto) > 0));
+const conceptosCuadran = computed(() => conceptosLlenados.value && Math.abs(totalConceptos.value - Math.abs(diferenciaLigar.value)) <= 1);
+const puedeLigar = computed(() => {
+  if (cubierto.value) return true;
+  if (esOverpay.value) return conceptosCuadran.value;
+  return !conceptosLlenados.value || conceptosCuadran.value;
+});
+function agregarConcepto() { conceptosForm.value.push({ concepto: '', monto: null }); }
+function quitarConcepto(idx) { conceptosForm.value.splice(idx, 1); }
+
+async function cargarIngresosLigados() {
+  try {
+    ingresosLigados.value = await getIngresosLigadosAFactura(id.value);
+  } catch {
+    ingresosLigados.value = [];
+  }
+}
+
+async function abrirLigarIngreso() {
+  ingresoSeleccionado.value = null;
+  filtroLigarBusqueda.value = '';
+  ligarDialogVisible.value = true;
+  loadingIngresosDisponibles.value = true;
+  try {
+    ingresosDisponibles.value = await getIngresosBanco();
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los ingresos bancarios.', life: 4000 });
+  }
+  loadingIngresosDisponibles.value = false;
+}
+
+function seleccionarIngreso(g) {
+  ingresoSeleccionado.value = g;
+  const pendiente = Math.max(saldoPendienteFactura.value, 0);
+  montoAplicadoForm.value = Math.min(Number(g.monto_disponible) || 0, pendiente) || Number(g.monto_disponible) || 0;
+  conceptosForm.value = [{ concepto: '', monto: null }];
+}
+
+async function confirmarLigarIngreso() {
+  if (!ingresoSeleccionado.value || !montoAplicadoForm.value) return;
+  ligando.value = true;
+  try {
+    const conceptos = conceptosForm.value
+      .filter(c => c.concepto.trim() && Number(c.monto) > 0)
+      .map(c => ({ concepto: c.concepto.trim(), monto: Number(c.monto) }));
+    await asignarIngresoAFactura(ingresoSeleccionado.value.id, {
+      factura_id: Number(id.value),
+      monto_aplicado: Number(montoAplicadoForm.value),
+      conceptos,
+    });
+    toast.add({ severity: 'success', summary: 'Ligado', detail: 'Ingreso ligado a la factura.', life: 3000 });
+    ligarDialogVisible.value = false;
+    await cargarDetalle();
+    await cargarIngresosLigados();
+  } catch (e) {
+    const detail = e?.response?.data?.detail || '';
+    toast.add({ severity: detail.includes('conceptos') ? 'warn' : 'error', summary: detail.includes('conceptos') ? 'Faltan conceptos' : 'Error', detail: detail || 'No se pudo ligar el ingreso.', life: 5000 });
+  }
+  ligando.value = false;
+}
+
+async function desligarIngreso(link) {
+  desligandoIngresoId.value = link.id;
+  try {
+    await desligarIngresoNota(link.id);
+    toast.add({ severity: 'success', summary: 'Desligado', detail: 'Ingreso desligado de la factura.', life: 3000 });
+    await cargarDetalle();
+    await cargarIngresosLigados();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo desligar.', life: 4000 });
+  }
+  desligandoIngresoId.value = null;
 }
 
 async function cargarPagosPpd() {
@@ -1266,4 +1479,13 @@ onMounted(() => {
   color: var(--color-success);
 }
 .rep-empty { color: var(--color-border); padding: 0.5rem 0 1rem; }
+
+.form-group { margin-bottom: 1rem; }
+.w-full { width: 100%; }
+.ingreso-opcion { padding: 0.6rem 0.75rem; border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; }
+.ingreso-opcion:hover { background: var(--color-bg-light, #f5f5f5); }
+.ingreso-ligado { border-bottom: 1px solid var(--color-border); padding-bottom: 0.5rem; }
+.ingreso-ligado:last-child { border-bottom: none; }
+.ingreso-ligado .comprobante-item { border-bottom: none; }
+.ingreso-ligado-detalle { font-size: 0.83rem; opacity: 0.85; padding: 0.25rem 0 0.4rem 1.8rem; display: flex; flex-direction: column; gap: 0.15rem; }
 </style>

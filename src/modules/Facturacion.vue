@@ -140,9 +140,9 @@
         </Column>
         <Column header="Comprobante" style="text-align:center;">
           <template #body="{ data }">
-            <div v-if="data.comprobantes && data.comprobantes.length" style="display:flex;justify-content:center;gap:0.4rem;">
+            <div v-if="comprobantesDe(data).length" style="display:flex;justify-content:center;gap:0.4rem;">
               <a
-                v-for="(comp, idx) in data.comprobantes" :key="idx"
+                v-for="(comp, idx) in comprobantesDe(data)" :key="idx"
                 href="#" @click.prevent="abrirArchivoCfdi(comp)"
                 :title="nombreArchivoComprobante(comp)"
               ><i class="pi pi-image comprobante-icono"></i></a>
@@ -264,6 +264,10 @@ function urlComprobante(path) {
 }
 function abrirArchivoCfdi(path) { if (path) window.open(urlComprobante(path), '_blank', 'noopener'); }
 function nombreArchivoComprobante(path) { return path ? decodeURIComponent(path.split('/').pop()) : 'comprobante'; }
+// Comprobantes subidos a la factura + los de ingresos bancarios ligados (conciliación).
+function comprobantesDe(row) {
+  return [...(row?.comprobantes || []), ...(row?.comprobantes_extra || [])];
+}
 
 const facturas = ref([]);
 const loading = ref(true);
@@ -310,7 +314,7 @@ function contarPorEstado(valor) {
 }
 
 function contarPorPago(valor) {
-  if (valor === 'con_comprobante') return facturas.value.filter(f => f.comprobantes && f.comprobantes.length).length;
+  if (valor === 'con_comprobante') return facturas.value.filter(f => comprobantesDe(f).length).length;
   if (valor === 'con_error_timbrado') return facturas.value.filter(f => f.ultimo_error_timbrado).length;
   if (valor === 'pagadas') return facturas.value.filter(f => f.pagado).length;
   return facturas.value.filter(f => !f.pagado).length;
@@ -337,7 +341,7 @@ const facturasFiltradas = computed(() => {
     if (vend && !(f.vendedor || '').toLowerCase().includes(vend)) return false;
     if (cuenta && !(f.cuenta || '').toLowerCase().includes(cuenta)) return false;
     if (filtroLugarPago.value && (f.lugar_pago || '') !== filtroLugarPago.value) return false;
-    if (filtroPago.value === 'con_comprobante' && !(f.comprobantes && f.comprobantes.length)) return false;
+    if (filtroPago.value === 'con_comprobante' && !comprobantesDe(f).length) return false;
     if (filtroPago.value === 'pagadas' && !f.pagado) return false;
     if (filtroPago.value === 'pendientes' && f.pagado) return false;
     if (filtroPago.value === 'con_error_timbrado' && !f.ultimo_error_timbrado) return false;

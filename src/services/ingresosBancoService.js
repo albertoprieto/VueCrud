@@ -53,6 +53,20 @@ export async function asignarIngresoANota(ingresoId, { nota_id, monto_aplicado, 
   return res.data;
 }
 
+// Mismo mecanismo para facturas: liga un ingreso a una factura y concilia
+// (marca facturas_pago.pagado=1 si cuadra). Backend: asignar-factura.
+export async function asignarIngresoAFactura(ingresoId, { factura_id, monto_aplicado, conceptos }) {
+  const res = await axios.post(`${API_URL}/ingresos-banco/${ingresoId}/asignar-factura`, {
+    factura_id, monto_aplicado, conceptos,
+  });
+  return res.data;
+}
+
+export async function getIngresosLigadosAFactura(facturaId) {
+  const res = await axios.get(`${API_URL}/facturas-pago/${facturaId}/ingresos-banco`);
+  return res.data;
+}
+
 export async function desligarIngresoNota(linkId) {
   const res = await axios.delete(`${API_URL}/ingreso-banco-notas/${linkId}`);
   return res.data;

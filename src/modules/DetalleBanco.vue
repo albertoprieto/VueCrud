@@ -138,7 +138,12 @@
                   <router-link v-else-if="data.tipo === 'Factura'" :to="{ name: 'detalle-factura', params: { id: data.id } }" class="p-button p-button-sm p-button-text p-button-icon-only"><i class="pi pi-eye" /></router-link>
                   <router-link v-else-if="data.tipo === 'Pago nota'" :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.raw.nota_id } }" class="p-button p-button-sm p-button-text p-button-icon-only" v-tooltip.top="'Ver nota'"><i class="pi pi-eye" /></router-link>
                   <router-link
-                    v-else-if="data.tipo === 'Ingreso banco' && (data.raw.links || []).length"
+                    v-else-if="data.tipo === 'Ingreso banco' && data.raw.links?.[0]?.factura_id"
+                    :to="{ name: 'detalle-factura', params: { id: data.raw.links[0].factura_id } }"
+                    class="p-button p-button-sm p-button-text p-button-icon-only" v-tooltip.top="'Ver factura ligada'"
+                  ><i class="pi pi-eye" /></router-link>
+                  <router-link
+                    v-else-if="data.tipo === 'Ingreso banco' && data.raw.links?.[0]?.nota_id"
                     :to="{ name: 'detalle-pago', params: { tipo: 'nota', id: data.raw.links[0].nota_id } }"
                     class="p-button p-button-sm p-button-text p-button-icon-only" v-tooltip.top="'Ver nota ligada'"
                   ><i class="pi pi-eye" /></router-link>
@@ -334,7 +339,7 @@ function badgeClaseEstatus(estatus) {
 function textoJustificaciones(ingresoRaw) {
   return (ingresoRaw.links || [])
     .filter(l => l.requiere_justificacion)
-    .map(l => `Nota #${l.nota_id} (dif. $${Number(l.diferencia).toFixed(2)}): ${(l.conceptos || []).map(c => `${c.concepto} $${Number(c.monto).toFixed(2)}`).join(', ') || 'sin conceptos'}`)
+    .map(l => `${l.factura_id ? `Factura #${l.factura_id}` : `Nota #${l.nota_id}`} (dif. $${Number(l.diferencia).toFixed(2)}): ${(l.conceptos || []).map(c => `${c.concepto} $${Number(c.monto).toFixed(2)}`).join(', ') || 'sin conceptos'}`)
     .join('\n') || 'Requiere justificación';
 }
 
