@@ -5,46 +5,6 @@
       <p>Listado de SIMs. Usa los filtros dentro de la tabla para buscar en el histórico.</p>
     </header>
 
-<!--     <div class="util-card">
-      <div class="section-head">
-        <div>
-          <h2>Carga inicial SIMPRO</h2>
-          <p>Trae todos los números registrados en la plataforma y los agrega como borrador para que completes IMEI, plataforma, etc. Se puede correr varias veces: lo que ya existe no se duplica.</p>
-        </div>
-      </div>
-      <div class="actions">
-        <Button
-          :label="importando ? 'Importando...' : 'Cargar todos los números (SIMPRO)'"
-          icon="pi pi-cloud-download"
-          :loading="importando"
-          :disabled="importando"
-          @click="importarSimpro()"
-        />
-        <Button
-          :label="completando ? 'Completando...' : 'Completar datos faltantes (SIMPRO)'"
-          icon="pi pi-database"
-          severity="secondary"
-          :loading="completando"
-          :disabled="completando"
-          @click="completarDatos()"
-        />
-        <Button
-          :label="refrescando ? (refrescarProgreso || 'Refrescando...') : 'Refrescar estado y consumo (SIMPRO)'"
-          icon="pi pi-sync"
-          severity="secondary"
-          outlined
-          :loading="refrescando"
-          :disabled="refrescando"
-          @click="refrescarSimpro()"
-        />
-      </div>
-      <p class="hint">
-        "Completar datos" recorre los registros incompletos que tienen ICCID, consulta SIMPRO en tandas
-        y llena solo lo que esté vacío (activación, vigencia, usuario, cliente, IMEI, estado). Deduce la
-        plataforma cruzando el IMEI con reportes de servicio. Se puede correr varias veces.
-      </p>
-    </div> -->
-
       <p v-if="message" :class="['status', messageError ? 'is-error' : 'is-ok']">{{ message }}</p>
 
       <div class="result">
@@ -117,6 +77,15 @@
                   placeholder="Estado SIMPRO"
                   @change="aplicarFiltros"
                 />
+<!--                 <Dropdown
+                  v-model="filters.salud"
+                  :options="saludOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Salud"
+                  showClear
+                  @change="aplicarFiltros"
+                /> -->
                 <div class="table-tools__buttons">
                   <Button label="Buscar" icon="pi pi-search" @click="aplicarFiltros" :loading="loading" />
                   <Button label="Limpiar" icon="pi pi-filter-slash" severity="secondary" outlined @click="limpiarFiltros" :disabled="loading" />
@@ -138,7 +107,21 @@
             </template>
           </Column>
           <Column field="activation_date" header="Fecha. Act" sortable>
-            <template #body="{ data }">{{ data.activation_date || '-' }}</template>
+            <template #body="{ data }">{{ fechaMes(data.activation_date) }}</template>
+          </Column>
+          <Column field="vigencia_sim" header="VIGENCIA SIM" sortable>
+            <template #body="{ data }">
+              <span>{{ fechaMes(data.vigencia_sim) }}</span>
+              <Tag v-if="esVencido(data.vigencia_sim)" value="Vencido" severity="danger" style="margin-left: 6px;" />
+            </template>
+          </Column>
+          <Column field="dias_restantes" header="DIAS RESTANTES">
+            <template #body="{ data }">
+              <span v-if="data.dias_restantes != null" :class="{ 'is-error': data.dias_restantes < 0 }">
+                {{ data.dias_restantes }}
+              </span>
+              <span v-else class="muted">—</span>
+            </template>
           </Column>
           <Column field="deaccount" header="USUARIO" sortable>
             <template #body="{ data }">{{ data.deaccount || '-' }}</template>
@@ -150,7 +133,16 @@
             <template #body="{ data }">{{ data.plataforma || '-' }}</template>
           </Column>
           <Column field="imei" header="IMEI" sortable>
-            <template #body="{ data }">{{ data.imei || '-' }}</template>
+<!--             <template #body="{ data }">
+              {{ data.imei || '-' }}
+              <Tag
+                v-if="imeiMismatch(data.network_imei, data.imei)"
+                value="≠ red"
+                severity="danger"
+                style="margin-left:6px;"
+                v-tooltip.top="`SIMPRO ve el IMEI ${data.network_imei} en la red`"
+              />
+            </template> -->
           </Column>
           <Column field="iccid" header="ICCID" sortable>
             <template #body="{ data }">{{ data.iccid || '-' }}</template>
@@ -158,35 +150,15 @@
           <Column field="deviceMobile" header="SIM ESPAÑOL" sortable>
             <template #body="{ data }">{{ data.deviceMobile || '-' }}</template>
           </Column>
-          <Column field="vigencia_sim" header="VIGENCIA SIM" sortable>
-            <template #body="{ data }">
-              <span>{{ data.vigencia_sim || '-' }}</span>
-              <Tag v-if="esVencido(data.vigencia_sim)" value="Vencido" severity="danger" style="margin-left: 6px;" />
-            </template>
+
+          <Column field="tecnico" header="TECNICO" sortable>
+            <template #body="{ data }">{{ data.tecnico || '-' }}</template>
           </Column>
-          <Column header="ESTADO SIMPRO" style="min-width: 150px">
-            <template #body="{ data }">
-              <Tag
-                v-if="data.sim_state === 'suspendido_temporal'"
-                value="Suspendido temporal"
-                severity="warning"
-              />
-              <Tag
-                v-else-if="data.sim_state === 'cancelacion_programada'"
-                value="Cancelación programada"
-                severity="danger"
-              />
-              <span v-else-if="data.sim_customer_status">{{ data.sim_customer_status }}</span>
-              <span v-else class="muted">—</span>
-              <div v-if="data.verificado_en" class="muted-small">rev. {{ fechaCorta(data.verificado_en) }}</div>
-            </template>
-          </Column>
-          <Column header="CONSUMO" style="min-width: 120px">
-            <template #body="{ data }">
-              <span v-if="data.data_usage_mb != null">{{ data.data_usage_mb }} MB</span>
-              <span v-else class="muted">—</span>
-              <Tag v-if="data.sin_trafico" value="Sin tráfico" severity="danger" style="margin-left:6px;" />
-            </template>
+<!--           <Column field="num_cliente" header="NUM. CLIENTE" sortable>
+            <template #body="{ data }">{{ data.num_cliente || '-' }}</template>
+          </Column> -->
+          <Column field="comentarios" header="COMENTARIOS">
+            <template #body="{ data }">{{ data.comentarios || '-' }}</template>
           </Column>
           <Column header="ACCIONES" style="min-width: 180px">
             <template #body="{ data }">
@@ -239,6 +211,18 @@
           <label>VIGENCIA SIM</label>
           <InputText v-model="editRow.vigencia_sim" />
         </div>
+        <div class="field">
+          <label>Técnico</label>
+          <InputText v-model="editRow.tecnico" />
+        </div>
+<!--         <div class="field">
+          <label>Núm. cliente</label>
+          <InputText v-model="editRow.num_cliente" />
+        </div> -->
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>Comentarios</label>
+          <InputText v-model="editRow.comentarios" />
+        </div>
       </div>
       <template #footer>
         <Button label="Cancelar" text @click="showEditDialog = false" />
@@ -252,7 +236,6 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import * as XLSX from 'xlsx';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
@@ -261,30 +244,14 @@ import Column from 'primevue/column';
 import Tag from 'primevue/tag';
 import Dialog from 'primevue/dialog';
 import {
-  deleteConsultaSim,
   getConsultasSim,
-  getDispositivoPorPlataforma,
-  getSimDetails,
-  getUtilidadesPlataformas,
-  importarSimsSimpro,
   saveConsultaSim,
   updateConsultaSim,
-  completarDatosSims,
-  refrescarSimproSims,
-  getCustomerSolutions,
-  getBillingAccounts,
-  activarSimsSimpro,
-  getAlertasConsumoSimpro,
-  getFacturasSimpro
+  refrescarSimproSims
 } from '@/services/utilidadesImeiService';
 
 const router = useRouter();
 
-const imei = ref('');
-const simTelefono = ref('');
-const plataforma = ref('');
-const plataformas = ref([]);
-const tipo = ref('activacion');
 const tiposOptions = [
   { label: 'Activación', value: 'activacion' },
   { label: 'Renovación', value: 'renovacion' },
@@ -311,6 +278,27 @@ const estadoSimproOptions = [
 const vigenciaSimOptions = [
   { label: 'Vencidos (7+ días)', value: 'vencidos_7_dias' }
 ];
+const saludOptions = [
+  { label: 'OK', value: 'ok' },
+  { label: 'Sin conexión', value: 'sin_conexion' },
+  { label: 'Sin tráfico', value: 'sin_trafico' },
+  { label: 'Bloqueado', value: 'bloqueado' },
+  { label: 'Suspendido', value: 'suspendido' },
+  { label: 'Baja', value: 'baja' },
+  { label: 'Desconocido', value: 'desconocido' }
+];
+const SALUD_TAG = {
+  ok: { value: 'OK', severity: 'success' },
+  sin_conexion: { value: 'Sin conexión', severity: 'danger' },
+  sin_trafico: { value: 'Sin tráfico', severity: 'warning' },
+  bloqueado: { value: 'Bloqueado', severity: 'danger' },
+  suspendido: { value: 'Suspendido', severity: 'warning' },
+  baja: { value: 'Baja', severity: 'secondary' },
+  desconocido: { value: '—', severity: 'contrast' }
+};
+function saludTag(s) {
+  return SALUD_TAG[s] || SALUD_TAG.desconocido;
+}
 const rows = ref([]);
 const loading = ref(false);
 const message = ref('');
@@ -327,24 +315,8 @@ const sortField = ref(null);
 const sortOrder = ref(null);
 const showEditDialog = ref(false);
 const editRow = ref({});
-const importando = ref(false);
-const completando = ref(false);
 const refrescando = ref(false);
 const refrescarProgreso = ref('');
-const solucionesSimpro = ref([]);
-const cargandoSoluciones = ref(false);
-
-// Administración SIMPRO
-const showAdmin = ref(false);
-const adminBusy = ref('');
-const cuentasSimpro = ref([]);
-const cargandoCuentas = ref(false);
-const activarIccids = ref('');
-const activarSolucion = ref('');
-const activarCuenta = ref('');
-const alertasTexto = ref('');
-const facturasCuenta = ref('');
-const facturasTexto = ref('');
 const filters = ref({
   tipo: '',
   deaccount: '',
@@ -353,39 +325,12 @@ const filters = ref({
   vigencia_sim: '',
   fecha_desde: null,
   fecha_hasta: null,
-  estado_simpro: 'activos',
+  estado_simpro: '',
+  salud: '',
 });
 
-function sanitizeImei() {
-  imei.value = String(imei.value || '').replace(/\D+/g, '');
-}
-
-function sanitizeSimTelefono() {
-  simTelefono.value = String(simTelefono.value || '').replace(/\D+/g, '');
-}
-
-async function loadPlataformas() {
-  try {
-    const data = await getUtilidadesPlataformas();
-    plataformas.value = data?.plataformas || [
-      { label: 'IOP', value: 'IOP' },
-      { label: 'Tracksolid', value: 'TRACKSOLID' }
-    ];
-  } catch (_) {
-    plataformas.value = [
-      { label: 'IOP', value: 'IOP' },
-      { label: 'Tracksolid', value: 'TRACKSOLID' }
-    ];
-  }
-
-  if (!plataforma.value && plataformas.value.length) {
-    plataforma.value = plataformas.value[0].value;
-  }
-
-  await cargarDesdeDB();
-}
-
 async function cargarDesdeDB() {
+  loading.value = true;
   try {
     const historicalData = await getConsultasSim(1, 1, {});
     historicalRecords.value = historicalData.total || 0;
@@ -401,6 +346,8 @@ async function cargarDesdeDB() {
     hasMore.value = rows.value.length < totalRecords.value;
   } catch (_) {
     // tabla aún no creada o error de red — no interrumpir
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -502,13 +449,32 @@ function mapDbRow(r) {
     iccid: r.iccid || '',
     deviceMobile: r.device_mobile || '',
     vigencia_sim: r.vigencia_sim || '',
+    dias_restantes: diasRestantes(r.vigencia_sim),
+    tecnico: r.tecnico || '',
+    num_cliente: r.num_cliente || '',
+    comentarios: r.comentarios || '',
     sim_state: r.sim_state || '',
     sim_customer_status: r.sim_customer_status || '',
     suspendido_desde: r.suspendido_desde || '',
     verificado_en: r.verificado_en || '',
     data_usage_mb: r.data_usage_mb ?? null,
-    sin_trafico: !!r.sin_trafico
+    sin_trafico: !!r.sin_trafico,
+    imei_lock: r.imei_lock == null ? null : Number(r.imei_lock),
+    imei_lock_imei: r.imei_lock_imei || '',
+    network_imei: r.network_imei || '',
+    last_seen: r.last_seen || '',
+    salud: r.salud || 'desconocido'
   };
+}
+
+// Vigencia = fecha de activación + 365 días (fórmula del Excel SIM ESPAÑOL).
+// Días restantes = vigencia - hoy. Negativo = vencida.
+function diasRestantes(vigenciaSim) {
+  const raw = String(vigenciaSim || '').slice(0, 10);
+  const fecha = Date.parse(raw);
+  if (Number.isNaN(fecha)) return null;
+  const hoyUtc = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+  return Math.round((fecha - hoyUtc) / (1000 * 60 * 60 * 24));
 }
 
 function fechaCorta(v) {
@@ -516,94 +482,23 @@ function fechaCorta(v) {
   return String(v).slice(0, 10);
 }
 
-async function cargarSolucionesSimpro() {
-  if (solucionesSimpro.value.length || cargandoSoluciones.value) return;
-  cargandoSoluciones.value = true;
-  try {
-    const data = await getCustomerSolutions();
-    const arr = Array.isArray(data) ? data : (data?.customer_solutions || data?.solutions || []);
-    solucionesSimpro.value = arr.map(s => {
-      const name = s.customer_solution || s.name || String(s);
-      return { label: name, value: name };
-    });
-  } catch {
-    solucionesSimpro.value = [];
-  }
-  cargandoSoluciones.value = false;
+const MESES_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+// "2025-04-15" -> "15 Abr 2025"
+function fechaMes(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
+  if (!m) return v || '-';
+  return `${m[3]} ${MESES_ES[Number(m[2]) - 1] || m[2]} ${m[1]}`;
 }
 
-async function cargarCuentasSimpro() {
-  if (cuentasSimpro.value.length || cargandoCuentas.value) return;
-  cargandoCuentas.value = true;
-  try {
-    const data = await getBillingAccounts();
-    const arr = Array.isArray(data) ? data : (data?.billing_accounts || []);
-    cuentasSimpro.value = arr.map(a => ({
-      label: `${a.account_number || ''} ${a.name || ''}`.trim() || String(a),
-      value: a.account_number || ''
-    }));
-  } catch {
-    cuentasSimpro.value = [];
-  }
-  cargandoCuentas.value = false;
+// Red = IMEISV 16 díg; registro = IMEI 15. Comparar núcleo de 14.
+function imeiMismatch(redImei, regImei) {
+  const a = String(redImei || '').replace(/\D+/g, '').slice(0, 14);
+  const b = String(regImei || '').replace(/\D+/g, '').slice(0, 14);
+  return !!a && !!b && a !== b;
 }
 
 function abrirAccionesSimpro(rowData) {
   router.push({ name: 'acciones-simpro', params: { id: rowData.id } });
-}
-
-function toggleAdmin() {
-  showAdmin.value = !showAdmin.value;
-  if (showAdmin.value) {
-    cargarSolucionesSimpro();
-    cargarCuentasSimpro();
-  }
-}
-
-async function ejecutarActivar() {
-  const iccids = activarIccids.value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
-  if (!iccids.length || !activarSolucion.value) return;
-  adminBusy.value = 'activar';
-  message.value = '';
-  try {
-    await activarSimsSimpro({
-      iccids,
-      customerSolution: activarSolucion.value,
-      billingAccountNumber: activarCuenta.value || undefined
-    });
-    message.value = `Activación solicitada para ${iccids.length} SIM(s).`;
-    messageError.value = false;
-    activarIccids.value = '';
-  } catch (error) {
-    message.value = error?.response?.data?.detail || error?.message || 'No se pudo activar.';
-    messageError.value = true;
-  } finally {
-    adminBusy.value = '';
-  }
-}
-
-async function cargarAlertas() {
-  adminBusy.value = 'alertas';
-  try {
-    const data = await getAlertasConsumoSimpro();
-    alertasTexto.value = JSON.stringify(data, null, 2).slice(0, 4000);
-  } catch (error) {
-    alertasTexto.value = 'Error: ' + (error?.response?.data?.detail || error?.message || 'falló');
-  } finally {
-    adminBusy.value = '';
-  }
-}
-
-async function cargarFacturas() {
-  adminBusy.value = 'facturas';
-  try {
-    const data = await getFacturasSimpro(facturasCuenta.value || undefined);
-    facturasTexto.value = JSON.stringify(data, null, 2).slice(0, 4000);
-  } catch (error) {
-    facturasTexto.value = 'Error: ' + (error?.response?.data?.detail || error?.message || 'falló');
-  } finally {
-    adminBusy.value = '';
-  }
 }
 
 async function aplicarFiltros() {
@@ -626,83 +521,11 @@ async function limpiarFiltros() {
     vigencia_sim: '',
     fecha_desde: null,
     fecha_hasta: null,
-    estado_simpro: 'activos',
+    estado_simpro: '',
+    salud: '',
   };
   currentPage.value = 1;
   await cargarDesdeDB();
-}
-
-async function consultar() {
-  sanitizeImei();
-  sanitizeSimTelefono();
-
-  if (!imei.value && !simTelefono.value) {
-    message.value = 'Debes ingresar IMEI o SIM ESPAÑOL (telefono).';
-    messageError.value = true;
-    return;
-  }
-
-  if (!plataforma.value) {
-    message.value = 'Debes seleccionar una plataforma.';
-    messageError.value = true;
-    return;
-  }
-
-  loading.value = true;
-  message.value = '';
-  messageError.value = false;
-
-  try {
-    if (!imei.value && simTelefono.value) {
-      await prepararRegistroManualDesdeTelefono();
-      return;
-    }
-
-    const data = await getDispositivoPorPlataforma(imei.value, plataforma.value);
-    const row = await buildRowFromDispositivo(data);
-    row.tipo = tipo.value;
-
-    // SIMPRO reporta el SIM dado de baja pero se está registrando como
-    // activación/renovación: ajustar a "cancelado" y avisar.
-    let avisoBaja = '';
-    if (esBajaSimpro(row.sim_customer_status) && ['activacion', 'renovacion'].includes(row.tipo)) {
-      row.tipo = 'cancelado';
-      avisoBaja = ` El SIM figura como "${row.sim_customer_status}" en SIMPRO — se guardó como Cancelado.`;
-    }
-
-    validateRow(row);
-
-    await saveConsultaSim({
-      tipo: row.tipo,
-      activation_date: row.activation_date,
-      deaccount: row.deaccount,
-      account_name: row.accountName,
-      plataforma: row.plataforma,
-      imei: row.imei,
-      iccid: row.iccid,
-      device_mobile: row.deviceMobile,
-      vigencia_sim: row.vigencia_sim
-    });
-
-    // Recargar página 1 desde BD
-    currentPage.value = 1;
-    await cargarDesdeDB();
-
-    message.value = 'Consulta completada y guardada.' + avisoBaja;
-    messageError.value = false;
-  } catch (error) {
-    message.value = error?.response?.data?.detail || error?.message || 'Error al consultar IMEI.';
-    messageError.value = true;
-  } finally {
-    loading.value = false;
-  }
-}
-
-function limpiar() {
-  imei.value = '';
-  simTelefono.value = '';
-  message.value = '';
-  messageError.value = false;
 }
 
 function validateRow(row) {
@@ -746,7 +569,10 @@ async function saveEdit() {
       imei: editRow.value.imei,
       iccid: editRow.value.iccid,
       device_mobile: editRow.value.deviceMobile,
-      vigencia_sim: editRow.value.vigencia_sim
+      vigencia_sim: editRow.value.vigencia_sim,
+      tecnico: editRow.value.tecnico || '',
+      num_cliente: editRow.value.num_cliente || '',
+      comentarios: editRow.value.comentarios || ''
     };
 
     if (editRow.value.id) {
@@ -767,139 +593,8 @@ async function saveEdit() {
   }
 }
 
-async function removeRecord(row) {
-  const ok = window.confirm('¿Eliminar este registro?');
-  if (!ok) return;
-  try {
-    await deleteConsultaSim(row.id);
-    message.value = 'Registro eliminado.';
-    messageError.value = false;
-    await cargarDesdeDB();
-  } catch (error) {
-    message.value = error?.response?.data?.detail || error?.message || 'No se pudo eliminar.';
-    messageError.value = true;
-  }
-}
-
-async function loadAllHistorico() {
-  const allRows = [];
-  const pageSizeAll = 100;
-  let page = 1;
-
-  while (true) {
-    const data = await getConsultasSim(page, pageSizeAll);
-    const items = (data.items || []).map(mapDbRow);
-    allRows.push(...items);
-
-    if (items.length < pageSizeAll) break;
-    page += 1;
-  }
-
-  return sortRows(allRows);
-}
-
-async function buildRowFromDispositivo(apiResponse) {
-  const plat = String(apiResponse?.plataforma || plataforma.value || '').toUpperCase();
-  const raw = Array.isArray(apiResponse?.dispositivo)
-    ? (apiResponse.dispositivo[0] || {})
-    : (apiResponse?.dispositivo || {});
-
-  let deaccount = '';
-  let accountName = '';
-  let userName = '';
-  let mobileRaw = '';
-
-  if (plat === 'TRACKSOLID') {
-    deaccount = String(raw.account || '');
-    accountName = String(raw.customerName || '');
-    userName = String(raw.customerName || '');
-    mobileRaw = String(raw.sim || raw.simNum || '');
-  } else {
-    const account = raw.account && typeof raw.account === 'object' ? raw.account : {};
-    const brief = raw.deviceBrief && typeof raw.deviceBrief === 'object' ? raw.deviceBrief : {};
-    deaccount = String(account.accountName || '');
-    accountName = String(account.accountName || '');
-    userName = String(account.userName || '');
-    mobileRaw = String(brief.deviceMobile || raw.sim || raw.simNum || '');
-  }
-
-  let deviceMobile = onlyDigits(mobileRaw);
-  if (!deviceMobile) {
-    deviceMobile = onlyDigits(simTelefono.value);
-  }
-  if (!deviceMobile) {
-    throw new Error('No se pudo extraer deviceMobile/sim con solo números.');
-  }
-
-  const simInfo = await getSimDetails(deviceMobile);
-
-  // contract_end_date puede venir en el top-level (server actualizado)
-  // o dentro de items[0].active_connection (server aún sin reiniciar)
-  const firstItem = Array.isArray(simInfo?.items) && simInfo.items.length ? simInfo.items[0] : null;
-  const activeConn = firstItem?.active_connection || {};
-  const vigencia = simInfo?.contract_end_date || activeConn?.contract_end_date || '';
-  const customerStatus = simInfo?.customer_status
-    || (typeof activeConn?.customer_status === 'object' ? activeConn.customer_status?.ident : activeConn?.customer_status)
-    || '';
-
-  return {
-    activation_date: simInfo?.activation_date || activeConn?.activation_date || '',
-    deaccount,
-    accountName,
-    userName,
-    plataforma: plat || plataforma.value,
-    imei: imei.value,
-    iccid: simInfo?.iccid || firstItem?.iccid || '',
-    deviceMobile,
-    vigencia_sim: vigencia,
-    sim_customer_status: String(customerStatus || '')
-  };
-}
-
-const SIMPRO_ESTADOS_BAJA = ['ceased', 'cancelled', 'canceled', 'terminated', 'stopped'];
-function esBajaSimpro(status) {
-  return SIMPRO_ESTADOS_BAJA.includes(String(status || '').trim().toLowerCase());
-}
-
-async function prepararRegistroManualDesdeTelefono() {
-  const sim = onlyDigits(simTelefono.value);
-  let simInfo = null;
-
-  if (sim) {
-    try {
-      simInfo = await getSimDetails(sim);
-    } catch {
-      simInfo = null;
-    }
-  }
-
-  const firstItem = Array.isArray(simInfo?.items) && simInfo.items.length ? simInfo.items[0] : null;
-  const activeConn = firstItem?.active_connection || {};
-
-  editRow.value = {
-    tipo: tipo.value,
-    activation_date: simInfo?.activation_date || activeConn?.activation_date || '',
-    deaccount: '',
-    accountName: '',
-    plataforma: plataforma.value || '',
-    imei: '',
-    iccid: simInfo?.iccid || firstItem?.iccid || '',
-    deviceMobile: sim,
-    vigencia_sim: simInfo?.contract_end_date || activeConn?.contract_end_date || ''
-  };
-
-  showEditDialog.value = true;
-  message.value = 'Completa los campos faltantes y guarda el nuevo registro.';
-  messageError.value = false;
-}
-
 function onlyDigits(v) {
   return String(v || '').replace(/\D+/g, '');
-}
-
-function isIncompleto(row) {
-  const required = [row.tipo, row.activation_date, row.deaccount, row.accountName, row.plataforma, row.iccid, row.vigencia_sim];
-  return required.some((v) => !String(v || '').trim());
 }
 
 function esVencido(vigenciaSim) {
@@ -912,48 +607,15 @@ function esVencido(vigenciaSim) {
   return diasVencido >= 7;
 }
 
-async function importarSimpro() {
-  importando.value = true;
-  message.value = '';
-  try {
-    const result = await importarSimsSimpro();
-    message.value = `SIMPRO: ${result.importados} nuevo(s) importado(s), ${result.omitidos} ya exist${result.omitidos === 1 ? 'ía' : 'ían'} (de ${result.total_simpro} en la plataforma).`;
-    messageError.value = false;
-
-    if (result.importados > 0) {
-      currentPage.value = 1;
-      await cargarDesdeDB();
-    }
-  } catch (error) {
-    message.value = error?.response?.data?.detail || error?.message || 'No se pudo importar desde SIMPRO.';
-    messageError.value = true;
-  } finally {
-    importando.value = false;
-  }
-}
-
 async function refrescarSimpro() {
   refrescando.value = true;
   refrescarProgreso.value = '';
   message.value = '';
   messageError.value = false;
-  let totalEstado = 0;
-  let totalConsumo = 0;
-  let totalProcesados = 0;
-  let totalNuevos = 0;
   try {
-    // Recorre TODO en tandas hasta que no queden pendientes (tope de vueltas
-    // por seguridad).
-    for (let vuelta = 0; vuelta < 40; vuelta++) {
-      const r = await refrescarSimproSims();
-      totalEstado += r.estado_ok || 0;
-      totalConsumo += r.consumo_ok || 0;
-      totalProcesados += r.procesados || 0;
-      totalNuevos += r.nuevos || 0;
-      refrescarProgreso.value = `Procesados ${totalProcesados}, faltan ${r.restantes}...`;
-      if (!r.procesados || !r.restantes) break;
-    }
-    message.value = `Actualización SIMPRO: ${totalNuevos} SIM nuevo(s), estado en ${totalEstado}, consumo en ${totalConsumo} (${totalProcesados} revisados).`;
+    // Solo da de alta los SIM nuevos de SIMPRO. No toca lo existente.
+    const r = await refrescarSimproSims();
+    message.value = `Actualización SIMPRO: ${r.nuevos || 0} SIM nuevo(s) (${r.ya_existian || 0} ya existían).`;
     currentPage.value = 1;
     await cargarDesdeDB();
   } catch (error) {
@@ -963,64 +625,6 @@ async function refrescarSimpro() {
     refrescando.value = false;
     refrescarProgreso.value = '';
   }
-}
-
-async function completarDatos() {
-  completando.value = true;
-  message.value = '';
-  try {
-    const r = await completarDatosSims();
-    message.value = `Completar datos: ${r.actualizados} registro(s) actualizado(s) de ${r.procesados} revisado(s). Quedan ${r.restantes} incompleto(s)${r.restantes ? ' — vuelve a correr para seguir.' : '.'}`;
-    messageError.value = false;
-    currentPage.value = 1;
-    await cargarDesdeDB();
-  } catch (error) {
-    message.value = error?.response?.data?.detail || error?.message || 'No se pudo completar datos.';
-    messageError.value = true;
-  } finally {
-    completando.value = false;
-  }
-}
-
-function exportarExcel() {
-  if (!rows.value.length) return;
-
-  loadAllHistorico()
-    .then((historico) => {
-      if (!historico.length) return;
-
-      const rowsToExport = historico.map((r) => ({
-    TIPO: r.tipo,
-    'Fecha. Act': r.activation_date,
-    USUARIO: r.deaccount,
-    CLIENTE: r.accountName,
-    PLATAFORMA: r.plataforma,
-    IMEI: r.imei,
-    ICCID: r.iccid,
-    'SIM ESPAÑOL': r.deviceMobile,
-    'VIGENCIA SIM': r.vigencia_sim
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(rowsToExport);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'reporte');
-      XLSX.writeFile(wb, `reporte_sim_${stamp()}.xlsx`);
-    })
-    .catch((error) => {
-      message.value = error?.response?.data?.detail || error?.message || 'No se pudo exportar el histórico completo.';
-      messageError.value = true;
-    });
-}
-
-function stamp() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${y}${m}${day}_${hh}${mm}${ss}`;
 }
 
 onMounted(() => {

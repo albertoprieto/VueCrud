@@ -119,8 +119,34 @@ export async function refrescarSimproSims(maxRegistros) {
 }
 
 // ── Administración SIMPRO ──
-export async function imeiLockSim(id, activar) {
-  const r = await axios.post(`${API_URL}/api/utilidades/consultas-sim/${id}/imei-lock`, { activar });
+export async function imeiLockSim(id, activar, force = false, imeiObjetivo = '') {
+  const r = await axios.post(`${API_URL}/api/utilidades/consultas-sim/${id}/imei-lock`, {
+    activar,
+    ...(force ? { force: true } : {}),
+    ...(imeiObjetivo ? { imei_objetivo: imeiObjetivo } : {})
+  });
+  return r.data;
+}
+
+export async function getSimproRaw(id) {
+  const r = await axios.get(`${API_URL}/api/utilidades/consultas-sim/${id}/simpro-raw`);
+  return r.data;
+}
+
+export async function prepararLockSim(id, imeiObjetivo = '') {
+  const r = await axios.post(`${API_URL}/api/utilidades/consultas-sim/${id}/preparar-lock`, {
+    ...(imeiObjetivo ? { imei_objetivo: imeiObjetivo } : {})
+  });
+  return r.data;
+}
+
+export async function recasarSim(id) {
+  const r = await axios.post(`${API_URL}/api/utilidades/consultas-sim/${id}/recasar`);
+  return r.data;
+}
+
+export async function getEventosSim(id, limit = 50) {
+  const r = await axios.get(`${API_URL}/api/utilidades/consultas-sim/${id}/eventos`, { params: { limit } });
   return r.data;
 }
 
@@ -148,15 +174,6 @@ export async function historialConsumoSim(id, meses = 3) {
 
 export async function swapIccidSim(id, newIccid) {
   const r = await axios.post(`${API_URL}/api/utilidades/consultas-sim/${id}/swap-iccid`, { new_iccid: newIccid });
-  return r.data;
-}
-
-export async function reasignarSim(id, { nuevoImei, nuevoUsuario, nuevoCliente }) {
-  const r = await axios.post(`${API_URL}/api/utilidades/consultas-sim/${id}/reasignar`, {
-    nuevo_imei: nuevoImei,
-    ...(nuevoUsuario ? { nuevo_usuario: nuevoUsuario } : {}),
-    ...(nuevoCliente ? { nuevo_cliente: nuevoCliente } : {})
-  });
   return r.data;
 }
 
@@ -214,12 +231,15 @@ export default {
   completarDatosSims,
   refrescarSimproSims,
   imeiLockSim,
+  prepararLockSim,
+  recasarSim,
+  getSimproRaw,
+  getEventosSim,
   refrescarRedSim,
   cambiarSolucionSim,
   cotizarCancelacionSim,
   historialConsumoSim,
   swapIccidSim,
-  reasignarSim,
   getCustomerSolutions,
   getBillingAccounts,
   activarSimsSimpro,

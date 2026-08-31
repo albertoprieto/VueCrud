@@ -17,10 +17,31 @@
         <div><strong>Usuario:</strong> {{ row.deaccount || '—' }}</div>
         <div><strong>Cliente:</strong> {{ row.accountName || '—' }}</div>
         <div><strong>Plataforma:</strong> {{ row.plataforma || '—' }}</div>
-        <div><strong>Estado SIMPRO:</strong> {{ row.sim_customer_status || '—' }}</div>
+        <div>
+          <strong>Salud:</strong>
+          <Tag :value="saludTag(row.salud).value" :severity="saludTag(row.salud).severity" />
+          <span class="acc-hint" style="margin-left:.4rem">({{ row.sim_customer_status || '—' }})</span>
+        </div>
         <div><strong>Vigencia:</strong> {{ row.vigencia_sim || '—' }}</div>
+        <div>
+          <strong>Bloqueo por equipo:</strong>
+          <template v-if="row.imei_lock === 1"><span class="acc-warn">BLOQUEADO (cambio de IMEI)</span></template>
+          <template v-else-if="row.imei_lock === 0">Sin bloqueo</template>
+          <template v-else>Desconocido — pulsa "Verificar estado"</template>
+        </div>
+        <div v-if="row.network_imei"><strong>IMEI visto en red:</strong> {{ row.network_imei }}</div>
+        <div v-if="imeiMismatch(row.network_imei, row.imei)" class="acc-warn">
+          ⚠ El IMEI del registro ({{ row.imei }}) no coincide con el que SIMPRO ve en la red ({{ row.network_imei }}).
+        </div>
+        <div v-if="row.last_seen"><strong>Última señal:</strong> {{ fechaCorta(row.last_seen) }}</div>
         <div v-if="row.sim_state === 'suspendido_temporal'" class="acc-warn">
           Suspendido temporal desde {{ fechaCorta(row.suspendido_desde) }}
+        </div>
+        <div v-if="row.sim_state === 'bloqueado_imei'" class="acc-warn">
+          ⚠ SIM BLOQUEADO por cambio de equipo (locked_due_to_imei_change). No pasa tráfico.
+          Si el cambio fue a propósito: pulsa "Desbloquear" — SIMPRO lo procesa en unos minutos;
+          cuando figure "active", "Preparar" + "Bloquear" para re-armar en el equipo correcto.
+          Si no fue a propósito, monta el SIM de vuelta en el equipo original.
         </div>
         <div><strong>Consumo del mes:</strong>
           {{ row.data_usage_mb != null ? row.data_usage_mb + ' MB' : '—' }}
@@ -38,16 +59,24 @@
 
         <div class="acc-card">
           <h3>Bloqueo por equipo (IMEI lock)</h3>
-          <Button label="Bloquear a este equipo" icon="pi pi-lock" outlined :loading="busy==='lock-on'" @click="accion('lock-on')" />
-          <Button label="Quitar bloqueo" icon="pi pi-lock-open" outlined :loading="busy==='lock-off'" @click="accion('lock-off')" />
-        </div>
-
-        <div class="acc-card">
-          <h3>Pasar este SIM a otro equipo</h3>
-          <p class="acc-hint">El SIM y su vigencia se quedan igual. Cambia solo el equipo (IMEI) al que está asignado. El registro queda como "Reutilizado".</p>
-          <InputText v-model="reasignar.nuevoImei" placeholder="IMEI del equipo nuevo" />
-          <Button label="Pasar a este equipo" icon="pi pi-arrow-right-arrow-left" severity="help"
-            :disabled="!reasignar.nuevoImei" :loading="busy==='reasignar'" @click="accion('reasignar')" />
+          <p class="acc-hint">
+            Arma el bloqueo. Si después alguien mueve el SIM a otro equipo (IMEI distinto),
+            SIMPRO lo bloquea solo y deja de pasar tráfico. SIMPRO procesa en segundo plano
+            (unos minutos). Usa "Preparar" para que el equipo objetivo reporte antes de armar.
+          </p>
+          <label class="acc-hint">IMEI objetivo (equipo donde va el SIM)</label>
+          <InputText v-model="lockTarget" placeholder="IMEI del equipo objetivo" />
+          <Button label="1. Preparar (esperar señal del equipo)" icon="pi pi-sync" outlined
+            :loading="busy==='preparar'" @click="accion('preparar')" />
+          <p v-if="prepText" :class="['acc-hint', prepMatch ? 'acc-ok' : 'acc-warn']">{{ prepText }}</p>
+          <Button label="2. Bloquear a este equipo" icon="pi pi-lock" outlined
+            :loading="busy==='lock-on'" @click="accion('lock-on')" />
+          <Button v-if="row.sim_state === 'bloqueado_imei'"
+            label="Desbloquear (se bloqueó por cambio de equipo)" icon="pi pi-unlock" severity="help" outlined
+            :loading="busy==='recasar'" @click="accion('recasar')" />
+          <Button label="Ver JSON de SIMPRO" icon="pi pi-code" text size="small"
+            :loading="busy==='raw'" @click="accion('raw')" />
+          <pre v-if="rawText" class="acc-raw">{{ rawText }}</pre>
         </div>
 
         <div class="acc-card">
@@ -91,16 +120,30 @@
             <Button label="Cancelar en SIMPRO" icon="pi pi-times-circle" severity="danger" :loading="busy==='cancelar'" @click="accion('cancelar')" />
           </template>
         </div>
+
+        <div class="acc-card">
+          <h3>Historial de acciones</h3>
+          <Button label="Ver bitácora" icon="pi pi-history" outlined :loading="busy==='eventos'" @click="accion('eventos')" />
+          <ul v-if="eventos.length" class="acc-list">
+            <li v-for="e in eventos" :key="e.id">
+              <span :class="e.ok ? '' : 'acc-warn'">{{ fechaCorta(e.creado_en) }} · {{ e.accion }}</span>
+              <template v-if="e.detalle"> — {{ e.detalle }}</template>
+              <template v-if="e.usuario"> ({{ e.usuario }})</template>
+            </li>
+          </ul>
+          <p v-else-if="eventosCargados" class="acc-hint">Sin acciones registradas.</p>
+        </div>
       </div>
     </div>
   </section>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
+import Tag from 'primevue/tag';
 import { useToast } from 'primevue/usetoast';
 import {
   getConsultaSim,
@@ -111,10 +154,13 @@ import {
   cancelarSim,
   detenerCancelacionSim,
   imeiLockSim,
+  prepararLockSim,
+  recasarSim,
+  getSimproRaw,
+  getEventosSim,
   refrescarRedSim,
   historialConsumoSim,
-  swapIccidSim,
-  reasignarSim
+  swapIccidSim
 } from '@/services/utilidadesImeiService';
 
 const route = useRoute();
@@ -127,11 +173,16 @@ const raw = ref(null);
 const row = ref(null);
 const busy = ref('');
 
-const reasignar = reactive({ nuevoImei: '' });
 const nuevoIccid = ref('');
 const historial = ref([]);
 const pausaFactura = ref(false);
 const cancelarFecha = ref('');
+const rawText = ref('');
+const eventos = ref([]);
+const eventosCargados = ref(false);
+const lockTarget = ref('');
+const prepText = ref('');
+const prepMatch = ref(false);
 
 function mapRow(r) {
   return {
@@ -148,12 +199,42 @@ function mapRow(r) {
     sim_customer_status: r.sim_customer_status || '',
     suspendido_desde: r.suspendido_desde || '',
     data_usage_mb: r.data_usage_mb ?? null,
-    sin_trafico: !!r.sin_trafico
+    sin_trafico: !!r.sin_trafico,
+    imei_lock: r.imei_lock == null ? null : Number(r.imei_lock),
+    imei_lock_imei: r.imei_lock_imei || '',
+    network_imei: r.network_imei || '',
+    last_seen: r.last_seen || '',
+    in_session: r.in_session == null ? null : Number(r.in_session),
+    salud: r.salud || 'desconocido'
   };
 }
 
 function fechaCorta(v) {
   return v ? String(v).slice(0, 10) : '';
+}
+
+const SALUD_TAG = {
+  ok: { value: 'OK', severity: 'success' },
+  sin_conexion: { value: 'Sin conexión', severity: 'danger' },
+  sin_trafico: { value: 'Sin tráfico', severity: 'warning' },
+  bloqueado: { value: 'Bloqueado', severity: 'danger' },
+  suspendido: { value: 'Suspendido', severity: 'warning' },
+  baja: { value: 'Baja', severity: 'secondary' },
+  desconocido: { value: '—', severity: 'contrast' }
+};
+function saludTag(s) {
+  return SALUD_TAG[s] || SALUD_TAG.desconocido;
+}
+
+// La red reporta IMEISV (16 díg); el registro suele traer IMEI de 15.
+// Comparar por el núcleo de 14 (TAC + serie).
+function imeiCore(v) {
+  return String(v || '').replace(/\D+/g, '').slice(0, 14);
+}
+function imeiMismatch(redImei, regImei) {
+  const a = imeiCore(redImei);
+  const b = imeiCore(regImei);
+  return !!a && !!b && a !== b;
 }
 
 function resumenConsumoMes(datos) {
@@ -173,6 +254,9 @@ async function cargar() {
   try {
     raw.value = await getConsultaSim(id);
     row.value = mapRow(raw.value);
+    if (!lockTarget.value) {
+      lockTarget.value = row.value?.imei || row.value?.imei_lock_imei || row.value?.network_imei || '';
+    }
   } catch {
     row.value = null;
   }
@@ -192,23 +276,56 @@ async function accion(a) {
     let res;
     if (a === 'estado') {
       res = await verificarEstadoSim(id);
-      ok(res.es_baja_en_simpro ? 'Estado actualizado. Figura dado de baja en SIMPRO.' : 'Estado actualizado.');
+      ok('Estado + conectividad actualizados. Salud: ' + (res.salud || '?'));
     } else if (a === 'consumo') {
       res = await verificarConsumoSim(id);
-      ok('Consumo actualizado.');
+      ok('Consumo + señal actualizados. Salud: ' + (res.salud || '?'));
     } else if (a === 'refrescar-red') {
       await refrescarRedSim(id);
       ok('Refresh de red enviado.');
-    } else if (a === 'lock-on' || a === 'lock-off') {
-      await imeiLockSim(id, a === 'lock-on');
-      ok(a === 'lock-on' ? 'SIM bloqueado a este equipo.' : 'Bloqueo quitado.');
+    } else if (a === 'preparar') {
+      const data = await prepararLockSim(id, lockTarget.value.trim());
+      prepMatch.value = !!data.match;
+      prepText.value = `${data.mensaje} Red ve: ${data.network_imei || '—'}`
+        + (data.minutos_desde_ultima_senal != null ? ` (hace ${Math.round(data.minutos_desde_ultima_senal)} min)` : '');
+      (prepMatch.value ? ok : (m => err({ message: m })))(prepText.value);
+    } else if (a === 'lock-on') {
+      const objetivo = lockTarget.value.trim();
+      try {
+        res = await imeiLockSim(id, true, false, objetivo);
+      } catch (e) {
+        // 409 = guardia previa (equipo objetivo no reporta / IMEI no coincide).
+        if (e?.response?.status === 409) {
+          const detalle = e.response.data?.detail || 'No se pudo verificar el equipo.';
+          if (window.confirm(detalle + '\n\n¿Bloquear de todos modos (force)?')) {
+            res = await imeiLockSim(id, true, true, objetivo);
+          } else {
+            busy.value = ''; return;
+          }
+        } else {
+          throw e;
+        }
+      }
+      ok(res?.message || 'SIM bloqueado a este equipo.');
+    } else if (a === 'recasar') {
+      if (!window.confirm('Quita el bloqueo por equipo del SIM. SIMPRO lo procesa en segundo plano. ¿Continuar?')) { busy.value = ''; return; }
+      res = await recasarSim(id);
+      if (res.desbloqueado) ok(res.message || 'SIM desbloqueado.');
+      else err({ message: res.message || 'Desbloqueo encolado.' });
+    } else if (a === 'raw') {
+      const data = await getSimproRaw(id);
+      rawText.value = JSON.stringify(data, null, 2);
+      ok('JSON de SIMPRO cargado.');
+    } else if (a === 'eventos') {
+      const data = await getEventosSim(id);
+      eventos.value = data.eventos || [];
+      eventosCargados.value = true;
+      ok('Bitácora cargada.');
     } else if (a === 'swap') {
       if (!window.confirm('Esto cambia la tarjeta física en SIMPRO. ¿Continuar?')) { busy.value = ''; return; }
       res = await swapIccidSim(id, nuevoIccid.value.trim());
-      ok('Tarjeta cambiada. El registro apunta al ICCID nuevo.');
-    } else if (a === 'reasignar') {
-      res = await reasignarSim(id, { nuevoImei: reasignar.nuevoImei.trim() });
-      ok('SIM pasado al equipo nuevo (Reutilizado).' + (res.avisos?.length ? ' ' + res.avisos.join(' ') : ''));
+      ok('Tarjeta cambiada. El registro apunta al ICCID nuevo.'
+        + (res.avisos?.length ? ' ' + res.avisos.join(' ') : ''));
     } else if (a === 'historial') {
       const data = await historialConsumoSim(id, 6);
       historial.value = (data.historial || []).map(h => ({
@@ -217,11 +334,14 @@ async function accion(a) {
       }));
       ok('Historial cargado.');
     } else if (a === 'suspender') {
+      if (!window.confirm('Se cortará TODO el tráfico del SIM: el equipo dejará de reportar hasta reactivarlo. ¿Continuar?')) { busy.value = ''; return; }
       res = await suspenderSim(id, { pausarFacturacion: pausaFactura.value });
-      ok(pausaFactura.value ? 'SIM suspendido y facturación pausada.' : 'SIM suspendido (tráfico bloqueado).');
+      if (res.avisos?.length) res.avisos.forEach(m => err({ message: m }));
+      else ok(pausaFactura.value ? 'SIM suspendido y facturación pausada.' : 'SIM suspendido (tráfico bloqueado).');
     } else if (a === 'reactivar') {
       res = await reactivarSim(id);
-      ok('SIM reactivado.');
+      if (res.avisos?.length) res.avisos.forEach(m => err({ message: m }));
+      else ok('SIM reactivado.');
     } else if (a === 'cancelar') {
       if (!window.confirm('Esto cancela el SIM en SIMPRO. ¿Continuar?')) { busy.value = ''; return; }
       res = await cancelarSim(id, { cancellationDate: cancelarFecha.value.trim() || undefined });
@@ -283,7 +403,18 @@ onMounted(cargar);
   align-items: start;
 }
 .acc-warn { color: #d1242f; font-weight: 600; }
+.acc-ok { color: #238636; font-weight: 600; }
 .acc-hint { margin: 0; font-size: 0.8rem; opacity: 0.7; }
+.acc-raw {
+  background: var(--color-bg-light, #f5f5f5);
+  border-radius: 8px;
+  padding: 0.6rem;
+  font-size: 0.72rem;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .acc-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
 .acc-list { margin: 0.25rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; }
 .w-full { width: 100%; }

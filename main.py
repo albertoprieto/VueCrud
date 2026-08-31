@@ -10211,6 +10211,9 @@ class ConsultaSimRecord(BaseModel):
     iccid: str = ""
     device_mobile: str = ""
     vigencia_sim: str = ""
+    tecnico: str = ""
+    num_cliente: str = ""
+    comentarios: str = ""
 
 
 def _get_db():
@@ -10248,6 +10251,8 @@ def list_consultas_sim(
     device_mobile: str | None = Query(None),
     vigencia_sim: str | None = Query(None),
     estado_simpro: str | None = Query(None, description="'activos' oculta bajas, 'baja' muestra solo cancelados/cesados, vacío = todos"),
+    imei_lock: str | None = Query(None, description="'1' solo bloqueados por equipo, '0' solo sin bloqueo"),
+    salud: str | None = Query(None, description="ok | sin_conexion | sin_trafico | bloqueado | suspendido | baja | desconocido"),
     sort_field: str | None = Query(None),
     sort_order: int | None = Query(None, description="1 ascendente, -1 descendente"),
 ):
@@ -10302,6 +10307,17 @@ def list_consultas_sim(
     elif (estado_simpro or "").strip() == "baja":
         conditions.append(_es_baja)
 
+    _lock = str(imei_lock or "").strip()
+    if _lock == "1":
+        conditions.append("imei_lock = 1")
+    elif _lock == "0":
+        conditions.append("(imei_lock = 0 OR imei_lock IS NULL)")
+
+    _salud = str(salud or "").strip().lower()
+    if _salud in ("ok", "sin_conexion", "sin_trafico", "bloqueado", "suspendido", "baja", "desconocido"):
+        conditions.append("salud = %s")
+        values.append(_salud)
+
     # Desglose por tipo: se calcula con TODOS los filtros menos el propio
     # filtro de tipo, para que el contador muestre siempre el panorama
     # completo (ACTIVOS, RENOVADOS, CANCELADOS, DESINSTALADOS, REUTILIZADOS)
@@ -10329,6 +10345,7 @@ def list_consultas_sim(
         'tipo': 'tipo', 'activation_date': 'activation_date', 'deaccount': 'deaccount',
         'accountName': 'account_name', 'plataforma': 'plataforma', 'imei': 'imei',
         'iccid': 'iccid', 'deviceMobile': 'device_mobile', 'vigencia_sim': 'vigencia_sim',
+        'tecnico': 'tecnico', 'num_cliente': 'num_cliente',
     }
     columna_sort = columnas_ordenables.get(sort_field)
     if columna_sort:
@@ -10378,8 +10395,8 @@ def save_consulta_sim(record: ConsultaSimRecord):
     cursor.execute(
         """INSERT INTO consultas_sim
            (tipo, activation_date, deaccount, account_name, plataforma,
-            imei, iccid, device_mobile, vigencia_sim)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            imei, iccid, device_mobile, vigencia_sim, tecnico, num_cliente, comentarios)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         (
             record.tipo,
             record.activation_date,
@@ -10390,6 +10407,9 @@ def save_consulta_sim(record: ConsultaSimRecord):
             record.iccid,
             sim_clean,
             record.vigencia_sim,
+            record.tecnico,
+            record.num_cliente,
+            record.comentarios,
         )
     )
     new_id = cursor.lastrowid
@@ -10428,7 +10448,8 @@ def update_consulta_sim(record_id: int, record: ConsultaSimRecord):
     cursor.execute(
         """UPDATE consultas_sim
            SET tipo=%s, activation_date=%s, deaccount=%s, account_name=%s, plataforma=%s,
-               imei=%s, iccid=%s, device_mobile=%s, vigencia_sim=%s
+               imei=%s, iccid=%s, device_mobile=%s, vigencia_sim=%s,
+               tecnico=%s, num_cliente=%s, comentarios=%s
            WHERE id=%s""",
         (
             record.tipo,
@@ -10440,6 +10461,9 @@ def update_consulta_sim(record_id: int, record: ConsultaSimRecord):
             record.iccid,
             sim_clean,
             record.vigencia_sim,
+            record.tecnico,
+            record.num_cliente,
+            record.comentarios,
             record_id,
         )
     )
@@ -10454,9 +10478,10 @@ def update_consulta_sim(record_id: int, record: ConsultaSimRecord):
 
 @app.on_event("startup")
 def _consultas_sim_columnas_simpro():
-    """Columnas para estado SIMPRO, suspensión temporal y consumo (Utilidades /
-    SIM ESPAÑOL). La tabla base se creó a mano; aquí solo se agregan las
-    columnas nuevas, cada ALTER protegido por si ya existe."""
+    """Columnas para estado SIMPRO, suspensión temporal, consumo y bloqueo por
+    equipo (Utilidades / SIM ESPAÑOL), más la bitácora de acciones. La tabla
+    base se creó a mano; aquí solo se agregan las columnas/tablas nuevas, cada
+    DDL protegido por si ya existe."""
     db = _get_db()
     cursor = db.cursor()
     for ddl in (
@@ -10467,6 +10492,31 @@ def _consultas_sim_columnas_simpro():
         "ALTER TABLE consultas_sim ADD COLUMN data_usage_mb DECIMAL(12,2) NULL",
         "ALTER TABLE consultas_sim ADD COLUMN sin_trafico TINYINT(1) NULL",
         "ALTER TABLE consultas_sim ADD COLUMN usage_verificado_en DATETIME NULL",
+        # Bloqueo por equipo y reconciliación con la red.
+        "ALTER TABLE consultas_sim ADD COLUMN imei_lock TINYINT(1) NULL",
+        "ALTER TABLE consultas_sim ADD COLUMN imei_lock_imei VARCHAR(20) NULL",
+        "ALTER TABLE consultas_sim ADD COLUMN bar_full TINYINT(1) NULL",
+        "ALTER TABLE consultas_sim ADD COLUMN network_imei VARCHAR(20) NULL",
+        "ALTER TABLE consultas_sim ADD COLUMN last_seen VARCHAR(40) NULL",
+        # Conectividad real (de sims/usage) + salud derivada.
+        "ALTER TABLE consultas_sim ADD COLUMN in_session TINYINT(1) NULL",
+        "ALTER TABLE consultas_sim ADD COLUMN salud VARCHAR(20) NULL",
+        # Datos que solo viven en el Excel "SIM ESPAÑOL" (no en SIMPRO).
+        "ALTER TABLE consultas_sim ADD COLUMN tecnico VARCHAR(120) NULL",
+        "ALTER TABLE consultas_sim ADD COLUMN num_cliente VARCHAR(60) NULL",
+        "ALTER TABLE consultas_sim ADD COLUMN comentarios TEXT NULL",
+        # Bitácora de acciones SIMPRO (auditoría).
+        """CREATE TABLE IF NOT EXISTS consultas_sim_eventos (
+             id INT AUTO_INCREMENT PRIMARY KEY,
+             consulta_sim_id INT NOT NULL,
+             accion VARCHAR(40) NOT NULL,
+             detalle TEXT NULL,
+             resultado TEXT NULL,
+             ok TINYINT(1) NOT NULL DEFAULT 1,
+             usuario VARCHAR(80) NULL,
+             creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             INDEX ix_cse_consulta (consulta_sim_id)
+           )""",
     ):
         try:
             cursor.execute(ddl)
@@ -10480,6 +10530,230 @@ def _consultas_sim_columnas_simpro():
 def _consulta_sim_identifier(row: dict) -> str:
     """Identificador para SIMPRO: ICCID de preferencia, si no el MSISDN."""
     return str(row.get("iccid") or "").strip() or _extract_digits(row.get("device_mobile") or "")
+
+
+def _evento_sim(record_id: int, accion: str, detalle="", resultado="", ok: bool = True,
+                usuario: str | None = None):
+    """Registra una acción SIMPRO en la bitácora. Best-effort: nunca tumba la
+    operación principal."""
+    try:
+        db = _get_db()
+        cur = db.cursor()
+        det = detalle if isinstance(detalle, str) else json.dumps(detalle, default=str)[:4000]
+        res = resultado if isinstance(resultado, str) else json.dumps(resultado, default=str)[:4000]
+        cur.execute(
+            """INSERT INTO consultas_sim_eventos
+               (consulta_sim_id, accion, detalle, resultado, ok, usuario)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (record_id, accion, str(det)[:4000], str(res)[:4000], 1 if ok else 0, usuario),
+        )
+        db.commit()
+        cur.close(); db.close()
+    except Exception:
+        pass
+
+
+def _simpro_request_number(res):
+    """SIMPRO devuelve `[{"request_number": N}]` (lista) o a veces el objeto
+    suelto. Extrae N o None."""
+    if isinstance(res, list) and res and isinstance(res[0], dict):
+        return res[0].get("request_number")
+    if isinstance(res, dict):
+        return res.get("request_number")
+    return None
+
+
+def _imei_core(v) -> str:
+    """Primeros 14 dígitos (TAC + número de serie). Permite comparar un IMEI de
+    15 díg (con dígito Luhn) contra el IMEISV de 16 díg que reporta la red
+    (14 + 2 de software version)."""
+    return _extract_digits(v)[:14]
+
+
+def _simpro_one_detail(identifier: str) -> dict:
+    """`sims/details` para un identificador; devuelve el dict o {}."""
+    ident = str(identifier or "").strip()
+    if not ident:
+        return {}
+    try:
+        data = _simpro_get("/api/v3/sims/details", {"identifiers": ident})
+    except HTTPException:
+        return {}
+    if isinstance(data, list) and data:
+        for d in data:
+            if str(d.get("iccid") or "") == ident or _extract_digits(
+                (d.get("active_connection") or {}).get("msisdn") or ""
+            ) == _extract_digits(ident):
+                return d
+        return data[0]
+    return data if isinstance(data, dict) else {}
+
+
+def _simpro_detail_parse(d: dict) -> dict:
+    """Normaliza un item de `sims/details`. `imei_lock`/`bar_full` = None cuando
+    SIMPRO no reporta el dato (campo ausente)."""
+    d = d if isinstance(d, dict) else {}
+    active = d.get("active_connection") if isinstance(d.get("active_connection"), dict) else {}
+    billing = d.get("billing_account") if isinstance(d.get("billing_account"), dict) else {}
+
+    # IMEI que SIMPRO ve en la red (para reconciliar y para la guardia pre-lock).
+    equipment = d.get("equipment") if isinstance(d.get("equipment"), dict) else {}
+    network_imei = (_extract_digits(d.get("imei") or "")
+                    or _extract_digits(active.get("imei") or "")
+                    or _extract_digits(equipment.get("imei") or ""))
+
+    # Bloqueo por equipo: SIMPRO NO expone el lock "armado pero sin disparar".
+    # El único estado observable es cuando SE DISPARÓ: customer_status pasa a
+    # `locked_due_to_imei_change`. Fuera de eso, no hay asociación que reportar.
+    cs_raw = _simpro_status_ident(active.get("customer_status"))
+    triggered = cs_raw.strip().lower() == "locked_due_to_imei_change"
+    lock_val = triggered
+    lock_imei = network_imei if triggered else ""
+
+    # Barra total (suspensión). `bars` suele ser lista de {name/bar_name, active/state}.
+    bar_full = None
+    bars = active.get("bars") if isinstance(active.get("bars"), list) else d.get("bars") if isinstance(d.get("bars"), list) else None
+    if bars is not None:
+        bar_full = False
+        for b in bars:
+            if not isinstance(b, dict):
+                continue
+            name = str(b.get("bar_name") or b.get("name") or b.get("ident") or "").lower()
+            on = b.get("active")
+            if on is None:
+                on = b.get("required_state")
+            if on is None:
+                on = str(b.get("state") or "").lower() in ("active", "applied", "on", "true")
+            if ("full" in name) and bool(on):
+                bar_full = True
+                break
+
+    cs = cs_raw
+    ws = _simpro_status_ident(active.get("workflow_status"))
+    in_session = active.get("in_current_session")
+    if in_session is None:
+        in_session = d.get("in_current_session")
+    return {
+        "customer_status": cs,
+        "workflow_status": ws,
+        "contract_end_date": str(active.get("contract_end_date") or ""),
+        "activation_date": str(active.get("activation_date") or ""),
+        "iccid": str(d.get("iccid") or ""),
+        "msisdn": _extract_digits(active.get("msisdn") or d.get("msisdn") or ""),
+        "network_imei": network_imei,
+        "imei_lock": lock_val,
+        "imei_lock_imei": lock_imei,
+        "imei_lock_triggered": triggered,
+        "bar_full": bar_full,
+        "last_seen": str(active.get("last_seen") or d.get("last_seen") or ""),
+        "in_current_session": bool(in_session) if in_session is not None else None,
+        "billing_name": str(billing.get("name") or ""),
+        "custom_field1": str(d.get("custom_field1") or ""),
+    }
+
+
+def _minutos_desde(last_seen: str) -> float | None:
+    """Minutos transcurridos desde `last_seen`. None si no se puede interpretar."""
+    s = str(last_seen or "").strip()
+    if not s:
+        return None
+    for raw, fmt in ((s[:19], "%Y-%m-%dT%H:%M:%S"), (s[:19], "%Y-%m-%d %H:%M:%S"),
+                     (s[:19], "%d/%m/%Y %H:%M:%S"), (s[:10], "%Y-%m-%d")):
+        try:
+            dt = datetime.strptime(raw, fmt)
+            return (datetime.now() - dt).total_seconds() / 60.0
+        except ValueError:
+            continue
+    return None
+
+
+def _visto_reciente(last_seen: str, horas: int = 24) -> bool | None:
+    """True si `last_seen` es de las últimas `horas`. None si no se puede
+    interpretar (o viene vacío)."""
+    s = str(last_seen or "").strip()
+    if not s:
+        return None
+    for raw, fmt in ((s[:19], "%Y-%m-%dT%H:%M:%S"), (s[:19], "%Y-%m-%d %H:%M:%S"),
+                     (s[:19], "%d/%m/%Y %H:%M:%S"), (s[:10], "%Y-%m-%d")):
+        try:
+            dt = datetime.strptime(raw, fmt)
+            return (datetime.now() - dt) <= timedelta(hours=horas)
+        except ValueError:
+            continue
+    return None
+
+
+_HORAS_SIN_CONEXION = 48
+
+
+def _derivar_salud(customer_status: str, sim_state: str | None,
+                   last_seen: str | None, in_session, sin_trafico) -> str:
+    """Estado real del SIM combinando contrato + conectividad. `customer_status`
+    solo dice el estado contractual; un SIM 'active' puede no pasar tráfico."""
+    cs = str(customer_status or "").strip().lower()
+    ss = str(sim_state or "").strip().lower()
+    if ss == "bloqueado_imei" or cs == "locked_due_to_imei_change":
+        return "bloqueado"
+    if cs in {"ceased", "cancelled", "canceled", "terminated", "stopped"}:
+        return "baja"
+    if ss in ("suspendido_temporal", "cancelacion_programada"):
+        return "suspendido"
+    if in_session:
+        return "ok"
+    mins = _minutos_desde(last_seen)
+    if mins is not None and mins > _HORAS_SIN_CONEXION * 60:
+        return "sin_conexion"
+    if sin_trafico:
+        return "sin_trafico"
+    if mins is None and in_session is None:
+        return "desconocido"
+    return "ok"
+
+
+def _usage_de_simpro(iccid: str) -> dict:
+    """sims/usage de un ICCID → {last_seen, in_session, data_usage_mb, sin_trafico}."""
+    out = {"last_seen": "", "in_session": None, "data_usage_mb": None, "sin_trafico": None}
+    if not iccid:
+        return out
+    try:
+        data = _simpro_get("/api/v3/sims/usage", {"iccid": iccid})
+    except HTTPException:
+        return out
+    sims = data.get("sims") if isinstance(data, dict) else None
+    info = (sims or [{}])[0] if isinstance(sims, list) else {}
+
+    def _num(v):
+        try:
+            return float(v or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    b = _num(info.get("month_to_date_bytes_up")) + _num(info.get("month_to_date_bytes_down"))
+    ics = info.get("in_current_session")
+    out["last_seen"] = str(info.get("last_seen") or "")
+    out["in_session"] = bool(ics) if ics is not None else None
+    out["data_usage_mb"] = round(b / (1024 * 1024), 2)
+    out["sin_trafico"] = 1 if (b == 0 and not ics) else 0
+    return out
+
+
+def _derivar_sim_state(parsed: dict, actual: str | None) -> str | None:
+    """Estado de UI derivado de la verdad de SIMPRO. Devuelve None cuando no hay
+    señal suficiente y hay que dejar el valor actual sin tocar."""
+    cs = str(parsed.get("customer_status") or "").strip().lower()
+    ws = str(parsed.get("workflow_status") or "").strip().lower()
+    if cs == "locked_due_to_imei_change":
+        return "bloqueado_imei"
+    if cs in {"ceased", "cancelled", "canceled", "terminated", "stopped"}:
+        return "baja"
+    if "cancel" in ws:
+        return "cancelacion_programada"
+    bar = parsed.get("bar_full")
+    if bar is True:
+        return "suspendido_temporal"
+    if bar is False:
+        return "activo"
+    return None  # desconocido: no clobbear
 
 
 _CONSULTA_SIM_INCOMPLETO_SQL = (
@@ -10587,19 +10861,18 @@ def completar_datos_consultas_sim(data: dict = Body(default={})):
 
 @app.post("/api/utilidades/consultas-sim/refrescar-simpro")
 def refrescar_simpro_consultas_sim(data: dict = Body(default={})):
-    """Sincroniza la tabla con SIMPRO: da de alta los SIM que existen en
-    SIMPRO y no en la BD, y refresca estado/consumo/MSISDN de una tanda de
-    registros (los menos verificados primero). Re-ejecutable hasta que
-    `restantes` llegue a 0. NO borra nada — `tipo`/`plataforma` son datos
-    nuestros que SIMPRO no conoce."""
-    max_registros = max(1, min(int(data.get("max_registros") or 400), 1000))
-    run_start = datetime.now()
-    run_str = run_start.strftime("%Y-%m-%d %H:%M:%S")
+    """SOLO da de alta los SIM que existen en SIMPRO y NO en la tabla (match por
+    ICCID). NO toca ningún registro existente. Los nuevos nacen con MSISDN,
+    fecha de activación y vigencia de SIMPRO; todo editable después a mano."""
     db = _get_db()
     cursor = db.cursor(dictionary=True)
 
-    # 1) Lista completa de SIMs en SIMPRO (MSISDN y status vienen confiables aquí).
-    lista_sims = {}
+    # 1) ICCID que ya tenemos.
+    cursor.execute("SELECT iccid FROM consultas_sim WHERE iccid <> ''")
+    existentes = {r["iccid"] for r in cursor.fetchall()}
+
+    # 2) Recorre SIMPRO y quédate solo con los ICCID que faltan.
+    faltantes = {}
     pagina = 1
     while pagina <= 20:
         try:
@@ -10610,127 +10883,48 @@ def refrescar_simpro_consultas_sim(data: dict = Body(default={})):
         items = items or []
         for s in items:
             ic = str(s.get("iccid") or "")
-            if ic:
-                lista_sims[ic] = s
+            if ic and ic not in existentes:
+                faltantes[ic] = s
         if len(items) < 2000:
             break
         pagina += 1
 
-    # 2) Alta de los SIM de SIMPRO que no estén en la BD.
-    nuevos = 0
-    if lista_sims:
-        ins = db.cursor()
-        cursor.execute("SELECT iccid FROM consultas_sim WHERE iccid <> ''")
-        existentes = {r["iccid"] for r in cursor.fetchall()}
-        for ic, s in lista_sims.items():
-            if ic in existentes:
-                continue
-            ins.execute(
-                """INSERT INTO consultas_sim
-                   (tipo, activation_date, deaccount, account_name, plataforma,
-                    imei, iccid, device_mobile, vigencia_sim, sim_customer_status)
-                   VALUES ('activacion','','','','','',%s,%s,'',%s)""",
-                (ic, _extract_digits(s.get("msisdn") or ""), _simpro_status_ident(s.get("status"))),
-            )
-            nuevos += 1
-        db.commit()
-        ins.close()
-
-    # 3) Tanda a enriquecer: los menos verificados primero.
-    cursor.execute(
-        "SELECT * FROM consultas_sim WHERE iccid <> '' "
-        "ORDER BY verificado_en IS NOT NULL, verificado_en ASC, id ASC LIMIT %s",
-        (max_registros,),
-    )
-    rows = cursor.fetchall()
-    if not rows:
+    if not faltantes:
         cursor.close(); db.close()
-        return {"procesados": 0, "nuevos": nuevos, "estado_ok": 0, "consumo_ok": 0, "restantes": 0}
+        return {"nuevos": 0, "ya_existian": len(existentes)}
 
-    por_iccid = {r["iccid"]: r for r in rows}
-    iccids = list(por_iccid)
-
-    detalles = {}
+    # 3) Un details batch SOLO para los nuevos: fecha, vigencia y MSISDN.
+    iccids = list(faltantes)
+    det = {}
     for i in range(0, len(iccids), 30):
         try:
             resp = _simpro_get("/api/v3/sims/details", {"identifiers": ",".join(iccids[i:i + 30])})
             for d in (resp if isinstance(resp, list) else []):
                 ic = str(d.get("iccid") or "")
                 if ic:
-                    detalles[ic] = d
+                    det[ic] = _simpro_detail_parse(d)
         except HTTPException:
             pass
 
-    usos = {}
-    for i in range(0, len(iccids), 500):
-        try:
-            resp = _simpro_get("/api/v3/sims/usage", {"iccid": ",".join(iccids[i:i + 500]), "limit": 10000})
-            for u in ((resp.get("sims") if isinstance(resp, dict) else None) or []):
-                ic = str(u.get("iccid") or "")
-                if ic:
-                    usos[ic] = u
-        except HTTPException:
-            pass
-
-    def _num(v):
-        try:
-            return float(v or 0)
-        except (TypeError, ValueError):
-            return 0.0
-
-    upd = db.cursor()
-    estado_ok = consumo_ok = 0
-    for ic, row in por_iccid.items():
-        cambios = {}
-        d = detalles.get(ic) or {}
-        s = lista_sims.get(ic) or {}
-        active = d.get("active_connection") if isinstance(d.get("active_connection"), dict) else {}
-
-        cs = _simpro_status_ident(active.get("customer_status")) or _simpro_status_ident(s.get("status"))
-        ws = _simpro_status_ident(active.get("workflow_status")) or _simpro_status_ident(s.get("workflow_status"))
-        if cs or ws:
-            cambios["sim_customer_status"] = cs or ws
-            cambios["sim_state"] = ws or cs
-            estado_ok += 1
-        vig = str(active.get("contract_end_date") or "")
-        if vig and not str(row.get("vigencia_sim") or "").strip():
-            cambios["vigencia_sim"] = vig
-        act = str(active.get("activation_date") or "")
-        if act and not str(row.get("activation_date") or "").strip():
-            cambios["activation_date"] = act
-
-        # SIM ESPAÑOL = MSISDN del SIM (número de teléfono). Primero de la
-        # lista /sims, luego de active_connection, luego el 'local'.
-        msisdn = (_extract_digits(s.get("msisdn") or "")
-                  or _extract_digits(active.get("msisdn") or "")
-                  or _extract_digits(active.get("local") or ""))
-        if msisdn and msisdn != str(row.get("device_mobile") or "").strip():
-            cambios["device_mobile"] = msisdn
-
-        u = usos.get(ic)
-        if u is not None:
-            b = _num(u.get("month_to_date_bytes_up")) + _num(u.get("month_to_date_bytes_down"))
-            cambios["data_usage_mb"] = round(b / (1024 * 1024), 2)
-            cambios["sin_trafico"] = 1 if (b == 0 and not u.get("in_current_session")) else 0
-            cambios["usage_verificado_en"] = run_str
-            consumo_ok += 1
-        sets = ", ".join(f"{k}=%s" for k in cambios)
-        sets = (sets + ", " if sets else "") + "verificado_en=%s"
-        upd.execute(
-            f"UPDATE consultas_sim SET {sets} WHERE id=%s",
-            (*cambios.values(), run_str, row["id"]),
+    ins = db.cursor()
+    nuevos = 0
+    for ic, s in faltantes.items():
+        p = det.get(ic) or {}
+        msisdn = _extract_digits(s.get("msisdn") or "") or p.get("msisdn") or ""
+        ins.execute(
+            """INSERT INTO consultas_sim
+               (tipo, activation_date, deaccount, account_name, plataforma,
+                imei, iccid, device_mobile, vigencia_sim, sim_customer_status)
+               VALUES ('activacion',%s,'','','','',%s,%s,%s,%s)""",
+            (p.get("activation_date") or "", ic, msisdn,
+             p.get("contract_end_date") or "",
+             p.get("customer_status") or _simpro_status_ident(s.get("status"))),
         )
+        nuevos += 1
     db.commit()
-    upd.close()
-
-    cursor.execute(
-        "SELECT COUNT(*) AS n FROM consultas_sim "
-        "WHERE iccid <> '' AND (verificado_en IS NULL OR verificado_en < %s)",
-        (run_str,),
-    )
-    restantes = cursor.fetchone()["n"]
+    ins.close()
     cursor.close(); db.close()
-    return {"procesados": len(rows), "nuevos": nuevos, "estado_ok": estado_ok, "consumo_ok": consumo_ok, "restantes": restantes}
+    return {"nuevos": nuevos, "ya_existian": len(existentes)}
 
 
 def _get_consulta_sim_or_404(cursor, record_id: int) -> dict:
@@ -10747,9 +10941,8 @@ _SIMPRO_STATES_BAJA = {"ceased", "cancelled", "canceled", "terminated", "stopped
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/verificar-estado")
 def verificar_estado_consulta_sim(record_id: int):
-    """Consulta SIMPRO sims/details y refresca estado, vigencia y fecha de
-    activación del registro. No cambia el `tipo` (eso es decisión del
-    usuario); si el SIM está cesado lo informa en la respuesta."""
+    """Consulta SIMPRO (details + usage) y refresca estado contractual,
+    conectividad real y salud derivada. No cambia el `tipo`."""
     db = _get_db()
     cursor = db.cursor(dictionary=True)
     row = _get_consulta_sim_or_404(cursor, record_id)
@@ -10758,30 +10951,61 @@ def verificar_estado_consulta_sim(record_id: int):
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="El registro no tiene ICCID ni SIM ESPAÑOL para consultar")
 
-    data = _simpro_get("/api/v3/sims/details", {"identifiers": identifier})
-    first = data[0] if isinstance(data, list) and data else {}
-    active = first.get("active_connection") if isinstance(first, dict) and isinstance(first.get("active_connection"), dict) else {}
-    customer_status = _simpro_status_ident(active.get("customer_status"))
-    workflow_status = _simpro_status_ident(active.get("workflow_status"))
-    vigencia = str(active.get("contract_end_date") or "") or row.get("vigencia_sim") or ""
-    activacion = str(active.get("activation_date") or "") or row.get("activation_date") or ""
-    iccid = str(first.get("iccid") or "") or row.get("iccid") or ""
-    msisdn = _extract_digits(active.get("msisdn") or "") or str(row.get("device_mobile") or "")
+    first = _simpro_one_detail(identifier)
+    p = _simpro_detail_parse(first)
+    customer_status = p["customer_status"]
+    vigencia = p["contract_end_date"] or row.get("vigencia_sim") or ""
+    activacion = p["activation_date"] or row.get("activation_date") or ""
+    iccid = p["iccid"] or row.get("iccid") or ""
+    msisdn = p["msisdn"] or str(row.get("device_mobile") or "")
 
-    upd = db.cursor()
-    upd.execute(
-        """UPDATE consultas_sim
-           SET sim_state=%s, sim_customer_status=%s, vigencia_sim=%s, activation_date=%s,
-               iccid=%s, device_mobile=%s, verificado_en=NOW()
-           WHERE id=%s""",
-        (workflow_status or customer_status, customer_status, vigencia, activacion, iccid, msisdn, record_id),
+    # Conectividad real (sims/usage) — la que dice si el SIM realmente vive.
+    u = _usage_de_simpro(iccid)
+    last_seen = u["last_seen"] or p["last_seen"] or ""
+    in_session = u["in_session"] if u["in_session"] is not None else p["in_current_session"]
+
+    cols = {
+        "sim_customer_status": customer_status,
+        "vigencia_sim": vigencia,
+        "activation_date": activacion,
+        "iccid": iccid,
+        "device_mobile": msisdn,
+    }
+    if p["network_imei"]:
+        cols["network_imei"] = p["network_imei"]
+    if last_seen:
+        cols["last_seen"] = last_seen
+    if in_session is not None:
+        cols["in_session"] = 1 if in_session else 0
+    if u["data_usage_mb"] is not None:
+        cols["data_usage_mb"] = u["data_usage_mb"]
+        cols["sin_trafico"] = u["sin_trafico"]
+        cols["usage_verificado_en"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cols["imei_lock"] = 1 if p["imei_lock"] else 0
+    cols["imei_lock_imei"] = p["imei_lock_imei"] or None
+    if p["bar_full"] is not None:
+        cols["bar_full"] = 1 if p["bar_full"] else 0
+    nuevo_estado = _derivar_sim_state(p, row.get("sim_state"))
+    if nuevo_estado is not None:
+        cols["sim_state"] = nuevo_estado
+        if nuevo_estado != "suspendido_temporal":
+            cols["suspendido_desde"] = None
+
+    cols["salud"] = _derivar_salud(
+        customer_status, cols.get("sim_state") or row.get("sim_state"),
+        last_seen, in_session,
+        u["sin_trafico"] if u["sin_trafico"] is not None else row.get("sin_trafico"),
     )
+
+    sets = ", ".join(f"{k}=%s" for k in cols) + ", verificado_en=NOW()"
+    upd = db.cursor()
+    upd.execute(f"UPDATE consultas_sim SET {sets} WHERE id=%s", (*cols.values(), record_id))
     db.commit()
     upd.close()
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
     es_baja = customer_status.strip().lower() in _SIMPRO_STATES_BAJA
-    return {"item": _serialize_consulta_sim(row), "es_baja_en_simpro": es_baja}
+    return {"item": _serialize_consulta_sim(row), "es_baja_en_simpro": es_baja, "salud": cols["salud"]}
 
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/suspender")
@@ -10799,35 +11023,46 @@ def suspender_consulta_sim(record_id: int, data: dict = Body(default={})):
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="El registro no tiene ICCID ni SIM ESPAÑOL")
 
+    if pausar_facturacion and not iccid:
+        cursor.close(); db.close()
+        raise HTTPException(status_code=400, detail="Se requiere ICCID para pausar la facturación")
+
+    # 1) Barra total. Si esto falla, no se tocó nada: propagar el error.
     _simpro_write("POST", "/api/v3/sims/bars", {
         "identifiers": [identifier], "bar_name": "full_bar", "required_state": True,
     })
+    # 2) La barra ya quedó puesta: persistir el estado ANTES de intentar el
+    #    tariff-holiday, para no dejar el SIM oscuro con la BD diciendo "activo".
+    upd = db.cursor()
+    upd.execute(
+        "UPDATE consultas_sim SET sim_state='suspendido_temporal', bar_full=1, suspendido_desde=NOW() WHERE id=%s",
+        (record_id,),
+    )
+    db.commit()
+    upd.close()
 
     holiday = None
+    avisos = []
     if pausar_facturacion:
-        if not iccid:
-            cursor.close(); db.close()
-            raise HTTPException(status_code=400, detail="Se requiere ICCID para pausar la facturación")
         hoy = datetime.now()
         hasta_str = str(data.get("hasta") or "").strip()
         if not hasta_str:
             ultimo = calendar.monthrange(hoy.year, hoy.month)[1]
             hasta_str = hoy.replace(day=ultimo).strftime("%d/%m/%Y")
-        _simpro_write("POST", "/api/v3/sims/apply-tariff-holiday", {
-            "identifiers": [iccid], "from": hoy.strftime("%d/%m/%Y"), "to": hasta_str,
-        })
-        holiday = {"from": hoy.strftime("%d/%m/%Y"), "to": hasta_str}
+        try:
+            _simpro_write("POST", "/api/v3/sims/apply-tariff-holiday", {
+                "identifiers": [iccid], "from": hoy.strftime("%d/%m/%Y"), "to": hasta_str,
+            })
+            holiday = {"from": hoy.strftime("%d/%m/%Y"), "to": hasta_str}
+        except HTTPException as e:
+            avisos.append(f"El SIM quedó suspendido pero NO se pudo pausar la facturación: {e.detail}")
 
-    upd = db.cursor()
-    upd.execute(
-        "UPDATE consultas_sim SET sim_state='suspendido_temporal', suspendido_desde=NOW() WHERE id=%s",
-        (record_id,),
-    )
-    db.commit()
-    upd.close()
+    _evento_sim(record_id, "suspender",
+                {"pausar_facturacion": pausar_facturacion, "hasta": (holiday or {}).get("to")},
+                {"tariff_holiday": holiday, "avisos": avisos}, ok=not avisos)
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
-    return {"item": _serialize_consulta_sim(row), "tariff_holiday": holiday}
+    return {"item": _serialize_consulta_sim(row), "tariff_holiday": holiday, "avisos": avisos}
 
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/reactivar")
@@ -10845,22 +11080,27 @@ def reactivar_consulta_sim(record_id: int):
     _simpro_write("POST", "/api/v3/sims/bars", {
         "identifiers": [identifier], "bar_name": "full_bar", "required_state": False,
     })
+    avisos = []
     if iccid:
         try:
             _simpro_write("POST", "/api/v3/sims/remove-tariff-holiday", {"iccids": [iccid]})
-        except HTTPException:
-            pass  # puede no tener holiday activo
+        except HTTPException as e:
+            txt = str(e.detail or "").lower()
+            # "no hay holiday activo" es esperado; cualquier otra cosa se avisa.
+            if not (e.status_code == 404 or "holiday" in txt and ("not" in txt or "no " in txt)):
+                avisos.append(f"Se quitó la barra pero la facturación puede seguir pausada: {e.detail}")
 
     upd = db.cursor()
     upd.execute(
-        "UPDATE consultas_sim SET sim_state='activo', suspendido_desde=NULL WHERE id=%s",
+        "UPDATE consultas_sim SET sim_state='activo', bar_full=0, suspendido_desde=NULL WHERE id=%s",
         (record_id,),
     )
     db.commit()
     upd.close()
+    _evento_sim(record_id, "reactivar", "", {"avisos": avisos}, ok=not avisos)
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
-    return {"item": _serialize_consulta_sim(row)}
+    return {"item": _serialize_consulta_sim(row), "avisos": avisos}
 
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/cancelar")
@@ -10889,6 +11129,8 @@ def cancelar_consulta_sim(record_id: int, data: dict = Body(default={})):
     upd.close()
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
+    _evento_sim(record_id, "cancelar", {"cancellation_date": fecha}, "",
+                usuario=str(data.get("usuario") or "").strip() or None)
     return {"item": _serialize_consulta_sim(row), "cancellation_date": fecha}
 
 
@@ -10910,6 +11152,7 @@ def detener_cancelacion_consulta_sim(record_id: int):
     upd.close()
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
+    _evento_sim(record_id, "detener-cancelacion", "", "")
     return {"item": _serialize_consulta_sim(row)}
 
 
@@ -10925,30 +11168,23 @@ def verificar_consumo_consulta_sim(record_id: int):
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="El registro no tiene ICCID para consultar consumo")
 
-    data = _simpro_get("/api/v3/sims/usage", {"iccid": iccid})
-    sims = data.get("sims") if isinstance(data, dict) else None
-    info = (sims or [{}])[0] if isinstance(sims, list) else {}
-
-    def _num(v):
-        try:
-            return float(v or 0)
-        except (TypeError, ValueError):
-            return 0.0
-
-    bytes_total = _num(info.get("month_to_date_bytes_up")) + _num(info.get("month_to_date_bytes_down"))
-    mb = round(bytes_total / (1024 * 1024), 2)
-    sin_trafico = 1 if (bytes_total == 0 and not info.get("in_current_session")) else 0
+    u = _usage_de_simpro(iccid)
+    salud = _derivar_salud(row.get("sim_customer_status"), row.get("sim_state"),
+                           u["last_seen"] or row.get("last_seen"), u["in_session"], u["sin_trafico"])
 
     upd = db.cursor()
     upd.execute(
-        "UPDATE consultas_sim SET data_usage_mb=%s, sin_trafico=%s, usage_verificado_en=NOW() WHERE id=%s",
-        (mb, sin_trafico, record_id),
+        "UPDATE consultas_sim SET data_usage_mb=%s, sin_trafico=%s, last_seen=COALESCE(NULLIF(%s,''), last_seen), "
+        "in_session=%s, salud=%s, usage_verificado_en=NOW() WHERE id=%s",
+        (u["data_usage_mb"], u["sin_trafico"], u["last_seen"],
+         (1 if u["in_session"] else 0) if u["in_session"] is not None else None, salud, record_id),
     )
     db.commit()
     upd.close()
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
-    return {"item": _serialize_consulta_sim(row), "last_seen": info.get("last_seen"), "in_current_session": info.get("in_current_session")}
+    return {"item": _serialize_consulta_sim(row), "last_seen": u["last_seen"],
+            "in_current_session": u["in_session"], "salud": salud}
 
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/sync-simpro")
@@ -10981,6 +11217,11 @@ def _serialize_consulta_sim(row: dict) -> dict:
             row[key] = row[key].isoformat()
     if row.get("data_usage_mb") is not None:
         row["data_usage_mb"] = float(row["data_usage_mb"])
+    if not row.get("salud"):
+        row["salud"] = _derivar_salud(
+            row.get("sim_customer_status"), row.get("sim_state"),
+            row.get("last_seen"), row.get("in_session"), row.get("sin_trafico"),
+        )
     return row
 
 
@@ -10998,11 +11239,174 @@ def get_consulta_sim(record_id: int):
     return _serialize_consulta_sim(row)
 
 
+@app.post("/api/utilidades/consultas-sim/{record_id}/preparar-lock")
+def preparar_lock_consulta_sim(record_id: int, data: dict = Body(default={})):
+    """Antes de bloquear: fuerza el re-registro del SIM en la red y espera a que
+    la red reporte el IMEI del equipo OBJETIVO (evita casar al equipo anterior
+    si el nuevo aún no ha reportado). Devuelve si ya coincide."""
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    row = _get_consulta_sim_or_404(cursor, record_id)
+    iccid = str(row.get("iccid") or "").strip()
+    identifier = _consulta_sim_identifier(row)
+    rec_imei = _extract_digits(row.get("imei") or "")
+    cursor.close(); db.close()
+    if not identifier:
+        raise HTTPException(status_code=400, detail="El registro no tiene ICCID ni SIM ESPAÑOL")
+
+    objetivo = _extract_digits(data.get("imei_objetivo") or "") or rec_imei
+    intentos = max(1, min(int(data.get("intentos") or 6), 10))
+    espera_s = max(3, min(int(data.get("espera_s") or 8), 15))
+
+    try:
+        _simpro_write("POST", "/api/v3/sims/refresh", {"identifiers": [identifier]})
+    except HTTPException:
+        pass  # el refresh puede fallar; seguimos sondeando
+
+    hist = []
+    p = {}
+    for i in range(intentos):
+        _time.sleep(espera_s)
+        p = _simpro_detail_parse(_simpro_one_detail(iccid or identifier))
+        seen = p.get("network_imei") or ""
+        mins = _minutos_desde(p.get("last_seen") or "")
+        hist.append({"seen": seen, "last_seen": p.get("last_seen"), "minutos": mins})
+        if objetivo and seen and _imei_core(seen) == _imei_core(objetivo):
+            break
+
+    seen = p.get("network_imei") or ""
+    match = bool(objetivo and seen and _imei_core(seen) == _imei_core(objetivo))
+    return {
+        "match": match,
+        "imei_objetivo": objetivo,
+        "network_imei": seen,
+        "last_seen": p.get("last_seen"),
+        "minutos_desde_ultima_senal": _minutos_desde(p.get("last_seen") or ""),
+        "in_current_session": p.get("in_current_session"),
+        "intentos": hist,
+        "mensaje": ("La red ya reporta el equipo objetivo. Puedes bloquear."
+                    if match else
+                    "La red todavía NO reporta el equipo objetivo. Verifica que el SIM "
+                    "esté en ese equipo y que esté encendido/reportando; reintenta."),
+    }
+
+
 @app.post("/api/utilidades/consultas-sim/{record_id}/imei-lock")
 def imei_lock_consulta_sim(record_id: int, data: dict = Body(default={})):
-    """Amarra (o suelta) el SIM al IMEI del registro. `activar`=true bloquea,
-    false quita el bloqueo. SIMPRO trabaja con ICCID aquí."""
+    """Casa (o suelta) el SIM a un equipo. `activar`=true bloquea, false suelta.
+    SIMPRO casa al IMEI que la red ve en el SIM en ese momento — y ese dato
+    puede ser del equipo ANTERIOR si el nuevo aún no reportó.
+
+    Guardia al activar (salvo `force`): la red debe estar reportando el IMEI
+    OBJETIVO (`imei_objetivo`, por defecto el del registro), comparado por el
+    núcleo de 14 díg. Tras bloquear se relee y, si SIMPRO casó a otro IMEI, se
+    revierte."""
     activar = bool(data.get("activar", True))
+    force = bool(data.get("force"))
+    usuario = str(data.get("usuario") or "").strip() or None
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    row = _get_consulta_sim_or_404(cursor, record_id)
+    iccid = str(row.get("iccid") or "").strip()
+    rec_imei = _extract_digits(row.get("imei") or "")
+    cursor.close(); db.close()
+    if not iccid:
+        raise HTTPException(status_code=400, detail="El registro no tiene ICCID")
+
+    objetivo = _extract_digits(data.get("imei_objetivo") or "") or rec_imei
+    seen_imei = ""
+    if activar and not force:
+        if not objetivo:
+            raise HTTPException(status_code=400, detail=(
+                "Define el IMEI objetivo (o pon el IMEI en el registro) antes de bloquear."))
+        p0 = _simpro_detail_parse(_simpro_one_detail(iccid))
+        seen_imei = p0.get("network_imei") or ""
+        mins = _minutos_desde(p0.get("last_seen") or "")
+        if not seen_imei:
+            raise HTTPException(status_code=409, detail=(
+                "La red no reporta ningún IMEI en este SIM. Usa 'Preparar' para forzar el "
+                "re-registro desde el equipo objetivo, o repite con 'force'."))
+        if _imei_core(seen_imei) != _imei_core(objetivo):
+            desde = f" (última señal hace {int(mins)} min)" if mins is not None else ""
+            raise HTTPException(status_code=409, detail=(
+                f"La red ve el equipo {seen_imei}{desde}, NO el objetivo {objetivo}. "
+                f"Si acabas de cambiar el SIM, el equipo nuevo todavía no reporta: usa "
+                f"'Preparar' y espera a que coincida. Si el objetivo está mal, corrígelo. "
+                f"O repite con 'force'."))
+        if mins is not None and mins > 60:
+            raise HTTPException(status_code=409, detail=(
+                f"La red vio el equipo objetivo pero hace {int(mins)} min; podría ser una "
+                f"lectura vieja de antes del cambio. Usa 'Preparar' para forzar una señal "
+                f"fresca, o repite con 'force'."))
+
+    path = "/api/v3/sims/enable-imei-lock" if activar else "/api/v3/sims/disable-imei-lock"
+    body = {"iccids": [iccid]}
+    if activar and objetivo:
+        body["imei"] = objetivo  # por si SIMPRO acepta IMEI explícito (si no, lo ignora)
+    try:
+        res = _simpro_write("POST", path, body)
+    except HTTPException as e:
+        _evento_sim(record_id, "imei-lock",
+                    {"activar": activar, "force": force, "objetivo": objetivo, "seen_imei": seen_imei},
+                    str(e.detail), ok=False, usuario=usuario)
+        raise
+
+    # Releer estado real. Si SIMPRO casó a un IMEI distinto del objetivo, revertir.
+    p1 = _simpro_detail_parse(_simpro_one_detail(iccid))
+    revertido = False
+    if activar and not force and objetivo and p1.get("imei_lock_imei"):
+        if _imei_core(p1["imei_lock_imei"]) != _imei_core(objetivo):
+            try:
+                _simpro_write("POST", "/api/v3/sims/disable-imei-lock", {"iccids": [iccid]})
+                revertido = True
+            except HTTPException:
+                pass
+            _evento_sim(record_id, "imei-lock",
+                        {"activar": True, "objetivo": objetivo},
+                        {"caso_a": p1["imei_lock_imei"], "revertido": revertido}, ok=False, usuario=usuario)
+            raise HTTPException(status_code=409, detail=(
+                f"SIMPRO casó el SIM al equipo {p1['imei_lock_imei']} en vez del objetivo "
+                f"{objetivo}." + (" Se revirtió el bloqueo." if revertido else
+                " NO se pudo revertir — quita el bloqueo a mano.")))
+
+    db = _get_db()
+    upd = db.cursor()
+    lock_flag = 1 if p1["imei_lock"] else 0 if p1["imei_lock"] is not None else (1 if activar else 0)
+    lock_imei = (p1["imei_lock_imei"] or objetivo or rec_imei or seen_imei or p1["network_imei"] or None) if lock_flag else None
+    upd.execute(
+        "UPDATE consultas_sim SET imei_lock=%s, imei_lock_imei=%s, network_imei=COALESCE(NULLIF(%s,''), network_imei), verificado_en=NOW() WHERE id=%s",
+        (lock_flag, lock_imei, p1["network_imei"], record_id),
+    )
+    db.commit(); upd.close()
+    row = _get_consulta_sim_or_404(db.cursor(dictionary=True), record_id)
+    db.close()
+    _evento_sim(record_id, "imei-lock",
+                {"activar": activar, "force": force, "objetivo": objetivo, "seen_imei": seen_imei},
+                {"imei_lock": lock_flag, "imei_lock_imei": lock_imei, "respuesta": res},
+                usuario=usuario)
+    req = _simpro_request_number(res)
+    aviso = f" SIMPRO lo procesa en segundo plano (request {req}); confirma con 'Verificar estado' en unos minutos." if req is not None else (
+        "" if p1["imei_lock"] is not None else
+        " SIMPRO no reporta el estado del bloqueo; se guardó el valor solicitado. Verifica en el portal.")
+    return {
+        "message": ("Bloqueo por equipo activado." if activar else "Bloqueo por equipo quitado.") + aviso,
+        "request_number": req,
+        "item": _serialize_consulta_sim(row),
+        "imei_lock": bool(lock_flag),
+        "imei_lock_imei": lock_imei,
+        "seen_imei": seen_imei or p1["network_imei"],
+    }
+
+
+@app.post("/api/utilidades/consultas-sim/{record_id}/recasar")
+def recasar_consulta_sim(record_id: int, data: dict = Body(default={})):
+    """Desbloquea el SIM tras `locked_due_to_imei_change`. `disable-imei-lock`
+    de SIMPRO es la única ruta y es ASÍNCRONA (devuelve request_number; el
+    estado se limpia minutos después). Encola la petición y sondea un rato;
+    si no alcanza a limpiarse devuelve `desbloqueado:false` + el request_number
+    para revisar luego con 'Verificar estado'. NO re-arma el lock ni cambia el
+    `imei` del registro."""
+    usuario = str(data.get("usuario") or "").strip() or None
     db = _get_db()
     cursor = db.cursor(dictionary=True)
     row = _get_consulta_sim_or_404(cursor, record_id)
@@ -11010,9 +11414,49 @@ def imei_lock_consulta_sim(record_id: int, data: dict = Body(default={})):
     cursor.close(); db.close()
     if not iccid:
         raise HTTPException(status_code=400, detail="El registro no tiene ICCID")
-    path = "/api/v3/sims/enable-imei-lock" if activar else "/api/v3/sims/disable-imei-lock"
-    _simpro_write("POST", path, {"iccids": [iccid]})
-    return {"message": "Bloqueo por equipo activado" if activar else "Bloqueo por equipo quitado"}
+
+    try:
+        res = _simpro_write("POST", "/api/v3/sims/disable-imei-lock", {"iccids": [iccid]})
+    except HTTPException as e:
+        _evento_sim(record_id, "desbloquear-imei", {"iccid": iccid}, str(e.detail), ok=False, usuario=usuario)
+        raise
+    request_number = _simpro_request_number(res)
+
+    # Sondear hasta ~72s por si SIMPRO lo procesa rápido.
+    p1 = {}
+    for _ in range(9):
+        _time.sleep(8)
+        p1 = _simpro_detail_parse(_simpro_one_detail(iccid))
+        if p1.get("customer_status", "").strip().lower() != "locked_due_to_imei_change":
+            break
+    desbloqueado = p1.get("customer_status", "").strip().lower() != "locked_due_to_imei_change"
+
+    db = _get_db()
+    upd = db.cursor()
+    nuevo_estado = _derivar_sim_state(p1, row.get("sim_state"))
+    upd.execute(
+        "UPDATE consultas_sim SET imei_lock=%s, imei_lock_imei=%s, network_imei=COALESCE(NULLIF(%s,''), network_imei), "
+        "sim_customer_status=%s, sim_state=COALESCE(%s, sim_state), verificado_en=NOW() WHERE id=%s",
+        (0 if desbloqueado else 1, None if desbloqueado else row.get("imei_lock_imei"),
+         p1.get("network_imei") or "", p1.get("customer_status"), nuevo_estado, record_id),
+    )
+    db.commit(); upd.close()
+    out = _get_consulta_sim_or_404(db.cursor(dictionary=True), record_id)
+    db.close()
+
+    _evento_sim(record_id, "desbloquear-imei", {"iccid": iccid},
+                {"request_number": request_number, "estado_final": p1.get("customer_status"),
+                 "desbloqueado": desbloqueado}, ok=True, usuario=usuario)
+    return {
+        "item": _serialize_consulta_sim(out),
+        "desbloqueado": desbloqueado,
+        "estado_final": p1.get("customer_status"),
+        "request_number": request_number,
+        "message": ("SIM desbloqueado." if desbloqueado else
+                    f"Desbloqueo ENCOLADO en SIMPRO (request {request_number}). Es asíncrono: "
+                    f"espera unos minutos y pulsa 'Verificar estado'. Cuando figure 'active', "
+                    f"usa 'Preparar' + 'Bloquear' para re-casar al equipo correcto."),
+    }
 
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/refrescar-red")
@@ -11105,60 +11549,59 @@ def swap_iccid_consulta_sim(record_id: int, data: dict = Body(...)):
     if not iccid:
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="El registro no tiene ICCID de origen")
+    era_bloqueado = bool(row.get("imei_lock"))
     _simpro_write("POST", "/api/v3/sims/iccid-swap", [{"iccid": iccid, "new_iccid": nuevo_iccid}])
     upd = db.cursor()
-    upd.execute("UPDATE consultas_sim SET iccid=%s, verificado_en=NOW() WHERE id=%s", (nuevo_iccid, record_id))
+    # El bloqueo por equipo vivía sobre el ICCID viejo: en la tarjeta nueva
+    # queda como desconocido hasta re-verificar.
+    upd.execute(
+        "UPDATE consultas_sim SET iccid=%s, imei_lock=0, imei_lock_imei=NULL, verificado_en=NOW() WHERE id=%s",
+        (nuevo_iccid, record_id),
+    )
     db.commit(); upd.close()
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
-    return {"item": _serialize_consulta_sim(row)}
+    avisos = []
+    if era_bloqueado:
+        avisos.append("La tarjeta anterior tenía bloqueo por equipo. Verifica el bloqueo "
+                      "en la tarjeta nueva desde Acciones SIMPRO (botón 'Verificar estado').")
+    _evento_sim(record_id, "swap-iccid",
+                {"iccid_viejo": iccid, "iccid_nuevo": nuevo_iccid, "era_bloqueado": era_bloqueado},
+                {"avisos": avisos}, usuario=str(data.get("usuario") or "").strip() or None)
+    return {"item": _serialize_consulta_sim(row), "avisos": avisos}
 
 
-@app.post("/api/utilidades/consultas-sim/{record_id}/reasignar")
-def reasignar_consulta_sim(record_id: int, data: dict = Body(...)):
-    """Reutilizar el SIM en otro equipo/cliente: el ICCID y su vigencia se
-    quedan, cambia el IMEI y el dueño. Marca el registro como 'reutilizado',
-    quita la barra si estaba suspendido y empuja el usuario nuevo a SIMPRO."""
-    nuevo_imei = _extract_digits(data.get("nuevo_imei") or "")
-    nuevo_usuario = str(data.get("nuevo_usuario") or "").strip()
-    nuevo_cliente = str(data.get("nuevo_cliente") or "").strip()
-    if not nuevo_imei:
-        raise HTTPException(status_code=400, detail="Falta 'nuevo_imei'")
+@app.get("/api/utilidades/consultas-sim/{record_id}/eventos")
+def eventos_consulta_sim(record_id: int, limit: int = Query(50, ge=1, le=200)):
+    """Bitácora de acciones SIMPRO sobre el registro (más recientes primero)."""
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, accion, detalle, resultado, ok, usuario, creado_en "
+        "FROM consultas_sim_eventos WHERE consulta_sim_id=%s ORDER BY id DESC LIMIT %s",
+        (record_id, limit),
+    )
+    rows = cursor.fetchall()
+    cursor.close(); db.close()
+    for r in rows:
+        if r.get("creado_en") and hasattr(r["creado_en"], "isoformat"):
+            r["creado_en"] = r["creado_en"].isoformat()
+    return {"eventos": rows}
+
+
+@app.get("/api/utilidades/consultas-sim/{record_id}/simpro-raw")
+def simpro_raw_consulta_sim(record_id: int):
+    """Devuelve el JSON crudo de `sims/details` para este registro. Para
+    inspeccionar qué campos expone SIMPRO (bloqueo por equipo, barras, etc.)."""
     db = _get_db()
     cursor = db.cursor(dictionary=True)
     row = _get_consulta_sim_or_404(cursor, record_id)
     identifier = _consulta_sim_identifier(row)
-    if _consultas_sim_imei_exists(cursor, nuevo_imei, exclude_id=record_id):
-        cursor.close(); db.close()
-        raise HTTPException(status_code=409, detail="Ya existe otro registro con ese IMEI")
-
-    sets = ["imei=%s", "tipo='reutilizado'", "verificado_en=NOW()"]
-    vals = [nuevo_imei]
-    if nuevo_usuario:
-        sets.append("deaccount=%s"); vals.append(nuevo_usuario)
-    if nuevo_cliente:
-        sets.append("account_name=%s"); vals.append(nuevo_cliente)
-    if str(row.get("sim_state") or "") == "suspendido_temporal":
-        sets.append("sim_state='activo'"); sets.append("suspendido_desde=NULL")
-    upd = db.cursor()
-    upd.execute(f"UPDATE consultas_sim SET {', '.join(sets)} WHERE id=%s", (*vals, record_id))
-    db.commit(); upd.close()
-
-    avisos = []
-    if str(row.get("sim_state") or "") == "suspendido_temporal" and identifier:
-        try:
-            _simpro_write("POST", "/api/v3/sims/bars", {"identifiers": [identifier], "bar_name": "full_bar", "required_state": False})
-        except HTTPException as e:
-            avisos.append(f"No se pudo quitar la barra: {e.detail}")
-    if nuevo_usuario and identifier:
-        try:
-            _simpro_write("PATCH", "/api/v3/sims/custom-fields", {"identifiers": [identifier], "custom_field1": nuevo_usuario})
-        except HTTPException as e:
-            avisos.append(f"No se pudo actualizar el usuario en SIMPRO: {e.detail}")
-
-    row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
-    return {"item": _serialize_consulta_sim(row), "avisos": avisos}
+    if not identifier:
+        raise HTTPException(status_code=400, detail="El registro no tiene ICCID ni SIM ESPAÑOL")
+    detalle = _simpro_one_detail(identifier)
+    return {"identifier": identifier, "parsed": _simpro_detail_parse(detalle), "raw": detalle}
 
 
 @app.get("/api/utilidades/simpro/customer-solutions")
