@@ -69,11 +69,8 @@ export async function verificarEstadoSim(id) {
   return response.data;
 }
 
-export async function suspenderSim(id, { pausarFacturacion = false, hasta } = {}) {
-  const response = await axios.post(`${API_URL}/api/utilidades/consultas-sim/${id}/suspender`, {
-    pausar_facturacion: pausarFacturacion,
-    ...(hasta ? { hasta } : {})
-  });
+export async function suspenderSim(id) {
+  const response = await axios.post(`${API_URL}/api/utilidades/consultas-sim/${id}/suspender`, {});
   return response.data;
 }
 

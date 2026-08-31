@@ -11010,29 +11010,22 @@ def verificar_estado_consulta_sim(record_id: int):
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/suspender")
 def suspender_consulta_sim(record_id: int, data: dict = Body(default={})):
-    """Suspensión temporal: barra total de tráfico (reversible). Si
-    `pausar_facturacion` es true, además aplica tariff holiday hasta la fecha
-    `hasta` (por defecto fin del mes en curso)."""
-    pausar_facturacion = bool(data.get("pausar_facturacion"))
+    """Corta la señal: barra total de tráfico (full_bar) vía SIMPRO
+    `POST /api/v3/sims/bars` (required_state=true). Es ASÍNCRONO: SIMPRO
+    devuelve un request_number y aplica la barra en unos minutos."""
     db = _get_db()
     cursor = db.cursor(dictionary=True)
     row = _get_consulta_sim_or_404(cursor, record_id)
     identifier = _consulta_sim_identifier(row)
-    iccid = str(row.get("iccid") or "").strip()
     if not identifier:
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="El registro no tiene ICCID ni SIM ESPAÑOL")
 
-    if pausar_facturacion and not iccid:
-        cursor.close(); db.close()
-        raise HTTPException(status_code=400, detail="Se requiere ICCID para pausar la facturación")
-
-    # 1) Barra total. Si esto falla, no se tocó nada: propagar el error.
-    _simpro_write("POST", "/api/v3/sims/bars", {
+    res = _simpro_write("POST", "/api/v3/sims/bars", {
         "identifiers": [identifier], "bar_name": "full_bar", "required_state": True,
     })
-    # 2) La barra ya quedó puesta: persistir el estado ANTES de intentar el
-    #    tariff-holiday, para no dejar el SIM oscuro con la BD diciendo "activo".
+    req = _simpro_request_number(res)
+
     upd = db.cursor()
     upd.execute(
         "UPDATE consultas_sim SET sim_state='suspendido_temporal', bar_full=1, suspendido_desde=NOW() WHERE id=%s",
@@ -11041,54 +11034,34 @@ def suspender_consulta_sim(record_id: int, data: dict = Body(default={})):
     db.commit()
     upd.close()
 
-    holiday = None
-    avisos = []
-    if pausar_facturacion:
-        hoy = datetime.now()
-        hasta_str = str(data.get("hasta") or "").strip()
-        if not hasta_str:
-            ultimo = calendar.monthrange(hoy.year, hoy.month)[1]
-            hasta_str = hoy.replace(day=ultimo).strftime("%d/%m/%Y")
-        try:
-            _simpro_write("POST", "/api/v3/sims/apply-tariff-holiday", {
-                "identifiers": [iccid], "from": hoy.strftime("%d/%m/%Y"), "to": hasta_str,
-            })
-            holiday = {"from": hoy.strftime("%d/%m/%Y"), "to": hasta_str}
-        except HTTPException as e:
-            avisos.append(f"El SIM quedó suspendido pero NO se pudo pausar la facturación: {e.detail}")
-
-    _evento_sim(record_id, "suspender",
-                {"pausar_facturacion": pausar_facturacion, "hasta": (holiday or {}).get("to")},
-                {"tariff_holiday": holiday, "avisos": avisos}, ok=not avisos)
+    _evento_sim(record_id, "suspender", {"identifier": identifier},
+                {"request_number": req}, ok=True)
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
-    return {"item": _serialize_consulta_sim(row), "tariff_holiday": holiday, "avisos": avisos}
+    return {
+        "item": _serialize_consulta_sim(row),
+        "request_number": req,
+        "mensaje": (f"Corte de señal solicitado a SIMPRO (request {req}). "
+                    "Es asíncrono: se aplica en unos minutos. Confirma con 'Verificar estado'."),
+    }
 
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/reactivar")
 def reactivar_consulta_sim(record_id: int):
-    """Revierte la suspensión temporal: quita la barra y el tariff holiday."""
+    """Restablece la señal: quita la barra total vía SIMPRO
+    `POST /api/v3/sims/bars` (required_state=false). También asíncrono."""
     db = _get_db()
     cursor = db.cursor(dictionary=True)
     row = _get_consulta_sim_or_404(cursor, record_id)
     identifier = _consulta_sim_identifier(row)
-    iccid = str(row.get("iccid") or "").strip()
     if not identifier:
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="El registro no tiene ICCID ni SIM ESPAÑOL")
 
-    _simpro_write("POST", "/api/v3/sims/bars", {
+    res = _simpro_write("POST", "/api/v3/sims/bars", {
         "identifiers": [identifier], "bar_name": "full_bar", "required_state": False,
     })
-    avisos = []
-    if iccid:
-        try:
-            _simpro_write("POST", "/api/v3/sims/remove-tariff-holiday", {"iccids": [iccid]})
-        except HTTPException as e:
-            txt = str(e.detail or "").lower()
-            # "no hay holiday activo" es esperado; cualquier otra cosa se avisa.
-            if not (e.status_code == 404 or "holiday" in txt and ("not" in txt or "no " in txt)):
-                avisos.append(f"Se quitó la barra pero la facturación puede seguir pausada: {e.detail}")
+    req = _simpro_request_number(res)
 
     upd = db.cursor()
     upd.execute(
@@ -11097,10 +11070,16 @@ def reactivar_consulta_sim(record_id: int):
     )
     db.commit()
     upd.close()
-    _evento_sim(record_id, "reactivar", "", {"avisos": avisos}, ok=not avisos)
+    _evento_sim(record_id, "reactivar", {"identifier": identifier},
+                {"request_number": req}, ok=True)
     row = _get_consulta_sim_or_404(cursor, record_id)
     cursor.close(); db.close()
-    return {"item": _serialize_consulta_sim(row), "avisos": avisos}
+    return {
+        "item": _serialize_consulta_sim(row),
+        "request_number": req,
+        "mensaje": (f"Restablecimiento de señal solicitado a SIMPRO (request {req}). "
+                    "Es asíncrono: se aplica en unos minutos. Confirma con 'Verificar estado'."),
+    }
 
 
 @app.post("/api/utilidades/consultas-sim/{record_id}/cancelar")

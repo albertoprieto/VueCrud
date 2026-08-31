@@ -67,11 +67,8 @@
             <Button label="Reactivar SIM" icon="pi pi-play" severity="success" :loading="busy==='reactivar'" @click="accion('reactivar')" />
           </template>
           <template v-else>
-            <label class="acc-check">
-              <input type="checkbox" v-model="pausaFactura" />
-              También pausar facturación (tariff holiday hasta fin de mes)
-            </label>
-            <Button label="Suspender temporal" icon="pi pi-pause" severity="warning" :loading="busy==='suspender'" @click="accion('suspender')" />
+            <p class="acc-hint">Corta la señal del SIM (barra total). SIMPRO lo aplica en unos minutos. Reversible.</p>
+            <Button label="Cortar señal" icon="pi pi-pause" severity="warning" :loading="busy==='suspender'" @click="accion('suspender')" />
           </template>
         </div>
 
@@ -138,7 +135,6 @@ const row = ref(null);
 const busy = ref('');
 
 const historial = ref([]);
-const pausaFactura = ref(false);
 const cancelarFecha = ref(''); // usado por la tarjeta de Cancelación (oculta)
 const eventos = ref([]);
 const eventosCargados = ref(false);
@@ -272,14 +268,12 @@ async function accion(a) {
       }));
       ok('Historial cargado.');
     } else if (a === 'suspender') {
-      if (!window.confirm('Se cortará TODO el tráfico del SIM: el equipo dejará de reportar hasta reactivarlo. ¿Continuar?')) { busy.value = ''; return; }
-      res = await suspenderSim(id, { pausarFacturacion: pausaFactura.value });
-      if (res.avisos?.length) res.avisos.forEach(m => err({ message: m }));
-      else ok(pausaFactura.value ? 'SIM suspendido y facturación pausada.' : 'SIM suspendido (tráfico bloqueado).');
+      if (!window.confirm('Se cortará la señal del SIM (barra total). Reversible. ¿Continuar?')) { busy.value = ''; return; }
+      res = await suspenderSim(id);
+      ok(res.mensaje || 'Corte de señal solicitado a SIMPRO.');
     } else if (a === 'reactivar') {
       res = await reactivarSim(id);
-      if (res.avisos?.length) res.avisos.forEach(m => err({ message: m }));
-      else ok('SIM reactivado.');
+      ok(res.mensaje || 'Restablecimiento de señal solicitado a SIMPRO.');
     } else if (a === 'cancelar') {
       if (!window.confirm('Esto cancela el SIM en SIMPRO. ¿Continuar?')) { busy.value = ''; return; }
       res = await cancelarSim(id, { cancellationDate: cancelarFecha.value.trim() || undefined });
