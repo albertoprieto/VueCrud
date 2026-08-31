@@ -17,32 +17,14 @@
         <div><strong>Usuario:</strong> {{ row.deaccount || '—' }}</div>
         <div><strong>Cliente:</strong> {{ row.accountName || '—' }}</div>
         <div><strong>Plataforma:</strong> {{ row.plataforma || '—' }}</div>
-        <div>
-          <strong>Salud:</strong>
-          <Tag :value="saludTag(row.salud).value" :severity="saludTag(row.salud).severity" />
-          <span class="acc-hint" style="margin-left:.4rem">({{ row.sim_customer_status || '—' }})</span>
-        </div>
         <div><strong>Vigencia:</strong> {{ row.vigencia_sim || '—' }}</div>
-        <div>
-          <strong>Bloqueo por equipo:</strong>
-          <template v-if="row.imei_lock === 1"><span class="acc-warn">BLOQUEADO (cambio de IMEI)</span></template>
-          <template v-else-if="row.imei_lock === 0">Sin bloqueo</template>
-          <template v-else>Desconocido — pulsa "Verificar estado"</template>
-        </div>
+
         <div v-if="row.network_imei"><strong>IMEI visto en red:</strong> {{ row.network_imei }}</div>
-        <div v-if="imeiMismatch(row.network_imei, row.imei)" class="acc-warn">
-          ⚠ El IMEI del registro ({{ row.imei }}) no coincide con el que SIMPRO ve en la red ({{ row.network_imei }}).
-        </div>
         <div v-if="row.last_seen"><strong>Última señal:</strong> {{ fechaCorta(row.last_seen) }}</div>
         <div v-if="row.sim_state === 'suspendido_temporal'" class="acc-warn">
           Suspendido temporal desde {{ fechaCorta(row.suspendido_desde) }}
         </div>
-        <div v-if="row.sim_state === 'bloqueado_imei'" class="acc-warn">
-          ⚠ SIM BLOQUEADO por cambio de equipo (locked_due_to_imei_change). No pasa tráfico.
-          Si el cambio fue a propósito: pulsa "Desbloquear" — SIMPRO lo procesa en unos minutos;
-          cuando figure "active", "Preparar" + "Bloquear" para re-armar en el equipo correcto.
-          Si no fue a propósito, monta el SIM de vuelta en el equipo original.
-        </div>
+
         <div><strong>Consumo del mes:</strong>
           {{ row.data_usage_mb != null ? row.data_usage_mb + ' MB' : '—' }}
           <span v-if="row.sin_trafico" class="acc-warn">· sin tráfico</span>
@@ -60,9 +42,7 @@
         <div class="acc-card">
           <h3>Bloqueo por equipo (IMEI lock)</h3>
           <p class="acc-hint">
-            Arma el bloqueo. Si después alguien mueve el SIM a otro equipo (IMEI distinto),
-            SIMPRO lo bloquea solo y deja de pasar tráfico. SIMPRO procesa en segundo plano
-            (unos minutos). Usa "Preparar" para que el equipo objetivo reporte antes de armar.
+            Limita el uso del SIM al IMEI que lo porta.
           </p>
           <label class="acc-hint">IMEI objetivo (equipo donde va el SIM)</label>
           <InputText v-model="lockTarget" placeholder="IMEI del equipo objetivo" />
@@ -71,20 +51,6 @@
           <p v-if="prepText" :class="['acc-hint', prepMatch ? 'acc-ok' : 'acc-warn']">{{ prepText }}</p>
           <Button label="2. Bloquear a este equipo" icon="pi pi-lock" outlined
             :loading="busy==='lock-on'" @click="accion('lock-on')" />
-          <Button v-if="row.sim_state === 'bloqueado_imei'"
-            label="Desbloquear (se bloqueó por cambio de equipo)" icon="pi pi-unlock" severity="help" outlined
-            :loading="busy==='recasar'" @click="accion('recasar')" />
-          <Button label="Ver JSON de SIMPRO" icon="pi pi-code" text size="small"
-            :loading="busy==='raw'" @click="accion('raw')" />
-          <pre v-if="rawText" class="acc-raw">{{ rawText }}</pre>
-        </div>
-
-        <div class="acc-card">
-          <h3>Cambiar tarjeta física</h3>
-          <p class="acc-hint">Conserva número, plan y vigencia. Para SIM dañado.</p>
-          <InputText v-model="nuevoIccid" placeholder="ICCID de la tarjeta nueva" />
-          <Button label="Cambiar tarjeta" icon="pi pi-sim" outlined
-            :disabled="!nuevoIccid" :loading="busy==='swap'" @click="accion('swap')" />
         </div>
 
         <div class="acc-card">
@@ -109,6 +75,7 @@
           </template>
         </div>
 
+        <!-- Cancelación: oculto del front por ahora.
         <div class="acc-card">
           <h3>Cancelación</h3>
           <template v-if="row.sim_state === 'cancelacion_programada'">
@@ -120,8 +87,9 @@
             <Button label="Cancelar en SIMPRO" icon="pi pi-times-circle" severity="danger" :loading="busy==='cancelar'" @click="accion('cancelar')" />
           </template>
         </div>
+        -->
 
-        <div class="acc-card">
+<!--         <div class="acc-card">
           <h3>Historial de acciones</h3>
           <Button label="Ver bitácora" icon="pi pi-history" outlined :loading="busy==='eventos'" @click="accion('eventos')" />
           <ul v-if="eventos.length" class="acc-list">
@@ -132,7 +100,7 @@
             </li>
           </ul>
           <p v-else-if="eventosCargados" class="acc-hint">Sin acciones registradas.</p>
-        </div>
+        </div> -->
       </div>
     </div>
   </section>
@@ -143,7 +111,6 @@ import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
-import Tag from 'primevue/tag';
 import { useToast } from 'primevue/usetoast';
 import {
   getConsultaSim,
@@ -155,12 +122,9 @@ import {
   detenerCancelacionSim,
   imeiLockSim,
   prepararLockSim,
-  recasarSim,
-  getSimproRaw,
   getEventosSim,
   refrescarRedSim,
-  historialConsumoSim,
-  swapIccidSim
+  historialConsumoSim
 } from '@/services/utilidadesImeiService';
 
 const route = useRoute();
@@ -173,11 +137,9 @@ const raw = ref(null);
 const row = ref(null);
 const busy = ref('');
 
-const nuevoIccid = ref('');
 const historial = ref([]);
 const pausaFactura = ref(false);
-const cancelarFecha = ref('');
-const rawText = ref('');
+const cancelarFecha = ref(''); // usado por la tarjeta de Cancelación (oculta)
 const eventos = ref([]);
 const eventosCargados = ref(false);
 const lockTarget = ref('');
@@ -211,30 +173,6 @@ function mapRow(r) {
 
 function fechaCorta(v) {
   return v ? String(v).slice(0, 10) : '';
-}
-
-const SALUD_TAG = {
-  ok: { value: 'OK', severity: 'success' },
-  sin_conexion: { value: 'Sin conexión', severity: 'danger' },
-  sin_trafico: { value: 'Sin tráfico', severity: 'warning' },
-  bloqueado: { value: 'Bloqueado', severity: 'danger' },
-  suspendido: { value: 'Suspendido', severity: 'warning' },
-  baja: { value: 'Baja', severity: 'secondary' },
-  desconocido: { value: '—', severity: 'contrast' }
-};
-function saludTag(s) {
-  return SALUD_TAG[s] || SALUD_TAG.desconocido;
-}
-
-// La red reporta IMEISV (16 díg); el registro suele traer IMEI de 15.
-// Comparar por el núcleo de 14 (TAC + serie).
-function imeiCore(v) {
-  return String(v || '').replace(/\D+/g, '').slice(0, 14);
-}
-function imeiMismatch(redImei, regImei) {
-  const a = imeiCore(redImei);
-  const b = imeiCore(regImei);
-  return !!a && !!b && a !== b;
 }
 
 function resumenConsumoMes(datos) {
@@ -364,8 +302,6 @@ onMounted(cargar);
 <style scoped>
 .acc-page {
   padding: 1.25rem;
-  max-width: 1100px;
-  margin: 0 auto;
 }
 .acc-loading {
   text-align: center;
@@ -373,7 +309,7 @@ onMounted(cargar);
   color: var(--color-text);
 }
 .acc-wrap h1 {
-  margin: 0.5rem 0 1rem;
+  margin: 0.75rem 0 1.25rem;
   color: var(--color-title);
 }
 .acc-card {
@@ -383,39 +319,39 @@ onMounted(cargar);
   padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 .acc-card h3 {
   margin: 0 0 0.25rem;
-  font-size: 0.95rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   color: var(--color-title);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.4rem;
 }
+.acc-card :deep(.p-button) { width: 100%; justify-content: center; }
+.acc-card :deep(.p-inputtext) { width: 100%; }
 .acc-info {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.4rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.55rem 1rem;
   margin-bottom: 1.25rem;
 }
+.acc-info > div { font-size: 0.85rem; color: var(--color-text); }
+.acc-info strong { color: var(--color-title); font-weight: 600; }
 .acc-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 1rem;
   align-items: start;
 }
-.acc-warn { color: #d1242f; font-weight: 600; }
-.acc-ok { color: #238636; font-weight: 600; }
-.acc-hint { margin: 0; font-size: 0.8rem; opacity: 0.7; }
-.acc-raw {
-  background: var(--color-bg-light, #f5f5f5);
-  border-radius: 8px;
-  padding: 0.6rem;
-  font-size: 0.72rem;
-  max-height: 260px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
+@media (max-width: 760px) {
+  .acc-grid { grid-template-columns: 1fr; }
 }
-.acc-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
-.acc-list { margin: 0.25rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; }
-.w-full { width: 100%; }
+.acc-warn { color: var(--color-error); font-weight: 600; }
+.acc-ok { color: var(--color-success); font-weight: 600; }
+.acc-hint { margin: 0; font-size: 0.8rem; color: var(--color-text); opacity: 0.7; }
+.acc-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--color-text); }
+.acc-list { margin: 0.25rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; color: var(--color-text); }
 </style>

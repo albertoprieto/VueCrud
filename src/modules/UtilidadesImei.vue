@@ -727,31 +727,57 @@ onUnmounted(() => {
 }
 
 .is-ok {
-  color: #238636;
+  color: var(--color-success);
 }
 
 .is-error {
-  color: #d1242f;
+  color: var(--color-error);
 }
 
 .result {
   margin-top: 1rem;
-  border-top: 1px solid var(--color-border);
-  padding-top: 1rem;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1rem;
+  overflow-x: auto;
 }
 
 .result h2 {
   margin: 0 0 0.8rem;
+  color: var(--color-title);
 }
 
 .result :deep(.p-datatable-table) {
-  min-width: 980px;
+  min-width: 1400px;
 }
 
 .result :deep(.p-datatable-header) {
   background: transparent;
   border: 0;
   padding: 0 0 0.75rem;
+}
+
+.result :deep(.p-datatable-thead > tr > th) {
+  background: var(--color-bg-light);
+  color: var(--color-title);
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  border-color: var(--color-border);
+}
+
+.result :deep(.p-datatable-tbody > tr > td) {
+  font-size: 0.82rem;
+  border-color: var(--color-border);
+}
+
+.result :deep(.p-datatable-tbody > tr) {
+  background: var(--color-card);
+  color: var(--color-text);
+}
+
+.result :deep(.p-datatable-tbody > tr.p-row-odd) {
+  background: var(--color-bg-light);
 }
 
 .table-tools {
@@ -791,19 +817,30 @@ onUnmounted(() => {
 
 .table-tools__filters {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.55rem;
+  align-items: start;
+}
+
+.table-tools__filters :deep(.p-inputtext),
+.table-tools__filters :deep(.p-dropdown),
+.table-tools__filters :deep(.p-calendar) {
+  width: 100%;
 }
 
 .table-tools__filters :deep(.p-inputtext),
 .table-tools__filters :deep(.p-dropdown) {
-  width: 100%;
+  min-height: 40px;
 }
 
 .table-tools__buttons {
+  grid-column: 1 / -1;
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.25rem;
 }
 
 .loading-more {
@@ -834,8 +871,8 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.muted { color: var(--color-border); }
-.muted-small { font-size: 0.72rem; color: var(--color-border); }
+.muted { color: var(--color-text); opacity: 0.5; }
+.muted-small { font-size: 0.72rem; color: var(--color-text); opacity: 0.6; }
 
 .admin-toggle {
   display: flex;
@@ -886,8 +923,15 @@ onUnmounted(() => {
 
 .edit-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.8rem;
+}
+
+.edit-grid .field label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-title);
 }
 
 @media (max-width: 760px) {
