@@ -7530,6 +7530,9 @@ def editar_campos_factura(factura_id: int, data: dict = Body(...)):
     if 'total' in data:
         campos.append("total=%s")
         valores.append(float(data.get('total') or 0))
+    if 'fecha' in data:
+        campos.append("fecha=%s")
+        valores.append(data.get('fecha') or None)
     if not campos:
         raise HTTPException(status_code=400, detail="Nada que actualizar")
     db = get_db_connection()
@@ -8054,6 +8057,7 @@ def crear_retiro_banco(
     banco: str = Form(...),
     monto: float = Form(...),
     motivo: str = Form(None),
+    fecha: str = Form(None),
     archivo: UploadFile = File(...),
     current=Depends(get_current_user),
     request: Request = None
@@ -8081,8 +8085,8 @@ def crear_retiro_banco(
     cursor = db.cursor()
     cursor.execute(
         """INSERT INTO retiros_banco (banco, monto, motivo, comprobante_path, estatus, creado_por, creado_fecha)
-           VALUES (%s, %s, %s, %s, 'pendiente', %s, NOW())""",
-        (banco, monto, motivo or None, rel_path, current.get("username"))
+           VALUES (%s, %s, %s, %s, 'pendiente', %s, %s)""",
+        (banco, monto, motivo or None, rel_path, current.get("username"), fecha or datetime.now())
     )
     db.commit()
     new_id = cursor.lastrowid
@@ -8934,6 +8938,8 @@ def editar_retiro_banco(retiro_id: int, data: dict = Body(...), current=Depends(
         campos.append("monto=%s"); valores.append(monto)
     if "motivo" in data:
         campos.append("motivo=%s"); valores.append(data["motivo"] or None)
+    if "fecha" in data:
+        campos.append("creado_fecha=%s"); valores.append(data["fecha"] or None)
     if not campos:
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="Nada que actualizar")

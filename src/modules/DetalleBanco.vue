@@ -40,7 +40,10 @@
             <template #body="{ data }"><span :class="'badge badge-' + badgeClaseTipo(data.tipo)">{{ data.tipo }}</span></template>
           </Column>
           <Column field="fecha" header="Fecha">
-            <template #body="{ data }">{{ formatFecha(data.fecha) }}</template>
+            <template #body="{ data }">
+              <Calendar v-if="editando === data.key" v-model="edicion.fecha" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="edit-input" />
+              <span v-else>{{ formatFecha(data.fecha) }}</span>
+            </template>
           </Column>
           <Column field="nombre" header="Nombre">
             <template #body="{ data }">
@@ -166,6 +169,10 @@
         <InputText v-model="nuevoMovimiento.concepto" class="w-full" placeholder="Ej: Pago a proveedor" />
       </div>
       <div class="form-group">
+        <label>Fecha</label>
+        <Calendar v-model="nuevoMovimientoFecha" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="w-full" />
+      </div>
+      <div class="form-group">
         <label>Monto</label>
         <InputNumber v-model="nuevoMovimiento.monto" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
       </div>
@@ -232,6 +239,10 @@
         <div class="retiro-field">
           <label>Motivo (opcional)</label>
           <InputText v-model="retiroForm.motivo" placeholder="Ej: Pago a proveedor" class="w-full" />
+        </div>
+        <div class="retiro-field">
+          <label>Fecha</label>
+          <Calendar v-model="retiroFecha" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="w-full" />
         </div>
         <div class="retiro-field">
           <label>Comprobante</label>
@@ -429,7 +440,7 @@ async function onRowReorder(event) {
 
 // ── Edición inline (nombre, monto) ──
 const editando = ref(null);
-const edicion = ref({ nombre: '', monto: 0 });
+const edicion = ref({ nombre: '', monto: 0, fecha: null });
 const guardando = ref(false);
 
 function esEditable(fila) {
@@ -440,20 +451,25 @@ function iniciarEdicion(fila) {
   editando.value = fila.key;
   // El monto de un retiro se guarda negativo en la fila (para sumar/restar
   // directo al saldo) — al editar se muestra en positivo, como lo capturó el usuario.
-  edicion.value = { nombre: fila.nombre, monto: fila.tipo === 'Retiro' ? -fila.monto : fila.monto };
+  edicion.value = {
+    nombre: fila.nombre,
+    monto: fila.tipo === 'Retiro' ? -fila.monto : fila.monto,
+    fecha: fila.fecha ? new Date(fila.fecha) : new Date(),
+  };
 }
 
 async function guardarEdicion(fila) {
   guardando.value = true;
   try {
+    const fecha = fechaISO(edicion.value.fecha);
     if (fila.tipo === 'Nota') {
-      await actualizarCamposNota(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto });
+      await actualizarCamposNota(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto, fecha });
     } else if (fila.tipo === 'Factura') {
-      await actualizarCamposFactura(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto });
+      await actualizarCamposFactura(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto, fecha });
     } else if (fila.tipo === 'Ingreso' || fila.tipo === 'Egreso') {
-      await actualizarMovimientoDinero(fila.id, { banco: nombre.value, concepto: edicion.value.nombre, monto: Number(edicion.value.monto) || 0 });
+      await actualizarMovimientoDinero(fila.id, { banco: nombre.value, concepto: edicion.value.nombre, monto: Number(edicion.value.monto) || 0, fecha });
     } else if (fila.tipo === 'Retiro') {
-      await editarRetiro(fila.id, { monto: Number(edicion.value.monto) || 0, motivo: edicion.value.nombre });
+      await editarRetiro(fila.id, { monto: Number(edicion.value.monto) || 0, motivo: edicion.value.nombre, fecha });
     }
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Cambios guardados.', life: 2500 });
     editando.value = null;
@@ -530,11 +546,13 @@ async function cambiarEstadoValidacion(fila, nuevoEstado) {
 // ── Nuevo movimiento manual (banco fijo = este) ──
 const movimientoDialogVisible = ref(false);
 const nuevoMovimiento = ref({ tipo: 'Ingreso', concepto: '', monto: 0, referencia: '' });
+const nuevoMovimientoFecha = ref(new Date());
 const nuevoMovimientoArchivo = ref(null);
 const guardandoMovimiento = ref(false);
 
 function abrirNuevoMovimiento() {
   nuevoMovimiento.value = { tipo: 'Ingreso', concepto: '', monto: 0, referencia: '' };
+  nuevoMovimientoFecha.value = new Date();
   nuevoMovimientoArchivo.value = null;
   movimientoDialogVisible.value = true;
 }
@@ -550,7 +568,7 @@ async function confirmarNuevoMovimiento() {
   guardandoMovimiento.value = true;
   try {
     await registrarAbonoDinero({
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: fechaISO(nuevoMovimientoFecha.value),
       tipo: nuevoMovimiento.value.tipo,
       concepto: nuevoMovimiento.value.concepto,
       monto: Number(nuevoMovimiento.value.monto),
@@ -601,8 +619,15 @@ function abrirEditarIngreso(raw) {
     referencia_comprobante: raw.referencia_comprobante || '',
     clave_rastreo: raw.clave_rastreo || '',
   };
-  ingresoFechaDate.value = raw.fecha_transaccion ? new Date(raw.fecha_transaccion) : new Date();
+  ingresoFechaDate.value = raw.fecha_transaccion ? fechaLocal(raw.fecha_transaccion) : new Date();
   ingresoDialogVisible.value = true;
+}
+// fecha_transaccion es DATE puro ("2026-09-05", sin hora) — new Date() de un
+// string así lo interpreta como UTC y lo corre un día al mostrarlo en horario
+// local negativo (México). Se arma en local con año/mes/día para evitar el corrimiento.
+function fechaLocal(f) {
+  const [y, m, d] = String(f).slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 function fechaISO(d) {
   const dt = d instanceof Date ? d : new Date(d);
@@ -665,11 +690,13 @@ async function eliminarIngresoFila(fila) {
 // ── Registrar retiro (banco fijo = este) ──
 const retiroDialogVisible = ref(false);
 const retiroForm = ref({ monto: null, motivo: '' });
+const retiroFecha = ref(new Date());
 const retiroArchivo = ref(null);
 const guardandoRetiro = ref(false);
 
 function abrirRetiroDialog() {
   retiroForm.value = { monto: null, motivo: '' };
+  retiroFecha.value = new Date();
   retiroArchivo.value = null;
   retiroDialogVisible.value = true;
 }
@@ -685,6 +712,7 @@ async function confirmarRetiro() {
       banco: nombre.value,
       monto: retiroForm.value.monto,
       motivo: retiroForm.value.motivo,
+      fecha: fechaISO(retiroFecha.value),
       archivo: retiroArchivo.value,
     });
     toast.add({ severity: 'success', summary: 'Registrado', detail: 'Retiro registrado, pendiente de aprobación.', life: 3000 });
