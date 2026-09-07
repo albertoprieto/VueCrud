@@ -2687,7 +2687,7 @@ class TransferirIMEIsRequest(BaseModel):
     destino_id: int
 
 @app.post("/ubicaciones/transferir-imeis")
-def transferir_imeis(request: TransferirIMEIsRequest, current=Depends(require_admin)):
+def transferir_imeis(request: TransferirIMEIsRequest, current=Depends(get_current_user)):
     db = get_db_connection()
     cursor = db.cursor()
     if request.imeis:

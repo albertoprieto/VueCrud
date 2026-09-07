@@ -85,7 +85,7 @@
         </DataTable>
       </div>
       <div class="form-actions">
-        <Button label="Transferir IMEIs" icon="pi pi-exchange" @click="transferirImeis" class="p-button-success" :disabled="!puedeTransferir || !esAdmin" />
+        <Button label="Transferir IMEIs" icon="pi pi-exchange" @click="transferirImeis" class="p-button-success" :disabled="!puedeTransferir" />
       </div>
     </div>
     <Dialog v-model:visible="showDialog" header="Resultado" :modal="true" :closable="false">
@@ -116,7 +116,6 @@ import { getIMEIs } from '@/services/imeiService';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
 import { registrarMovimiento } from '@/services/inventarioService';
-import { useLoginStore } from '@/stores/loginStore';
 
 const ubicaciones = ref([]);
 const ubicacionOrigen = ref(null);
@@ -143,9 +142,6 @@ const puedeTransferir = computed(() =>
 onMounted(async () => {
   ubicaciones.value = await getUbicaciones();
 });
-
-const loginStore = useLoginStore();
-const esAdmin = computed(() => loginStore.user?.perfil === 'Admin');
 
 const cargarImeisOrigen = async () => {
   if (!ubicacionOrigen.value) return;
@@ -212,10 +208,6 @@ const getArticuloNombre = (imei) => {
 };
 
 const transferirImeis = async () => {
-  if (!esAdmin.value) {
-    toast.add({ severity: 'warn', summary: 'Permiso denegado', detail: 'Solo un administrador puede transferir IMEIs.', life: 4000 });
-    return;
-  }
   if (!puedeTransferir.value) {
     toast.add({ severity: 'warn', summary: 'Validación', detail: 'Revisa los IMEIs y las ubicaciones.', life: 4000 });
     return;
