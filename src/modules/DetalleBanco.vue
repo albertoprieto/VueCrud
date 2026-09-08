@@ -531,6 +531,8 @@ async function cambiarEstadoValidacion(fila, nuevoEstado) {
       await actualizarValidadoFactura(fila.id, nuevoEstado);
     } else if (fila.tipo === 'Pago nota') {
       await actualizarValidadoPagoNota(fila.raw.nota_id, fila.id, nuevoEstado);
+    } else if (fila.tipo === 'Ingreso banco') {
+      await editarIngresoBanco(fila.id, { validado: CODIGO_POR_ESTADO[nuevoEstado] });
     } else {
       await actualizarMovimientoDinero(fila.id, { validado: CODIGO_POR_ESTADO[nuevoEstado] });
     }

@@ -10014,6 +10014,27 @@ def _simpro_get(path: str, params: dict):
     return resp.json()
 
 
+def _simpro_iter_sims():
+    """Todos los SIM de SIMPRO. `/api/v3/sims` topa `limit` en 2000 y `offset` lo
+    ignora: la única paginación real es `page` con un limit chico. Se recorre
+    hasta que SIMPRO responde `error` (página fuera de rango) o una página corta."""
+    limit = 1000
+    page = 1
+    while page <= 500:
+        resp = _simpro_get("/api/v3/sims", {"page": page, "limit": limit})
+        if isinstance(resp, dict) and resp.get("error"):
+            break
+        items = resp.get("sims") if isinstance(resp, dict) else (resp if isinstance(resp, list) else [])
+        items = items or []
+        if not items:
+            break
+        for s in items:
+            yield s
+        if len(items) < limit:
+            break
+        page += 1
+
+
 def _simpro_write(method: str, path: str, body):
     """POST/PATCH contra SIMPRO (bars, tariff-holiday, cancel, custom-fields...).
     Devuelve el JSON de respuesta o {'raw': texto} si no es JSON."""
@@ -10045,17 +10066,7 @@ def importar_sims_simpro():
     consultas_sim (campos que SIMPRO no conoce, como plataforma IOP/Tracksolid,
     quedan vacios a proposito para que el usuario los complete). Es re-ejecutable:
     lo que ya existe (por device_mobile o iccid) se omite, no duplica."""
-    todos = []
-    page = 1
-    limit = 2000
-    while True:
-        data = _simpro_get("/api/v3/sims", {"page": page, "limit": limit})
-        items = data.get("sims") if isinstance(data, dict) else None
-        items = items if isinstance(items, list) else []
-        todos.extend(items)
-        if len(items) < limit or page > 50:
-            break
-        page += 1
+    todos = list(_simpro_iter_sims())
 
     identificadores = []
     vistos = set()
@@ -10867,44 +10878,47 @@ def completar_datos_consultas_sim(data: dict = Body(default={})):
 
 @app.post("/api/utilidades/consultas-sim/refrescar-simpro")
 def refrescar_simpro_consultas_sim(data: dict = Body(default={})):
-    """SOLO da de alta los SIM que existen en SIMPRO y NO en la tabla (match por
-    ICCID). NO toca ningún registro existente. Los nuevos nacen con MSISDN,
-    fecha de activación y vigencia de SIMPRO; todo editable después a mano."""
+    """Da de alta los SIM de SIMPRO que faltan en la tabla (match por ICCID) y
+    rellena `activation_date` / `vigencia_sim` en los que ya existen pero los
+    tienen vacíos (los metió una versión vieja sin esos datos). Sólo rellena
+    huecos: nunca pisa un valor ya escrito a mano. Re-ejecutable."""
     db = _get_db()
     cursor = db.cursor(dictionary=True)
 
-    # 1) ICCID que ya tenemos.
-    cursor.execute("SELECT iccid FROM consultas_sim WHERE iccid <> ''")
-    existentes = {r["iccid"] for r in cursor.fetchall()}
+    # 1) Lo que ya tenemos, con activation_date / vigencia para detectar huecos.
+    cursor.execute(
+        "SELECT iccid, activation_date, vigencia_sim FROM consultas_sim WHERE iccid <> ''"
+    )
+    existentes = {r["iccid"]: r for r in cursor.fetchall()}
 
-    # 2) Recorre SIMPRO y quédate solo con los ICCID que faltan.
-    faltantes = {}
-    pagina = 1
-    while pagina <= 20:
-        try:
-            resp = _simpro_get("/api/v3/sims", {"page": pagina, "limit": 2000})
-        except HTTPException:
-            break
-        items = resp.get("sims") if isinstance(resp, dict) else (resp if isinstance(resp, list) else [])
-        items = items or []
-        for s in items:
-            ic = str(s.get("iccid") or "")
-            if ic and ic not in existentes:
-                faltantes[ic] = s
-        if len(items) < 2000:
-            break
-        pagina += 1
+    def _vacio(v):
+        return not str(v or "").strip()
 
-    if not faltantes:
+    # 2) Recorre SIMPRO: separa los que faltan de los que están incompletos.
+    faltantes, incompletos = {}, {}
+    revisados = 0
+    for s in _simpro_iter_sims():
+        revisados += 1
+        ic = str(s.get("iccid") or "")
+        if not ic:
+            continue
+        row = existentes.get(ic)
+        if row is None:
+            faltantes[ic] = s
+        elif _vacio(row["activation_date"]) or _vacio(row["vigencia_sim"]):
+            incompletos[ic] = s
+
+    objetivo = list(faltantes) + list(incompletos)
+    if not objetivo:
         cursor.close(); db.close()
-        return {"nuevos": 0, "ya_existian": len(existentes)}
+        return {"nuevos": 0, "actualizados": 0, "ya_existian": len(existentes),
+                "revisados_simpro": revisados}
 
-    # 3) Un details batch SOLO para los nuevos: fecha, vigencia y MSISDN.
-    iccids = list(faltantes)
+    # 3) details en lotes: fecha, vigencia, MSISDN, status.
     det = {}
-    for i in range(0, len(iccids), 30):
+    for i in range(0, len(objetivo), 30):
         try:
-            resp = _simpro_get("/api/v3/sims/details", {"identifiers": ",".join(iccids[i:i + 30])})
+            resp = _simpro_get("/api/v3/sims/details", {"identifiers": ",".join(objetivo[i:i + 30])})
             for d in (resp if isinstance(resp, list) else []):
                 ic = str(d.get("iccid") or "")
                 if ic:
@@ -10912,12 +10926,12 @@ def refrescar_simpro_consultas_sim(data: dict = Body(default={})):
         except HTTPException:
             pass
 
-    ins = db.cursor()
+    w = db.cursor()
     nuevos = 0
     for ic, s in faltantes.items():
         p = det.get(ic) or {}
         msisdn = _extract_digits(s.get("msisdn") or "") or p.get("msisdn") or ""
-        ins.execute(
+        w.execute(
             """INSERT INTO consultas_sim
                (tipo, activation_date, deaccount, account_name, plataforma,
                 imei, iccid, device_mobile, vigencia_sim, sim_customer_status)
@@ -10927,10 +10941,27 @@ def refrescar_simpro_consultas_sim(data: dict = Body(default={})):
              p.get("customer_status") or _simpro_status_ident(s.get("status"))),
         )
         nuevos += 1
+
+    actualizados = 0
+    for ic in incompletos:
+        p = det.get(ic) or {}
+        row = existentes[ic]
+        cambios = {}
+        if _vacio(row["activation_date"]) and (p.get("activation_date") or ""):
+            cambios["activation_date"] = p["activation_date"]
+        if _vacio(row["vigencia_sim"]) and (p.get("contract_end_date") or ""):
+            cambios["vigencia_sim"] = p["contract_end_date"]
+        if not cambios:
+            continue
+        sets = ", ".join(f"{k}=%s" for k in cambios)
+        w.execute(f"UPDATE consultas_sim SET {sets} WHERE iccid=%s", (*cambios.values(), ic))
+        actualizados += 1
+
     db.commit()
-    ins.close()
+    w.close()
     cursor.close(); db.close()
-    return {"nuevos": nuevos, "ya_existian": len(existentes)}
+    return {"nuevos": nuevos, "actualizados": actualizados,
+            "ya_existian": len(existentes), "revisados_simpro": revisados}
 
 
 def _get_consulta_sim_or_404(cursor, record_id: int) -> dict:
