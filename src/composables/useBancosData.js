@@ -8,9 +8,9 @@ export const LUGARES_VALIDOS = [
   'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico',
 ];
 
-// Bancos que NO cobran comisión por recibir dinero (caja/efectivo). El resto
-// son cuentas bancarias reales y el banco retiene 1% de cada entrada.
-export const BANCOS_SIN_COMISION = new Set(['Efectivo oficina', 'Efectivo tecnico']);
+// El 1% de comisión por recibir dinero solo lo cobran los bancos ASP
+// (ASP Vianey, ASP Renovaciones). El resto entra a valor pleno.
+export const cobraComisionBanco = (banco) => String(banco || '').startsWith('ASP');
 export const COMISION_ENTRADA = 0.01;
 
 // Tipos de fila que son "entrada de dinero" y por tanto sujetos al 1%. El
@@ -216,7 +216,7 @@ export function mesKey(fecha) {
 export function calcularSaldoBanco(filas, banco, saldosIncialesPorBanco = {}, mes = null) {
   const delBanco = filas.filter(f => f.banco === banco);
   const saldoInicialBase = Number(saldosIncialesPorBanco[banco]?.saldo_inicial) || 0;
-  const cobraComision = !BANCOS_SIN_COMISION.has(banco);
+  const cobraComision = cobraComisionBanco(banco);
 
   const esCancelado = (f) =>
     (f.tipo === 'Nota' && f.raw?.status === 'cancelado') ||
