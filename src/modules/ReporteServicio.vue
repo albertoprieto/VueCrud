@@ -765,11 +765,13 @@ function onDialogAccept() { showResultDialog.value = false; if (saveSuccess.valu
 
 function formatearFecha(fecha) {
   if (!fecha) return '';
+  // 'YYYY-MM-DD' o ISO: cortar el string — new Date('2026-09-01') es UTC y en
+  // México (UTC-6) getDate() la corre al día anterior.
+  const m = String(fecha).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
   const d = new Date(fecha);
-  const dia = String(d.getDate()).padStart(2, '0');
-  const mes = String(d.getMonth() + 1).padStart(2, '0');
-  const anio = d.getFullYear();
-  return `${dia}/${mes}/${anio}`;
+  if (isNaN(d)) return '';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
 function formatoMoneda(valor) {

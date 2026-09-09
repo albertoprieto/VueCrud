@@ -10,9 +10,22 @@
       <div class="saldo-card">
         <span class="saldo-banco">{{ nombre }}</span>
         <span class="saldo-valor" :class="{ negativo: saldo.saldo < 0 }">{{ formatTotal(saldo.saldo) }}</span>
-        <span class="saldo-inicial-info">
-          Saldo inicial: {{ formatTotal(saldo.saldoInicial) }}
-          <Button v-if="esAdmin" icon="pi pi-pencil" class="p-button-text p-button-sm" style="padding:0.15rem;" @click="abrirSaldoInicialDialog" />
+        <div class="saldo-desglose">
+          <span class="saldo-desglose-linea">
+            {{ filtroMes === 'todos' ? 'Saldo inicial' : 'Saldo inicial del mes' }}
+            <b>{{ formatTotal(saldo.saldoInicial) }}</b>
+            <small v-if="saldo.arrastre">(arranque {{ formatTotal(saldo.saldoInicialBase) }} + meses previos {{ formatTotal(saldo.arrastre) }})</small>
+            <Button v-if="esAdmin" icon="pi pi-pencil" class="p-button-text p-button-sm" style="padding:0.15rem;" title="Editar saldo de arranque" @click="abrirSaldoInicialDialog" />
+          </span>
+          <span class="saldo-desglose-linea">
+            + Entradas netas <b>{{ formatTotal(saldo.entradasNetas) }}</b>
+            <small v-if="saldo.comision">(bruto {{ formatTotal(saldo.entradasBrutas) }} − 1% {{ formatTotal(saldo.comision) }})</small>
+          </span>
+          <span v-if="saldo.egresos" class="saldo-desglose-linea">− Egresos <b>{{ formatTotal(saldo.egresos) }}</b></span>
+          <span v-if="saldo.retiros" class="saldo-desglose-linea">− Retiros <b>{{ formatTotal(saldo.retiros) }}</b></span>
+        </div>
+        <span v-if="porValidarResumen.count" class="saldo-pendiente">
+          {{ porValidarResumen.count }} por validar en esta vista ({{ formatTotal(porValidarResumen.monto) }}) — no suman hasta aprobarse
         </span>
         <span v-if="saldo.pendientesCount" class="saldo-pendiente">
           En revisión: -{{ formatTotal(saldo.pendiente) }} ({{ saldo.pendientesCount }} retiro{{ saldo.pendientesCount === 1 ? '' : 's' }} por aprobar)
@@ -20,7 +33,6 @@
         <div class="saldo-acciones">
           <Button label="Nuevo movimiento" icon="pi pi-plus" class="p-button-sm p-button-secondary" @click="abrirNuevoMovimiento" />
           <Button label="Registrar retiro" icon="pi pi-upload" class="p-button-sm p-button-danger" @click="abrirRetiroDialog" />
-          <Button v-if="esAdmin" label="Cerrar mes" icon="pi pi-lock" class="p-button-sm p-button-outlined" @click="abrirCerrarMes" />
         </div>
       </div>
 
@@ -28,6 +40,7 @@
         <InputText v-model="busqueda" placeholder="Buscar por nombre, usuario o IMEI..." class="toolbar-buscador" />
         <Dropdown v-model="filtroMes" :options="opcionesFiltroMes" optionLabel="label" optionValue="value" placeholder="Mes" class="toolbar-filtro" />
         <Dropdown v-model="filtroTipo" :options="opcionesFiltroTipo" optionLabel="label" optionValue="value" placeholder="Tipo" class="toolbar-filtro" />
+        <Dropdown v-model="filtroValidacion" :options="opcionesFiltroValidacion" optionLabel="label" optionValue="value" placeholder="Validación" class="toolbar-filtro" />
       </div>
 
       <div class="movimientos-card">
@@ -262,23 +275,17 @@
       </div>
     </Dialog>
 
-    <!-- Dialog: saldo inicial / cerrar mes (mismo mecanismo: fija saldo + fecha de corte) -->
-    <Dialog v-model:visible="saldoInicialDialogVisible" :header="modoCierre ? 'Cerrar mes' : 'Saldo inicial'" :modal="true" :style="{ width: '400px', maxWidth: '95vw' }" :draggable="false">
+    <!-- Dialog: saldo inicial -->
+    <Dialog v-model:visible="saldoInicialDialogVisible" header="Saldo inicial" :modal="true" :style="{ width: '400px', maxWidth: '95vw' }" :draggable="false">
       <p style="margin-top:0;font-size:0.85rem;color:var(--color-text);opacity:0.75;">
-        <template v-if="modoCierre">
-          Fija el saldo actual de {{ nombre }} como punto de partida — los movimientos de hoy hacia atrás quedan
-          "horneados" en este número y no se vuelven a sumar. Los retiros pendientes se siguen mostrando igual.
-        </template>
-        <template v-else>
-          Saldo con el que arranca {{ nombre }} al pasar a producción. Se suma a los movimientos posteriores a hoy.
-        </template>
+        Número de arranque de {{ nombre }}. Todo movimiento validado del banco se suma o resta encima de este valor.
       </p>
       <div class="form-group">
-        <label>{{ modoCierre ? 'Saldo a fijar' : 'Saldo inicial' }}</label>
+        <label>Saldo inicial</label>
         <InputNumber v-model="saldoInicialForm" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
       </div>
       <div class="modal-actions">
-        <Button :label="modoCierre ? 'Confirmar cierre' : 'Guardar'" icon="pi pi-check" :loading="guardandoSaldoInicial" @click="confirmarSaldoInicial" />
+        <Button label="Guardar" icon="pi pi-check" :loading="guardandoSaldoInicial" @click="confirmarSaldoInicial" />
         <Button label="Cancelar" class="p-button-secondary" @click="saldoInicialDialogVisible = false" />
       </div>
     </Dialog>
@@ -309,7 +316,7 @@ import {
 } from '@/services/bancosService';
 import { registrarAbonoDinero, actualizarMovimientoDinero, eliminarComprobanteMovimientoDinero, eliminarMovimientoDinero } from '@/services/dineroService';
 import { editarIngresoBanco, eliminarIngresoBanco } from '@/services/ingresosBancoService';
-import { fetchBancosRaw, buildFilas, calcularSaldoBanco } from '@/composables/useBancosData';
+import { fetchBancosRaw, buildFilas, calcularSaldoBanco, mesKey } from '@/composables/useBancosData';
 
 const props = defineProps({ nombre: { type: String, required: true } });
 const route = useRoute();
@@ -356,14 +363,6 @@ function textoJustificaciones(ingresoRaw) {
 
 const filasBanco = computed(() => filasRaw.value.filter(f => f.banco === nombre.value));
 const saldosIncialesPorBanco = ref({});
-const saldo = computed(() => calcularSaldoBanco(filasRaw.value, nombre.value, saldosIncialesPorBanco.value));
-
-function mesKey(fecha) {
-  if (!fecha) return null;
-  const d = new Date(fecha);
-  if (isNaN(d)) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
 const nombresMes = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 function labelMes(key) {
   const [y, m] = key.split('-');
@@ -371,7 +370,7 @@ function labelMes(key) {
 }
 
 const busqueda = ref('');
-const filtroMes = ref('todos');
+const filtroMes = ref(mesKey(new Date()));  // arranca en el mes en curso
 const filtroTipo = ref('todos');
 const opcionesFiltroTipo = [
   { label: 'Todos', value: 'todos' },
@@ -383,8 +382,22 @@ const opcionesFiltroTipo = [
   { label: 'Pago nota', value: 'Pago nota' },
   { label: 'Ingreso banco', value: 'Ingreso banco' },
 ];
+const filtroValidacion = ref('todos');
+const opcionesFiltroValidacion = [
+  { label: 'Todas', value: 'todos' },
+  { label: 'Por validar', value: 'pendiente' },
+  { label: 'Validadas', value: 'aprobado' },
+  { label: 'Rechazadas', value: 'rechazado' },
+];
+
+const saldo = computed(() => calcularSaldoBanco(
+  filasRaw.value, nombre.value, saldosIncialesPorBanco.value,
+  filtroMes.value === 'todos' ? null : filtroMes.value,
+));
 const opcionesFiltroMes = computed(() => {
-  const keys = [...new Set(filasBanco.value.map(f => mesKey(f.fecha)).filter(Boolean))].sort().reverse();
+  // Siempre incluye el mes en curso aunque no tenga movimientos todavía —
+  // es el valor por defecto y el dropdown debe poder mostrarlo.
+  const keys = [...new Set([mesKey(new Date()), ...filasBanco.value.map(f => mesKey(f.fecha))].filter(Boolean))].sort().reverse();
   return [{ label: 'Todos los meses', value: 'todos' }, ...keys.map(k => ({ label: labelMes(k), value: k }))];
 });
 
@@ -406,7 +419,7 @@ const filasOrdenadas = computed(() => {
 // filtroMes NO cuenta aquí: el reordenamiento opera sobre filasOrdenadas
 // completa (sin filtrar por mes), así que reordenar con mes puesto es seguro.
 const filtrosActivos = computed(() => !!(
-  busqueda.value.trim() || filtroTipo.value !== 'todos'
+  busqueda.value.trim() || filtroTipo.value !== 'todos' || filtroValidacion.value !== 'todos'
 ));
 
 const filasFiltradas = computed(() => {
@@ -419,8 +432,22 @@ const filasFiltradas = computed(() => {
     )) return false;
     if (filtroMes.value !== 'todos' && mesKey(f.fecha) !== filtroMes.value) return false;
     if (filtroTipo.value !== 'todos' && f.tipo !== filtroTipo.value) return false;
+    if (filtroValidacion.value !== 'todos' && f.estatusValidacion !== filtroValidacion.value) return false;
     return true;
   });
+});
+
+// Resumen "por validar" acotado a lo que se ve en la tabla (respeta búsqueda,
+// mes y tipo). Todas cuentan para el saldo al aprobarse — ya no hay corte.
+const porValidarResumen = computed(() => {
+  const noCancelada = (f) =>
+    !(f.tipo === 'Nota' && f.raw?.status === 'cancelado') &&
+    !(f.tipo === 'Factura' && f.raw?.status === 'Cancelado');
+  const pend = filasFiltradas.value.filter(f => f.estatusValidacion === 'pendiente' && noCancelada(f));
+  return {
+    count: pend.length,
+    monto: pend.reduce((s, f) => s + Math.abs(f.monto), 0),
+  };
 });
 
 // Reordenar arrastrando filas (PrimeVue rowReorder) — reemplaza las flechas
@@ -739,22 +766,14 @@ async function cargar(resetLoading = true) {
   loading.value = false;
 }
 
-// ── Saldo inicial / cerrar mes (admin) — mismo endpoint, distinto valor
-// prefijado: "editar saldo inicial" parte del valor guardado, "cerrar mes"
-// parte del saldo actual ya calculado con todos los movimientos a hoy. ──
+// ── Saldo inicial (admin) — número de arranque; los movimientos validados
+// se suman/restan encima. Sin cierre de mes ni fecha de corte. ──
 const saldoInicialDialogVisible = ref(false);
 const saldoInicialForm = ref(0);
 const guardandoSaldoInicial = ref(false);
-const modoCierre = ref(false);
 
 function abrirSaldoInicialDialog() {
-  modoCierre.value = false;
-  saldoInicialForm.value = saldo.value.saldoInicial;
-  saldoInicialDialogVisible.value = true;
-}
-function abrirCerrarMes() {
-  modoCierre.value = true;
-  saldoInicialForm.value = saldo.value.saldo;
+  saldoInicialForm.value = saldo.value.saldoInicialBase;
   saldoInicialDialogVisible.value = true;
 }
 async function confirmarSaldoInicial() {
@@ -811,6 +830,23 @@ onMounted(cargar);
   color: var(--color-text);
   opacity: 0.7;
 }
+.saldo-desglose {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  opacity: 0.85;
+}
+.saldo-desglose-linea {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.saldo-desglose-linea b { font-weight: 700; }
+.saldo-desglose-linea small { opacity: 0.7; }
 .saldo-pendiente {
   font-size: 0.85rem;
   font-weight: 600;

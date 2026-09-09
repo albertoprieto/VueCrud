@@ -99,6 +99,32 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     return {"username": username, "user_id": user_id}
 
 
+def get_current_user_or_service(request: Request):
+    """Igual que get_current_user pero acepta la service key (X-Api-Key) para
+    llamadas server-to-server del bot, que no traen usuario logueado. En ese
+    caso devuelve un usuario sintetico ('bot')."""
+    if SERVICE_API_KEY and request.headers.get("X-Api-Key") == SERVICE_API_KEY:
+        return {"username": "bot", "user_id": 0}
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else None
+    if not token:
+        raise credentials_exception
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        user_id = payload.get("user_id")
+        if username is None or user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    return {"username": username, "user_id": user_id}
+
+
 def require_admin(current=Depends(get_current_user)):
     """Exige perfil Admin ademas de un token valido. Usar en endpoints que
     puedan otorgar privilegios (gestion de usuarios) o mover inventario
@@ -8475,7 +8501,7 @@ def crear_ingreso_banco(
     referencia_comprobante: str = Form(""),
     clave_rastreo: str = Form(""),
     comprobante: UploadFile = File(...),
-    current=Depends(get_current_user),
+    current=Depends(get_current_user_or_service),
     request: Request = None,
 ):
     """Comprobante-primero: se sube antes de saber a qué nota corresponde.
@@ -8622,7 +8648,7 @@ def eliminar_ingreso_banco(ingreso_id: int, forzar: bool = False):
 
 
 @app.post("/ingresos-banco/{ingreso_id}/asignar-nota")
-def asignar_ingreso_a_nota(ingreso_id: int, data: dict = Body(...), current=Depends(get_current_user)):
+def asignar_ingreso_a_nota(ingreso_id: int, data: dict = Body(...), current=Depends(get_current_user_or_service)):
     """Liga (total o parcialmente) un ingreso bancario a una nota y concilia.
     El status 'pagado' de la nota se decide solo, no hay checkbox manual:
 
@@ -8668,6 +8694,15 @@ def asignar_ingreso_a_nota(ingreso_id: int, data: dict = Body(...), current=Depe
             )
         if marcar_pagada:
             plain.execute("UPDATE notas_pago SET status='pagado' WHERE id=%s", (nota_id,))
+        # El dinero cayó en el banco del ingreso — reflejarlo como lugar de
+        # pago de la nota si no tenía uno.
+        plain.execute("SELECT banco FROM ingresos_banco WHERE id=%s", (ingreso_id,))
+        row_banco = plain.fetchone()
+        if row_banco and row_banco[0]:
+            plain.execute(
+                "UPDATE notas_pago SET lugar_pago=%s WHERE id=%s AND (lugar_pago IS NULL OR lugar_pago='')",
+                (row_banco[0], nota_id)
+            )
         db.commit()
     finally:
         plain.close(); cursor.close(); db.close()
@@ -8680,7 +8715,7 @@ def asignar_ingreso_a_nota(ingreso_id: int, data: dict = Body(...), current=Depe
 
 
 @app.post("/ingresos-banco/{ingreso_id}/asignar-factura")
-def asignar_ingreso_a_factura(ingreso_id: int, data: dict = Body(...), current=Depends(get_current_user)):
+def asignar_ingreso_a_factura(ingreso_id: int, data: dict = Body(...), current=Depends(get_current_user_or_service)):
     """Igual que asignar-nota pero contra una factura: saldo pendiente = total
     menos complementos PPD timbrados menos ingresos ya ligados. Si el monto
     cuadra (o los conceptos justifican la diferencia) marca facturas_pago.pagado=1."""
@@ -8713,6 +8748,13 @@ def asignar_ingreso_a_factura(ingreso_id: int, data: dict = Body(...), current=D
             )
         if marcar_pagada:
             plain.execute("UPDATE facturas_pago SET pagado=1 WHERE id=%s", (factura_id,))
+        plain.execute("SELECT banco FROM ingresos_banco WHERE id=%s", (ingreso_id,))
+        row_banco = plain.fetchone()
+        if row_banco and row_banco[0]:
+            plain.execute(
+                "UPDATE facturas_pago SET lugar_pago=%s WHERE id=%s AND (lugar_pago IS NULL OR lugar_pago='')",
+                (row_banco[0], factura_id)
+            )
         db.commit()
     finally:
         plain.close(); cursor.close(); db.close()

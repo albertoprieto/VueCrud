@@ -50,11 +50,30 @@ export function ventanaPermisoPendienteAbierta() {
   return hoyLocal().getDate() <= 25;
 }
 
+// Parsea 'YYYY-MM-DD' (o ISO) como fecha LOCAL a medianoche — new Date('2026-09-15')
+// es UTC y en México (UTC-6) se corre al día anterior.
+function fechaLocal(valor) {
+  const m = String(valor).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const d = new Date(valor);
+  if (isNaN(d)) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// 'YYYY-MM' de una fecha, sin correrla por timezone.
+function mesKeyLocal(valor) {
+  const m = String(valor).match(/^(\d{4})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}`;
+  const d = new Date(valor);
+  if (isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function permisoVigente(reporte) {
   if (!reporte?.permiso_pendiente_fecha) return false;
-  const fc = new Date(reporte.permiso_pendiente_fecha);
-  if (isNaN(fc)) return false;
-  fc.setHours(0, 0, 0, 0);
+  const fc = fechaLocal(reporte.permiso_pendiente_fecha);
+  if (!fc) return false;
   return fc >= hoyLocal();
 }
 
@@ -246,10 +265,8 @@ export function reportesDePersona(reportes, indice, campo, nombre) {
 export function mesesDisponibles(reportes) {
   const set = new Set();
   for (const r of reportes || []) {
-    if (!r.fecha) continue;
-    const d = new Date(r.fecha);
-    if (isNaN(d)) continue;
-    set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    const key = r.fecha && mesKeyLocal(r.fecha);
+    if (key) set.add(key);
   }
   const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   return [...set].sort().reverse().map(value => {
@@ -267,11 +284,5 @@ export function mesActual() {
 // mes: 'YYYY-MM' o null/undefined/'todos' para no filtrar.
 export function filtrarPorMes(reportes, mes) {
   if (!mes || mes === 'todos') return reportes || [];
-  return (reportes || []).filter(r => {
-    if (!r.fecha) return false;
-    const d = new Date(r.fecha);
-    if (isNaN(d)) return false;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    return key === mes;
-  });
+  return (reportes || []).filter(r => r.fecha && mesKeyLocal(r.fecha) === mes);
 }

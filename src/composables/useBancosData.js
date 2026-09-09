@@ -8,6 +8,15 @@ export const LUGARES_VALIDOS = [
   'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico',
 ];
 
+// Bancos que NO cobran comisión por recibir dinero (caja/efectivo). El resto
+// son cuentas bancarias reales y el banco retiene 1% de cada entrada.
+export const BANCOS_SIN_COMISION = new Set(['Efectivo oficina', 'Efectivo tecnico']);
+export const COMISION_ENTRADA = 0.01;
+
+// Tipos de fila que son "entrada de dinero" y por tanto sujetos al 1%. El
+// resto (Egreso, Retiro) mueve a valor pleno.
+const TIPOS_ENTRADA = new Set(['Nota', 'Factura', 'Ingreso', 'Pago nota', 'Ingreso banco']);
+
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 export function urlComprobante(path) {
@@ -45,11 +54,50 @@ export async function fetchBancosRaw() {
   return { notas, facturas, movimientos, retiros, pagosNota, ingresosBanco, saldosIncialesPorBanco };
 }
 
-// Unifica las 6 fuentes en una sola lista de filas, cada una con su campo
+// Unifica las fuentes en una sola lista de filas, cada una con su campo
 // "banco" — mismo shape que usaba la tabla combinada de Bancos.vue.
 export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, ingresosBanco }) {
   const out = [];
+
+  // Una nota/factura cuyo pago se registró de forma granular (uno o varios
+  // `pagos_nota`, o ligada a `ingresos_banco`) ya está representada por esas
+  // filas — cada una con su propio banco. Emitir además la nota/factura
+  // completa en su `lugar_pago` duplicaría el dinero. Las notas legacy
+  // (pagadas sin ningún registro granular) sí se emiten como fila `Nota`.
+  const notasConPagoGranular = new Set();
+  const facturasConIngreso = new Set();
+  for (const p of pagosNota || []) {
+    if (p.nota_id != null) notasConPagoGranular.add(p.nota_id);
+  }
+  for (const g of ingresosBanco || []) {
+    for (const l of (g.links || [])) {
+      if (l.nota_id != null) notasConPagoGranular.add(l.nota_id);
+      if (l.factura_id != null) facturasConIngreso.add(l.factura_id);
+    }
+  }
+
+  for (const n of notas || []) {
+    if (notasConPagoGranular.has(n.id)) continue;
+    // Sin pagar todavía → no toca ningún banco. Cancelada sí se emite: la
+    // regla del 1% necesita saber si fue aprobada y luego cancelada.
+    if (n.status !== 'pagado' && n.status !== 'cancelado') continue;
+    out.push({
+      key: `nota-${n.id}`, id: n.id, tipo: 'Nota',
+      fecha: n.fecha, banco: n.lugar_pago || null,
+      nombre: n.cliente || '', usuario: n.usuario || '',
+      imeis: (n.imeis || []).join(', '),
+      monto: Number(n.total) || 0,
+      comprobantes: parseComprobantes(n.comprobantes).map(urlComprobante),
+      estatus: n.status,
+      validado: !!n.validado,
+      estatusValidacion: estadoValidacion(n.validado),
+      orden_manual: n.orden_manual,
+      raw: n,
+    });
+  }
+
   for (const f of facturas || []) {
+    if (facturasConIngreso.has(f.id)) continue;  // representada por su fila `Ingreso banco`
     const comprobantes = parseComprobantes(f.comprobantes).map(urlComprobante);
     if (f.cfdi_pdf_path) comprobantes.push(urlComprobante(f.cfdi_pdf_path));
     out.push({
@@ -67,12 +115,14 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, i
     });
   }
   for (const m of movimientos || []) {
+    const esEgreso = m.tipo === 'Egreso';
     out.push({
-      key: `mov-${m.id}`, id: m.id, tipo: m.tipo === 'Egreso' ? 'Egreso' : 'Ingreso',
+      key: `mov-${m.id}`, id: m.id, tipo: esEgreso ? 'Egreso' : 'Ingreso',
       fecha: m.fecha, banco: m.banco || null,
       nombre: m.concepto || '', usuario: '',
       imeis: '',
-      monto: Number(m.monto) || 0,
+      // Egreso resta: se guarda con signo negativo (igual que Retiro).
+      monto: (Number(m.monto) || 0) * (esEgreso ? -1 : 1),
       comprobantes: m.comprobante_url ? [m.comprobante_url] : [],
       estatus: '',
       validado: !!m.validado,
@@ -136,43 +186,128 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, i
   return out;
 }
 
-// Saldo de un banco: saldo inicial + ingresos de notas/facturas/movimientos
-// no cancelados, menos retiros ya aprobados. Los retiros pendientes se
-// reportan aparte ("en revisión") sin restarlos todavía del saldo.
-//
-// "Cerrar mes" fija el saldo actual como saldo_inicial y guarda la fecha en
-// actualizado_fecha (mismo mecanismo que editar el saldo inicial a mano) —
-// esa fecha actúa como corte: los movimientos anteriores ya quedaron
-// "horneados" dentro del nuevo saldo_inicial y no se vuelven a sumar.
-// Los retiros pendientes SÍ se siguen mostrando aunque sean de antes del
-// corte — un retiro sin resolver sigue necesitando acción sin importar el mes.
-export function calcularSaldoBanco(filas, banco, saldosIncialesPorBanco = {}) {
-  const delBanco = filas.filter(f => f.banco === banco);
-  const info = saldosIncialesPorBanco[banco];
-  const saldoInicial = Number(info?.saldo_inicial) || 0;
-  const corte = info?.actualizado_fecha ? new Date(info.actualizado_fecha) : null;
+// Saldo de un banco:
+// Mes de una fecha como 'YYYY-MM'. Corta el string directo cuando puede —
+// new Date('2026-09-01') es UTC y en México (UTC-6) getMonth() la corre al
+// mes anterior.
+export function mesKey(fecha) {
+  if (!fecha) return null;
+  const m = String(fecha).match(/^(\d{4})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}`;
+  const d = new Date(fecha);
+  if (isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
-  let saldo = saldoInicial;
-  let pendiente = 0;
+// Saldo de un banco. Sin `mes` → acumulado de toda la historia. Con `mes`
+// ('YYYY-MM') → vista mensual: el saldo inicial del mes es el saldo con el
+// que se cerró el mes anterior (base + arrastre de meses previos), y las
+// entradas/egresos/comisión/sin-validar son solo de ese mes. Así el saldo
+// final de un mes = saldo inicial del siguiente, sin botón ni corte guardado.
+//
+//   saldo = saldo_inicial_del_mes
+//         + Σ entradas netas    (aprobadas del mes)   [importe − 1% si el banco cobra comisión]
+//         − Σ egresos           (aprobados del mes)
+//         − Σ retiros           (aprobados del mes)
+//
+// Solo cuentan movimientos con validación `aprobado` (Retiro: `estatus`).
+// Pendiente/rechazado no suman — se reportan en `sinValidar`. Los retiros
+// pendientes se muestran ("en revisión") sin restarlos aún.
+export function calcularSaldoBanco(filas, banco, saldosIncialesPorBanco = {}, mes = null) {
+  const delBanco = filas.filter(f => f.banco === banco);
+  const saldoInicialBase = Number(saldosIncialesPorBanco[banco]?.saldo_inicial) || 0;
+  const cobraComision = !BANCOS_SIN_COMISION.has(banco);
+
+  const esCancelado = (f) =>
+    (f.tipo === 'Nota' && f.raw?.status === 'cancelado') ||
+    (f.tipo === 'Factura' && f.raw?.status === 'Cancelado');
+
+  // Efecto neto de un movimiento validado sobre el saldo (con signo, ya con
+  // el 1% descontado). Cancelado aprobado: solo la pérdida de comisión.
+  const efectoValidado = (f) => {
+    if (f.tipo === 'Retiro') return f.estatus === 'aprobado' ? f.monto : 0; // f.monto negativo
+    const esEntrada = TIPOS_ENTRADA.has(f.tipo);
+    const com = (esEntrada && cobraComision) ? Math.abs(f.monto) * COMISION_ENTRADA : 0;
+    if (esCancelado(f)) return f.estatusValidacion === 'aprobado' ? -com : 0;
+    if (f.estatusValidacion !== 'aprobado') return 0;
+    if (esEntrada) return Math.abs(f.monto) - com;
+    if (f.tipo === 'Egreso') return -Math.abs(f.monto);
+    return 0;
+  };
+
+  // Arrastre: efecto de todo lo validado en meses ANTERIORES al pedido.
+  let arrastre = 0;
+  if (mes) {
+    for (const f of delBanco) {
+      const k = mesKey(f.fecha);
+      if (k && k < mes) arrastre += efectoValidado(f);
+    }
+  }
+  const saldoInicial = saldoInicialBase + arrastre;
+
+  let entradasBrutas = 0;
+  let comision = 0;
+  let egresos = 0;
+  let retiros = 0;
+  let pendiente = 0;        // magnitud de retiros pendientes de aprobar
   let pendientesCount = 0;
+  let sinValidar = 0;       // magnitud de movimientos sin aprobar (no suman al saldo)
+  let sinValidarCount = 0;
   let ultimaFecha = null;
+
+  const enElMes = (f) => !mes || mesKey(f.fecha) === mes || !f.fecha;
+  const marcarFecha = (f) => {
+    if (f.fecha && (!ultimaFecha || new Date(f.fecha) > new Date(ultimaFecha))) ultimaFecha = f.fecha;
+  };
+
   for (const f of delBanco) {
-    if (f.tipo === 'Nota' && f.raw.status === 'cancelado') continue;
-    if (f.tipo === 'Factura' && f.raw.status === 'Cancelado') continue;
+    if (!enElMes(f)) continue;
+
+    // ── Retiros: su validación vive en `estatus`, no en `validado` ──
     if (f.tipo === 'Retiro') {
       if (f.estatus === 'pendiente') {
-        pendiente += -f.monto;
+        pendiente += -f.monto;          // f.monto es negativo
         pendientesCount++;
-      } else if (f.estatus === 'aprobado' && !(corte && f.fecha && new Date(f.fecha) <= corte)) {
-        saldo += f.monto;
-        if (f.fecha && (!ultimaFecha || new Date(f.fecha) > new Date(ultimaFecha))) ultimaFecha = f.fecha;
+      } else if (f.estatus === 'aprobado') {
+        retiros += -f.monto;
+        marcarFecha(f);
       }
-      // rechazado: no cuenta para nada
       continue;
     }
-    if (corte && f.fecha && new Date(f.fecha) <= corte) continue;
-    saldo += f.monto;
-    if (f.fecha && (!ultimaFecha || new Date(f.fecha) > new Date(ultimaFecha))) ultimaFecha = f.fecha;
+
+    const esEntrada = TIPOS_ENTRADA.has(f.tipo);
+    const comisionFila = (esEntrada && cobraComision) ? Math.abs(f.monto) * COMISION_ENTRADA : 0;
+    const fueAprobada = f.estatusValidacion === 'aprobado';
+
+    if (esCancelado(f)) {
+      if (comisionFila && fueAprobada) comision += comisionFila;
+      continue;
+    }
+
+    if (!fueAprobada) {
+      sinValidar += Math.abs(f.monto);
+      sinValidarCount++;
+      continue;
+    }
+
+    if (esEntrada) {
+      entradasBrutas += Math.abs(f.monto);
+      comision += comisionFila;
+    } else if (f.tipo === 'Egreso') {
+      egresos += Math.abs(f.monto);
+    }
+    marcarFecha(f);
   }
-  return { saldo, saldoInicial, corte, pendiente, pendientesCount, ultimaFecha, totalMovimientos: delBanco.length };
+
+  const entradasNetas = entradasBrutas - comision;
+  const saldo = saldoInicial + entradasNetas - egresos - retiros;
+
+  return {
+    saldo, saldoInicial, saldoInicialBase, arrastre,
+    entradasBrutas, comision, entradasNetas, egresos, retiros,
+    pendiente, pendientesCount,
+    sinValidar, sinValidarCount,
+    ultimaFecha,
+    totalMovimientos: mes ? delBanco.filter(enElMes).length : delBanco.length,
+  };
 }

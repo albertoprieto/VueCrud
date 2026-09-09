@@ -10,6 +10,7 @@
       <div class="bancos-total-card">
         <span class="bancos-total-label">Saldo total (todos los bancos)</span>
         <span class="bancos-total-valor">{{ formatTotal(saldoGlobal) }}</span>
+        <Dropdown v-model="filtroMes" :options="opcionesFiltroMes" optionLabel="label" optionValue="value" placeholder="Mes" style="margin-top:0.75rem;min-width:180px;" />
         <Button label="Agregar ingreso" icon="pi pi-file-import" class="p-button-sm p-button-success" style="margin-top:0.75rem;" @click="abrirNuevoIngreso" />
       </div>
 
@@ -25,6 +26,13 @@
             <span class="banco-card-nombre">{{ banco.nombre }}</span>
           </div>
           <span class="banco-card-saldo" :class="{ negativo: banco.saldo < 0 }">{{ formatTotal(banco.saldo) }}</span>
+          <span class="banco-card-desglose">
+            Inicial {{ formatTotal(banco.saldoInicial) }} · Neto {{ formatConSigno(banco.entradasNetas - banco.egresos - banco.retiros) }}
+          </span>
+          <span v-if="banco.comision" class="banco-card-desglose">Comisión 1%: -{{ formatTotal(banco.comision) }}</span>
+          <span v-if="banco.sinValidarCount" class="banco-card-pendiente">
+            {{ banco.sinValidarCount }} sin validar ({{ formatTotal(banco.sinValidar) }}) — no suman
+          </span>
           <span v-if="banco.pendientesCount" class="banco-card-pendiente">
             {{ banco.pendientesCount }} retiro{{ banco.pendientesCount === 1 ? '' : 's' }} por aprobar (-{{ formatTotal(banco.pendiente) }})
           </span>
@@ -96,7 +104,7 @@ import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Calendar from 'primevue/calendar';
-import { LUGARES_VALIDOS, fetchBancosRaw, buildFilas, calcularSaldoBanco } from '@/composables/useBancosData';
+import { LUGARES_VALIDOS, fetchBancosRaw, buildFilas, calcularSaldoBanco, mesKey } from '@/composables/useBancosData';
 import { crearIngresoBanco } from '@/services/ingresosBancoService';
 
 const toast = useToast();
@@ -109,16 +117,36 @@ const formatoMoneda = new Intl.NumberFormat('es-MX', {
   style: 'currency', currency: 'MXN', minimumFractionDigits: 2, maximumFractionDigits: 2,
 });
 function formatTotal(value) { return formatoMoneda.format(Number(value) || 0); }
+function formatConSigno(value) {
+  const n = Number(value) || 0;
+  return (n >= 0 ? '+' : '') + formatoMoneda.format(n);
+}
 function formatFecha(f) {
   if (!f) return '';
   const [y, m, d] = String(f).slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
 }
 
-const tarjetas = computed(() => LUGARES_VALIDOS.map(nombre => ({
-  nombre,
-  ...calcularSaldoBanco(filas.value, nombre, saldosIncialesPorBanco.value),
-})));
+const nombresMes = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const filtroMes = ref(mesKey(new Date()));
+const opcionesFiltroMes = computed(() => {
+  const keys = [...new Set([mesKey(new Date()), ...filas.value.map(f => mesKey(f.fecha))].filter(Boolean))].sort().reverse();
+  return [
+    { label: 'Todos los meses', value: 'todos' },
+    ...keys.map(k => {
+      const [y, m] = k.split('-');
+      return { label: `${nombresMes[Number(m) - 1]} ${y}`, value: k };
+    }),
+  ];
+});
+
+const tarjetas = computed(() => {
+  const mes = filtroMes.value === 'todos' ? null : filtroMes.value;
+  return LUGARES_VALIDOS.map(nombre => ({
+    nombre,
+    ...calcularSaldoBanco(filas.value, nombre, saldosIncialesPorBanco.value, mes),
+  }));
+});
 
 const saldoGlobal = computed(() => tarjetas.value.reduce((acc, b) => acc + b.saldo, 0));
 
@@ -271,6 +299,11 @@ async function confirmarIngreso() {
 }
 .banco-card-saldo.negativo {
   color: var(--color-error);
+}
+.banco-card-desglose {
+  font-size: 0.76rem;
+  color: var(--color-text);
+  opacity: 0.7;
 }
 .banco-card-pendiente {
   font-size: 0.8rem;
