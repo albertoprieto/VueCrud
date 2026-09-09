@@ -5789,6 +5789,39 @@ def get_notas_pago():
     db.close()
     return rows
 
+@app.get("/pagos-asignaciones")
+def get_pagos_asignaciones():
+    """Mapa liviano reporte_id -> nota/factura para ConsultarReportes.vue.
+    /notas-pago y /facturas-pago corren ~4 queries por fila (imeis, instalador,
+    ingresos ligados, pagos) — con cientos de notas eso son miles de round-trips
+    en el mount. Esta vista solo necesita id, reporte_ids y el estatus de pago."""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, reporte_ids, status FROM notas_pago ORDER BY id DESC")
+    notas = cursor.fetchall()
+    cursor.execute("SELECT id, reporte_ids, pagado FROM facturas_pago ORDER BY id DESC")
+    facturas = cursor.fetchall()
+    cursor.close()
+    db.close()
+
+    def parse_ids(v):
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            try:
+                p = json.loads(v)
+                return p if isinstance(p, list) else []
+            except Exception:
+                return []
+        return []
+
+    for n in notas:
+        n["reporte_ids"] = parse_ids(n.get("reporte_ids"))
+    for f in facturas:
+        f["reporte_ids"] = parse_ids(f.get("reporte_ids"))
+        f["pagado"] = bool(f.get("pagado"))
+    return {"notas": notas, "facturas": facturas}
+
 @app.get("/notas-pago/{nota_id}")
 def get_nota_pago(nota_id: int):
     db = get_db_connection()

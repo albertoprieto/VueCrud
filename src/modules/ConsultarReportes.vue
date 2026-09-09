@@ -64,8 +64,9 @@
       responsiveLayout="scroll"
       :loading="loading"
       :paginator="true"
-      :rows="100"
+      :rows="50"
       :rowsPerPageOptions="[50, 100, 200, 500]"
+      paginatorPosition="top"
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
       currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} reportes"
       dataKey="id"
@@ -474,7 +475,7 @@ import { useLoginStore } from '@/stores/loginStore';
 import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
 import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
-import { crearNota, crearFactura, getNotas, getFacturas, actualizarCamposNota } from '@/services/pagosService';
+import { crearNota, crearFactura, getPagosAsignaciones, actualizarCamposNota } from '@/services/pagosService';
 import { generarNotaServicioPDF } from '@/services/NotaServicioPdfService.js';
 import { getIngresosBanco, asignarIngresoANota, asignarIngresoAFactura } from '@/services/ingresosBancoService';
 import * as XLSX from 'xlsx';
@@ -593,9 +594,9 @@ function toggleSeleccion(row, checked) {
 
 async function cargarNotasYFacturas() {
   try {
-    const [n, f] = await Promise.all([getNotas(), getFacturas()]);
-    notasCargadas.value = n;
-    facturasCargadas.value = f;
+    const { notas, facturas } = await getPagosAsignaciones();
+    notasCargadas.value = notas;
+    facturasCargadas.value = facturas;
   } catch {
     notasCargadas.value = [];
     facturasCargadas.value = [];
@@ -1071,7 +1072,7 @@ async function consultarUnaFila(reporte) {
 async function exportarSinNota() {
   exportandoSinNota.value = true;
   try {
-    const notas = await getNotas();
+    const { notas } = await getPagosAsignaciones();
     const reportesConNota = new Set();
     for (const nota of notas) {
       for (const id of (nota.reporte_ids || [])) reportesConNota.add(id);

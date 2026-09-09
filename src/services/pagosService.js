@@ -8,6 +8,12 @@ export async function getNotas() {
   return res.data;
 }
 
+// Mapa liviano reporte_id -> nota/factura (sin el N+1 de getNotas/getFacturas)
+export async function getPagosAsignaciones() {
+  const res = await axios.get(`${API_URL}/pagos-asignaciones`);
+  return res.data;
+}
+
 export async function getNotaById(id) {
   const res = await axios.get(`${API_URL}/notas-pago/${id}`);
   return res.data;
