@@ -8,7 +8,7 @@
       </div>
 
       <div class="wa-filter-row">
-        <button
+<!--         <button
           v-for="cat in [{ value: '', short: 'Todos', color: null }, ...CATEGORIAS]"
           :key="'cat-' + (cat.value || 'todos')"
           type="button"
@@ -20,7 +20,7 @@
         >
           <span v-if="cat.color" class="wa-filter-dot"></span>{{ cat.short }}
           <span class="wa-filter-count">{{ cat.value ? contarPorCategoria(cat.value) : casos.length }}</span>
-        </button>
+        </button> -->
       </div>
       <div class="wa-filter-row wa-filter-row-estado">
         <button
