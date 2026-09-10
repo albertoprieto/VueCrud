@@ -11,7 +11,7 @@ export async function getIngresosBanco() {
 }
 
 export async function crearIngresoBanco({
-  banco, monto, imeis, fecha_transaccion, usuario,
+  banco, monto, imeis, fecha_transaccion, fecha_transaccion_real, usuario,
   cuenta_origen, referencia_comprobante, clave_rastreo, comprobante,
 }) {
   const fd = new FormData();
@@ -19,6 +19,7 @@ export async function crearIngresoBanco({
   fd.append('monto', monto);
   fd.append('imeis', imeis);
   fd.append('fecha_transaccion', fecha_transaccion);
+  if (fecha_transaccion_real) fd.append('fecha_transaccion_real', fecha_transaccion_real);
   if (usuario) fd.append('usuario', usuario);
   if (cuenta_origen) fd.append('cuenta_origen', cuenta_origen);
   if (referencia_comprobante) fd.append('referencia_comprobante', referencia_comprobante);

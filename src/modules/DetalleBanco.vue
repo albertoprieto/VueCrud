@@ -52,7 +52,7 @@
           <Column field="tipo" header="Tipo" style="width:100px">
             <template #body="{ data }"><span :class="'badge badge-' + badgeClaseTipo(data.tipo)">{{ data.tipo }}</span></template>
           </Column>
-          <Column field="fecha" header="Fecha">
+          <Column field="fecha" header="Fecha de whatsapp">
             <template #body="{ data }">
               <Calendar v-if="editando === data.key" v-model="edicion.fecha" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="edit-input" />
               <span v-else>{{ formatFecha(data.fecha) }}</span>
@@ -60,15 +60,28 @@
           </Column>
           <Column field="nombre" header="Nombre">
             <template #body="{ data }">
-              <InputText v-if="editando === data.key" v-model="edicion.nombre" class="edit-input" />
+              <InputText v-if="editando === data.key && data.tipo !== 'Ingreso banco'" v-model="edicion.nombre" class="edit-input" />
               <span v-else>{{ data.nombre || '—' }}</span>
             </template>
           </Column>
           <Column field="usuario" header="Usuario">
-            <template #body="{ data }">{{ data.usuario || '—' }}</template>
+            <template #body="{ data }">
+              <InputText v-if="editando === data.key && ['Ingreso banco', 'Ingreso', 'Egreso', 'Retiro'].includes(data.tipo)" v-model="edicion.usuario" class="edit-input" />
+              <span v-else>{{ data.usuario || '—' }}</span>
+            </template>
           </Column>
           <Column field="imeis" header="IMEIs">
-            <template #body="{ data }">{{ data.imeis || '—' }}</template>
+            <template #body="{ data }">
+              <InputText v-if="editando === data.key && data.tipo === 'Ingreso banco'" v-model="edicion.imeis" class="edit-input" />
+              <span v-else>{{ data.imeis || '—' }}</span>
+            </template>
+          </Column>
+          <Column field="fecha_real" header="Fecha de la transacción">
+            <template #body="{ data }">
+              <span v-if="data.tipo !== 'Ingreso banco'" class="celda-vacia">No aplica</span>
+              <Calendar v-else-if="editando === data.key" v-model="edicion.fecha_real" dateFormat="dd/mm/yy" showIcon iconDisplay="input" showButtonBar class="edit-input" />
+              <span v-else>{{ data.fecha_real ? formatFecha(data.fecha_real) : '—' }}</span>
+            </template>
           </Column>
           <Column field="monto" header="Monto">
             <template #body="{ data }">
@@ -130,11 +143,6 @@
                 <template v-else>
                   <Button v-if="esEditable(data)" icon="pi pi-pencil" class="p-button-sm p-button-text" @click="iniciarEdicion(data)" />
                   <Button
-                    v-if="data.tipo === 'Ingreso banco'"
-                    icon="pi pi-pencil" class="p-button-sm p-button-text" title="Editar ingreso"
-                    @click="abrirEditarIngreso(data.raw)"
-                  />
-                  <Button
                     v-if="data.tipo === 'Retiro'"
                     icon="pi pi-trash" class="p-button-sm p-button-text p-button-danger"
                     :loading="procesandoId === data.id" @click="eliminarRetiroFila(data)"
@@ -190,6 +198,10 @@
         <InputNumber v-model="nuevoMovimiento.monto" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
       </div>
       <div class="form-group">
+        <label>Usuario (opcional)</label>
+        <InputText v-model="nuevoMovimiento.usuario" class="w-full" />
+      </div>
+      <div class="form-group">
         <label>Referencia (opcional)</label>
         <InputText v-model="nuevoMovimiento.referencia" class="w-full" />
       </div>
@@ -203,45 +215,6 @@
       </div>
     </Dialog>
 
-    <!-- Dialog: editar ingreso bancario (crearlo se hace desde Bancos.vue,
-         un banco antes, con Dropdown para elegir el banco de destino) -->
-    <Dialog v-model:visible="ingresoDialogVisible" header="Editar ingreso" :modal="true" :style="{ width: '460px', maxWidth: '95vw' }" :draggable="false">
-      <div class="form-group">
-        <label>Monto*</label>
-        <InputNumber v-model="ingresoForm.monto" mode="currency" currency="MXN" locale="es-MX" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>IMEI(s)* — separados por coma</label>
-        <InputText v-model="ingresoForm.imeis" class="w-full" placeholder="Ej: 359123456789012, 359123456789013" />
-      </div>
-      <div class="form-group">
-        <label>Fecha de la transacción*</label>
-        <Calendar v-model="ingresoFechaDate" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Usuario (opcional)</label>
-        <InputText v-model="ingresoForm.usuario" class="w-full" />
-      </div>
-      <p style="margin:0.25rem 0 0.5rem;font-size:0.8rem;opacity:0.75;">Al menos uno de estos tres es obligatorio:</p>
-      <div class="form-group">
-        <label>Cuenta origen (últimos dígitos)</label>
-        <InputText v-model="ingresoForm.cuenta_origen" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Referencia de comprobante</label>
-        <InputText v-model="ingresoForm.referencia_comprobante" class="w-full" />
-      </div>
-      <div class="form-group">
-        <label>Clave de rastreo (últimos dígitos)</label>
-        <InputText v-model="ingresoForm.clave_rastreo" class="w-full" />
-      </div>
-      <p style="font-size:0.78rem;opacity:0.65;">El comprobante no se reemplaza aquí — elimina el ingreso y crea uno nuevo si hace falta.</p>
-      <div class="modal-actions">
-        <Button label="Guardar" icon="pi pi-check" :loading="guardandoIngreso" @click="confirmarIngreso" />
-        <Button label="Cancelar" class="p-button-secondary" @click="ingresoDialogVisible = false" />
-      </div>
-    </Dialog>
-
     <!-- Dialog: registrar retiro -->
     <Dialog v-model:visible="retiroDialogVisible" header="Registrar retiro" :modal="true" :style="{ width: '450px', maxWidth: '95vw' }" :draggable="false">
       <div class="retiro-form">
@@ -252,6 +225,10 @@
         <div class="retiro-field">
           <label>Motivo (opcional)</label>
           <InputText v-model="retiroForm.motivo" placeholder="Ej: Pago a proveedor" class="w-full" />
+        </div>
+        <div class="retiro-field">
+          <label>Usuario (opcional)</label>
+          <InputText v-model="retiroForm.usuario" class="w-full" />
         </div>
         <div class="retiro-field">
           <label>Fecha</label>
@@ -467,12 +444,12 @@ async function onRowReorder(event) {
 
 // ── Edición inline (nombre, monto) ──
 const editando = ref(null);
-const edicion = ref({ nombre: '', monto: 0, fecha: null });
+const edicion = ref({ nombre: '', monto: 0, fecha: null, usuario: '', imeis: '', fecha_real: null });
 const guardando = ref(false);
 
 function esEditable(fila) {
   if (fila.tipo === 'Retiro') return fila.estatus === 'pendiente';
-  return fila.tipo === 'Nota' || fila.tipo === 'Factura' || fila.tipo === 'Ingreso' || fila.tipo === 'Egreso';
+  return ['Nota', 'Factura', 'Ingreso', 'Egreso', 'Ingreso banco'].includes(fila.tipo);
 }
 function iniciarEdicion(fila) {
   editando.value = fila.key;
@@ -481,7 +458,10 @@ function iniciarEdicion(fila) {
   edicion.value = {
     nombre: fila.nombre,
     monto: fila.tipo === 'Retiro' ? -fila.monto : fila.monto,
-    fecha: fila.fecha ? new Date(fila.fecha) : new Date(),
+    fecha: fila.fecha ? fechaLocal(fila.fecha) : new Date(),
+    usuario: fila.usuario || '',
+    imeis: fila.imeis || '',
+    fecha_real: fila.fecha_real ? fechaLocal(fila.fecha_real) : null,
   };
 }
 
@@ -494,9 +474,17 @@ async function guardarEdicion(fila) {
     } else if (fila.tipo === 'Factura') {
       await actualizarCamposFactura(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto, fecha });
     } else if (fila.tipo === 'Ingreso' || fila.tipo === 'Egreso') {
-      await actualizarMovimientoDinero(fila.id, { banco: nombre.value, concepto: edicion.value.nombre, monto: Number(edicion.value.monto) || 0, fecha });
+      await actualizarMovimientoDinero(fila.id, { banco: nombre.value, concepto: edicion.value.nombre, monto: Number(edicion.value.monto) || 0, usuario: edicion.value.usuario || null, fecha });
     } else if (fila.tipo === 'Retiro') {
-      await editarRetiro(fila.id, { monto: Number(edicion.value.monto) || 0, motivo: edicion.value.nombre, fecha });
+      await editarRetiro(fila.id, { monto: Number(edicion.value.monto) || 0, motivo: edicion.value.nombre, usuario: edicion.value.usuario || null, fecha });
+    } else if (fila.tipo === 'Ingreso banco') {
+      await editarIngresoBanco(fila.id, {
+        monto: Number(edicion.value.monto) || 0,
+        imeis: String(edicion.value.imeis || '').split(',').map(s => s.trim()).filter(Boolean),
+        usuario: edicion.value.usuario || null,
+        fecha_transaccion: fecha,
+        fecha_transaccion_real: edicion.value.fecha_real ? fechaISO(edicion.value.fecha_real) : null,
+      });
     }
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Cambios guardados.', life: 2500 });
     editando.value = null;
@@ -574,13 +562,13 @@ async function cambiarEstadoValidacion(fila, nuevoEstado) {
 
 // ── Nuevo movimiento manual (banco fijo = este) ──
 const movimientoDialogVisible = ref(false);
-const nuevoMovimiento = ref({ tipo: 'Ingreso', concepto: '', monto: 0, referencia: '' });
+const nuevoMovimiento = ref({ tipo: 'Ingreso', concepto: '', monto: 0, referencia: '', usuario: '' });
 const nuevoMovimientoFecha = ref(new Date());
 const nuevoMovimientoArchivo = ref(null);
 const guardandoMovimiento = ref(false);
 
 function abrirNuevoMovimiento() {
-  nuevoMovimiento.value = { tipo: 'Ingreso', concepto: '', monto: 0, referencia: '' };
+  nuevoMovimiento.value = { tipo: 'Ingreso', concepto: '', monto: 0, referencia: '', usuario: '' };
   nuevoMovimientoFecha.value = new Date();
   nuevoMovimientoArchivo.value = null;
   movimientoDialogVisible.value = true;
@@ -602,6 +590,7 @@ async function confirmarNuevoMovimiento() {
       concepto: nuevoMovimiento.value.concepto,
       monto: Number(nuevoMovimiento.value.monto),
       referencia: nuevoMovimiento.value.referencia,
+      usuario: nuevoMovimiento.value.usuario || undefined,
       banco: nombre.value,
       archivo: nuevoMovimientoArchivo.value,
     });
@@ -627,30 +616,12 @@ async function eliminarComprobanteMovimiento(fila) {
   eliminandoComprobanteKey.value = null;
 }
 
-// ── Editar/eliminar ingreso bancario (crearlo vive un paso antes, en
-// Bancos.vue, donde sí se elige el banco de destino — aquí ya estás dentro
-// de un banco fijo). Ver ingresosBancoService.js y el bloque "Ingresos
-// bancarios" en main.py para el flujo completo de conciliación con nota. ──
-const ingresoDialogVisible = ref(false);
-const ingresoEditandoId = ref(null);
-const ingresoForm = ref({ monto: null, imeis: '', usuario: '', cuenta_origen: '', referencia_comprobante: '', clave_rastreo: '' });
-const ingresoFechaDate = ref(new Date());
-const guardandoIngreso = ref(false);
+// ── Eliminar ingreso bancario (editar es inline en la tabla, ver
+// guardarEdicion; crearlo vive un paso antes en Bancos.vue, donde se elige
+// el banco de destino). Ver ingresosBancoService.js y el bloque "Ingresos
+// bancarios" en main.py para el flujo de conciliación con nota. ──
 const eliminandoIngresoId = ref(null);
 
-function abrirEditarIngreso(raw) {
-  ingresoEditandoId.value = raw.id;
-  ingresoForm.value = {
-    monto: Number(raw.monto) || 0,
-    imeis: (raw.imeis || []).join(', '),
-    usuario: raw.usuario || '',
-    cuenta_origen: raw.cuenta_origen || '',
-    referencia_comprobante: raw.referencia_comprobante || '',
-    clave_rastreo: raw.clave_rastreo || '',
-  };
-  ingresoFechaDate.value = raw.fecha_transaccion ? fechaLocal(raw.fecha_transaccion) : new Date();
-  ingresoDialogVisible.value = true;
-}
 // fecha_transaccion es DATE puro ("2026-09-05", sin hora) — new Date() de un
 // string así lo interpreta como UTC y lo corre un día al mostrarlo en horario
 // local negativo (México). Se arma en local con año/mes/día para evitar el corrimiento.
@@ -661,32 +632,6 @@ function fechaLocal(f) {
 function fechaISO(d) {
   const dt = d instanceof Date ? d : new Date(d);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-}
-async function confirmarIngreso() {
-  const f = ingresoForm.value;
-  if (!f.monto || !f.imeis.trim()) {
-    toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Monto e IMEI(s) son obligatorios.', life: 3000 });
-    return;
-  }
-  if (!(f.cuenta_origen.trim() || f.referencia_comprobante.trim() || f.clave_rastreo.trim())) {
-    toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Captura al menos: cuenta origen, referencia o clave de rastreo.', life: 3500 });
-    return;
-  }
-  guardandoIngreso.value = true;
-  try {
-    await editarIngresoBanco(ingresoEditandoId.value, {
-      monto: Number(f.monto), imeis: f.imeis.split(',').map(s => s.trim()).filter(Boolean),
-      fecha_transaccion: fechaISO(ingresoFechaDate.value), usuario: f.usuario || null,
-      cuenta_origen: f.cuenta_origen || null, referencia_comprobante: f.referencia_comprobante || null,
-      clave_rastreo: f.clave_rastreo || null,
-    });
-    toast.add({ severity: 'success', summary: 'Guardado', detail: 'Ingreso actualizado.', life: 2500 });
-    ingresoDialogVisible.value = false;
-    await cargar(false);
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo guardar el ingreso.', life: 4000 });
-  }
-  guardandoIngreso.value = false;
 }
 // Si ya está ligado a nota(s), el backend rechaza el borrado a menos que se
 // mande forzar=true — confirmamos con el usuario mostrando cuáles notas se
@@ -718,13 +663,13 @@ async function eliminarIngresoFila(fila) {
 
 // ── Registrar retiro (banco fijo = este) ──
 const retiroDialogVisible = ref(false);
-const retiroForm = ref({ monto: null, motivo: '' });
+const retiroForm = ref({ monto: null, motivo: '', usuario: '' });
 const retiroFecha = ref(new Date());
 const retiroArchivo = ref(null);
 const guardandoRetiro = ref(false);
 
 function abrirRetiroDialog() {
-  retiroForm.value = { monto: null, motivo: '' };
+  retiroForm.value = { monto: null, motivo: '', usuario: '' };
   retiroFecha.value = new Date();
   retiroArchivo.value = null;
   retiroDialogVisible.value = true;
@@ -741,6 +686,7 @@ async function confirmarRetiro() {
       banco: nombre.value,
       monto: retiroForm.value.monto,
       motivo: retiroForm.value.motivo,
+      usuario: retiroForm.value.usuario,
       fecha: fechaISO(retiroFecha.value),
       archivo: retiroArchivo.value,
     });

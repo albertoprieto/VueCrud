@@ -195,6 +195,12 @@ def crear_tabla_retiros_banco():
             aprobado_fecha DATETIME NULL
         )
     """)
+    # usuario: persona a la que se le atribuye el retiro (distinto de
+    # creado_por, que es quien lo capturó en el sistema).
+    try:
+        cursor.execute("ALTER TABLE retiros_banco ADD COLUMN usuario VARCHAR(150) NULL")
+    except Exception:
+        pass
     db.commit()
     cursor.close()
     db.close()
@@ -271,6 +277,13 @@ def crear_tabla_ingresos_banco():
             creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # fecha_transaccion pasó a ser "fecha de whatsapp" (cuándo se avisó el
+    # pago); fecha_transaccion_real es la fecha real del movimiento en el
+    # banco, opcional.
+    try:
+        cursor.execute("ALTER TABLE ingresos_banco ADD COLUMN fecha_transaccion_real DATE NULL")
+    except Exception:
+        pass
     db.commit()
     cursor.close()
     db.close()
@@ -1429,6 +1442,7 @@ def add_movimiento_dinero(
     monto: float = Form(...),
     referencia: str = Form(""),
     banco: str = Form(None),
+    usuario: str = Form(None),
     archivo: UploadFile = File(None),
     request: Request = None,
 ):
@@ -1438,6 +1452,7 @@ def add_movimiento_dinero(
     for _col_sql in (
         "ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL",
         "ALTER TABLE movimientos_dinero ADD COLUMN comprobante_path VARCHAR(500) NULL",
+        "ALTER TABLE movimientos_dinero ADD COLUMN usuario VARCHAR(150) NULL",
     ):
         try:
             cursor.execute(_col_sql)
@@ -1462,8 +1477,8 @@ def add_movimiento_dinero(
         rel_path = dest_path.replace("\\", "/")
 
     cursor.execute(
-        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia, banco, comprobante_path) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-        (fecha, tipo, concepto, monto, referencia, banco, rel_path)
+        "INSERT INTO movimientos_dinero (fecha, tipo, concepto, monto, referencia, banco, usuario, comprobante_path) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+        (fecha, tipo, concepto, monto, referencia, banco, usuario or None, rel_path)
     )
     db.commit()
     new_id = cursor.lastrowid
@@ -1501,7 +1516,7 @@ def eliminar_comprobante_movimiento_dinero(movimiento_id: int):
 def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
     """Edición desde la tabla unificada de Comprobantes — mismos campos editables
     (banco, nombre/concepto, monto) que notas y facturas."""
-    campos_validos = {'fecha', 'tipo', 'concepto', 'monto', 'referencia', 'banco', 'validado'}
+    campos_validos = {'fecha', 'tipo', 'concepto', 'monto', 'referencia', 'banco', 'usuario', 'validado'}
     campos = []
     valores = []
     for k, v in data.items():
@@ -1515,6 +1530,7 @@ def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
     for _col_sql in (
         "ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL",
         "ALTER TABLE movimientos_dinero ADD COLUMN validado TINYINT(1) NOT NULL DEFAULT 0",
+        "ALTER TABLE movimientos_dinero ADD COLUMN usuario VARCHAR(150) NULL",
     ):
         try:
             cursor.execute(_col_sql)
@@ -8136,6 +8152,7 @@ def crear_retiro_banco(
     monto: float = Form(...),
     motivo: str = Form(None),
     fecha: str = Form(None),
+    usuario: str = Form(None),
     archivo: UploadFile = File(...),
     current=Depends(get_current_user),
     request: Request = None
@@ -8162,9 +8179,9 @@ def crear_retiro_banco(
     db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
-        """INSERT INTO retiros_banco (banco, monto, motivo, comprobante_path, estatus, creado_por, creado_fecha)
-           VALUES (%s, %s, %s, %s, 'pendiente', %s, %s)""",
-        (banco, monto, motivo or None, rel_path, current.get("username"), fecha or datetime.now())
+        """INSERT INTO retiros_banco (banco, monto, motivo, usuario, comprobante_path, estatus, creado_por, creado_fecha)
+           VALUES (%s, %s, %s, %s, %s, 'pendiente', %s, %s)""",
+        (banco, monto, motivo or None, usuario or None, rel_path, current.get("username"), fecha or datetime.now())
     )
     db.commit()
     new_id = cursor.lastrowid
@@ -8486,6 +8503,8 @@ def get_ingresos_banco(request: Request = None):
         i['comprobante_url'] = build_public_url(i.get('comprobante_path'), request)
         if i.get('fecha_transaccion') and hasattr(i['fecha_transaccion'], 'isoformat'):
             i['fecha_transaccion'] = i['fecha_transaccion'].isoformat()
+        if i.get('fecha_transaccion_real') and hasattr(i['fecha_transaccion_real'], 'isoformat'):
+            i['fecha_transaccion_real'] = i['fecha_transaccion_real'].isoformat()
         if i.get('creado_fecha') and hasattr(i['creado_fecha'], 'isoformat'):
             i['creado_fecha'] = i['creado_fecha'].isoformat()
         links = links_por_ingreso.get(i['id'], [])
@@ -8515,6 +8534,7 @@ def crear_ingreso_banco(
     monto: float = Form(...),
     imeis: str = Form(...),
     fecha_transaccion: str = Form(...),
+    fecha_transaccion_real: str = Form(""),
     usuario: str = Form(""),
     cuenta_origen: str = Form(""),
     referencia_comprobante: str = Form(""),
@@ -8557,10 +8577,11 @@ def crear_ingreso_banco(
     cursor = db.cursor()
     cursor.execute(
         """INSERT INTO ingresos_banco
-           (banco, monto, imeis, fecha_transaccion, usuario, cuenta_origen,
+           (banco, monto, imeis, fecha_transaccion, fecha_transaccion_real, usuario, cuenta_origen,
             referencia_comprobante, clave_rastreo, comprobante_path, creado_por)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        (banco, monto, json.dumps(lista_imeis), fecha_transaccion, usuario or None,
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (banco, monto, json.dumps(lista_imeis), fecha_transaccion,
+         fecha_transaccion_real or None, usuario or None,
          cuenta_origen or None, referencia_comprobante or None, clave_rastreo or None,
          rel_path, current.get("username"))
     )
@@ -8582,7 +8603,7 @@ def editar_ingreso_banco(ingreso_id: int, data: dict = Body(...)):
     aplicado a notas (rompería la conciliación de los links existentes) —
     el front debe desligar primero si necesita corregir el monto."""
     campos_validos = {
-        'banco', 'monto', 'imeis', 'fecha_transaccion', 'usuario',
+        'banco', 'monto', 'imeis', 'fecha_transaccion', 'fecha_transaccion_real', 'usuario',
         'cuenta_origen', 'referencia_comprobante', 'clave_rastreo', 'validado'
     }
     db = get_db_connection()
@@ -9032,6 +9053,8 @@ def editar_retiro_banco(retiro_id: int, data: dict = Body(...), current=Depends(
         campos.append("monto=%s"); valores.append(monto)
     if "motivo" in data:
         campos.append("motivo=%s"); valores.append(data["motivo"] or None)
+    if "usuario" in data:
+        campos.append("usuario=%s"); valores.append(data["usuario"] or None)
     if "fecha" in data:
         campos.append("creado_fecha=%s"); valores.append(data["fecha"] or None)
     if not campos:

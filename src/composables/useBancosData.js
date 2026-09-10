@@ -119,7 +119,7 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, i
     out.push({
       key: `mov-${m.id}`, id: m.id, tipo: esEgreso ? 'Egreso' : 'Ingreso',
       fecha: m.fecha, banco: m.banco || null,
-      nombre: m.concepto || '', usuario: '',
+      nombre: m.concepto || '', usuario: m.usuario || '',
       imeis: '',
       // Egreso resta: se guarda con signo negativo (igual que Retiro).
       monto: (Number(m.monto) || 0) * (esEgreso ? -1 : 1),
@@ -135,7 +135,7 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, i
     out.push({
       key: `retiro-${r.id}`, id: r.id, tipo: 'Retiro',
       fecha: r.creado_fecha, banco: r.banco || null,
-      nombre: r.motivo || 'Retiro de banco', usuario: '',
+      nombre: r.motivo || 'Retiro de banco', usuario: r.usuario || '',
       imeis: '',
       monto: -(Number(r.monto) || 0),
       comprobantes: r.comprobante_url ? [r.comprobante_url] : [],
@@ -170,7 +170,8 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, i
     const notasLigadas = [...new Set((g.links || []).map(l => l.nota_cliente).filter(Boolean))];
     out.push({
       key: `ingreso-${g.id}`, id: g.id, tipo: 'Ingreso banco',
-      fecha: g.fecha_transaccion, banco: g.banco || null,
+      fecha: g.fecha_transaccion, fecha_real: g.fecha_transaccion_real || null,
+      banco: g.banco || null,
       nombre: notasLigadas.length ? `Ligado: ${notasLigadas.join(', ')}` : 'Sin asignar',
       usuario: g.usuario || '',
       imeis: (g.imeis || []).join(', '),

@@ -63,8 +63,12 @@
         <InputText v-model="ingresoForm.imeis" class="w-full" placeholder="Ej: 359123456789012, 359123456789013" />
       </div>
       <div class="form-group">
-        <label>Fecha de la transacción*</label>
+        <label>Fecha de whatsapp*</label>
         <Calendar v-model="ingresoFechaDate" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="w-full" />
+      </div>
+      <div class="form-group">
+        <label>Fecha de la transacción (opcional)</label>
+        <Calendar v-model="ingresoFechaRealDate" dateFormat="dd/mm/yy" showIcon iconDisplay="input" showButtonBar class="w-full" />
       </div>
       <div class="form-group">
         <label>Usuario (opcional)</label>
@@ -173,12 +177,14 @@ onMounted(cargar);
 const ingresoDialogVisible = ref(false);
 const ingresoForm = ref({ banco: '', monto: null, imeis: '', usuario: '', cuenta_origen: '', referencia_comprobante: '', clave_rastreo: '' });
 const ingresoFechaDate = ref(new Date());
+const ingresoFechaRealDate = ref(null);
 const ingresoArchivo = ref(null);
 const guardandoIngreso = ref(false);
 
 function abrirNuevoIngreso() {
   ingresoForm.value = { banco: '', monto: null, imeis: '', usuario: '', cuenta_origen: '', referencia_comprobante: '', clave_rastreo: '' };
   ingresoFechaDate.value = new Date();
+  ingresoFechaRealDate.value = null;
   ingresoArchivo.value = null;
   ingresoDialogVisible.value = true;
 }
@@ -208,7 +214,9 @@ async function confirmarIngreso() {
   try {
     await crearIngresoBanco({
       banco: f.banco, monto: Number(f.monto), imeis: f.imeis,
-      fecha_transaccion: fechaISO(ingresoFechaDate.value), usuario: f.usuario,
+      fecha_transaccion: fechaISO(ingresoFechaDate.value),
+      fecha_transaccion_real: ingresoFechaRealDate.value ? fechaISO(ingresoFechaRealDate.value) : '',
+      usuario: f.usuario,
       cuenta_origen: f.cuenta_origen, referencia_comprobante: f.referencia_comprobante,
       clave_rastreo: f.clave_rastreo, comprobante: ingresoArchivo.value,
     });

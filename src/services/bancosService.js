@@ -7,12 +7,13 @@ export async function getRetiros(banco) {
   return res.data;
 }
 
-export async function crearRetiro({ banco, monto, motivo, fecha, archivo }) {
+export async function crearRetiro({ banco, monto, motivo, fecha, usuario, archivo }) {
   const fd = new FormData();
   fd.append('banco', banco);
   fd.append('monto', monto);
   if (motivo) fd.append('motivo', motivo);
   if (fecha) fd.append('fecha', fecha);
+  if (usuario) fd.append('usuario', usuario);
   fd.append('archivo', archivo);
   const res = await axios.post(`${API_URL}/retiros-banco`, fd, {
     headers: { 'Content-Type': 'multipart/form-data' }
@@ -40,8 +41,8 @@ export async function actualizarValidadoRetiro(id, validado) {
   return res.data;
 }
 
-export async function editarRetiro(id, { monto, motivo, fecha }) {
-  const res = await axios.put(`${API_URL}/retiros-banco/${id}`, { monto, motivo, fecha });
+export async function editarRetiro(id, { monto, motivo, fecha, usuario }) {
+  const res = await axios.put(`${API_URL}/retiros-banco/${id}`, { monto, motivo, fecha, usuario });
   return res.data;
 }
 
