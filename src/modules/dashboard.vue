@@ -121,12 +121,13 @@
         </a>
       </template>
     </Menubar>
+    <PresenciaBar />
     <router-view></router-view>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import Menubar from 'primevue/menubar';
 import TieredMenu from 'primevue/tieredmenu';
 import Sidebar from 'primevue/sidebar';
@@ -139,6 +140,7 @@ import { getCotizacionesPendientes } from '@/services/quotationService';
 import { getReportesNuevos } from '@/services/reportesService';
 import { getCasos } from '@/services/whatsappCasosService';
 import { registrarSesion } from '@/services/userService';
+import PresenciaBar from '@/components/PresenciaBar.vue';
 
 const emit = defineEmits(['logout']);
 
@@ -173,11 +175,22 @@ async function cargarCasosAbiertos() {
   }
 }
 
-// Registrar sesión al cargar el dashboard
-onMounted(() => {
-  if (user.value?.id) {
+// Heartbeat de presencia: latido cada 60s mientras la pestaña esté visible.
+// Persistente e independiente de la navegación (no depende de cambios de ruta).
+let heartbeat = null;
+function latido() {
+  if (document.visibilityState === 'visible' && user.value?.id) {
     registrarSesion(user.value.id);
   }
+}
+onMounted(() => {
+  latido();
+  heartbeat = setInterval(latido, 60000);
+  document.addEventListener('visibilitychange', latido);
+});
+onUnmounted(() => {
+  clearInterval(heartbeat);
+  document.removeEventListener('visibilitychange', latido);
 });
 
 onMounted(() => {

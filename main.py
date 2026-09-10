@@ -1748,17 +1748,34 @@ class Usuario(BaseModel):
     password: str
     perfil: str
 
+@app.on_event("startup")
+def migracion_usuarios_ultimo_ping():
+    """ultima_sesion = ultimo login real (solo /token). ultimo_ping = latido
+    de app abierta (heartbeat cada 60s desde el dashboard). 'Conectado' =
+    ultimo_ping dentro de los ultimos ~3 min."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN ultimo_ping DATETIME NULL")
+    except Exception:
+        pass
+    db.commit()
+    cursor.close()
+    db.close()
+
+
 @app.get("/usuarios")
 def get_usuarios():
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
-        SELECT 
+        SELECT
             ROW_NUMBER() OVER (ORDER BY id) AS consecutivo,
             id,
-            username, 
+            username,
             perfil,
-            ultima_sesion
+            ultima_sesion,
+            ultimo_ping
         FROM usuarios
     """)
     usuarios = cursor.fetchall()
@@ -1788,12 +1805,14 @@ class LoginRequest(BaseModel):
 
 @app.post("/usuarios/registrar-sesion")
 def registrar_sesion(data: dict = Body(...)):
+    # Heartbeat: marca al usuario como conectado ahora. NO toca ultima_sesion
+    # (eso es solo el login en /token).
     user_id = data.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id requerido")
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s", (user_id,))
+    cursor.execute("UPDATE usuarios SET ultimo_ping = NOW() WHERE id = %s", (user_id,))
     db.commit()
     cursor.close()
     db.close()
@@ -3769,8 +3788,8 @@ def get_usuario_actual(request: Request, token: str = Depends(oauth2_scheme)):
         db.close()
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    # Actualizar ultima_sesion cada vez que se consulta el usuario
-    cursor.execute("UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s", (user_id,))
+    # Heartbeat pasivo: marca actividad, no login (ultima_sesion es solo /token)
+    cursor.execute("UPDATE usuarios SET ultimo_ping = NOW() WHERE id = %s", (user_id,))
     db.commit()
     cursor.close()
     db.close()
