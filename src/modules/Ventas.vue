@@ -1,6 +1,6 @@
 <template>
   <div class="ventas-container">
-    <h2 class="ventas-title">Registrar Orden de Servicio</h2>
+    <h2 class="ventas-title page-title">Registrar Orden de Servicio</h2>
     <div class="ventas-card">
       <!-- Fila 1: Cliente, Cotización, Folio, Fecha -->
       <div class="ventas-form-header">

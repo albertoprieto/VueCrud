@@ -1,6 +1,6 @@
 <template>
   <div class="recientes-container">
-    <h2 class="recientes-title">Renovaciones Recientes</h2>
+    <h2 class="recientes-title page-title">Renovaciones Recientes</h2>
     
     <!-- Zona de carga de archivo con selector de formato integrado -->
     <div class="upload-section">
@@ -413,7 +413,7 @@
             :class="{ 'vincular-sugerencia-activa': vincularDialog.reporteEncontrado?._reporteId === s._reporteId }"
             @click="seleccionarReporte(s)"
           >
-            <i class="pi pi-file" style="color:#3b82f6;"></i>
+            <i class="pi pi-file" style="color:var(--color-primary);"></i>
             <strong>{{ s._folioReporte }}</strong>
             <span style="color:#94a3b8;font-size:0.78rem;margin-left:auto;">ID {{ s._reporteId }}</span>
           </div>
@@ -1751,7 +1751,7 @@ const exportarSinReporte = () => {
 
 .formato-activo {
   opacity: 1;
-  box-shadow: 0 0 0 2px var(--primary-color, #3b82f6);
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 .upload-section {
@@ -1798,8 +1798,8 @@ const exportarSinReporte = () => {
 .plataforma-tab.tab-activo {
   opacity: 1;
   background: var(--color-card);
-  color: var(--primary-color, #3b82f6);
-  border-bottom: 3px solid var(--primary-color, #3b82f6);
+  color: var(--color-primary);
+  border-bottom: 3px solid var(--color-primary);
   margin-bottom: -2px;
 }
 
@@ -1819,13 +1819,13 @@ const exportarSinReporte = () => {
 }
 
 .upload-box:hover {
-  border-color: var(--primary-color, #3b82f6);
+  border-color: var(--color-primary);
   background: rgba(59, 130, 246, 0.05);
 }
 
 .upload-icon {
   font-size: 2.5rem;
-  color: var(--primary-color, #3b82f6);
+  color: var(--color-primary);
   display: block;
   margin-bottom: 0.75rem;
   opacity: 0.8;
@@ -2171,7 +2171,7 @@ const exportarSinReporte = () => {
 
 .header-left .pi-calendar {
   font-size: 1.1rem;
-  color: var(--primary-color, #3b82f6);
+  color: var(--color-primary);
 }
 
 .header-label {

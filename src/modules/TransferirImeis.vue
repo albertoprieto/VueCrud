@@ -1,6 +1,6 @@
 <template>
   <div class="transferir-imeis-container">
-    <h2>Transferir IMEIs entre Ubicaciones</h2>
+    <h2 class="page-title">Transferir IMEIs entre Ubicaciones</h2>
     <div class="form-card">
       <div class="form-group">
         <label for="ubicacionOrigen">Ubicación origen <span class="required-tooltip">*</span></label>

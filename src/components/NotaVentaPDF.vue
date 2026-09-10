@@ -150,7 +150,7 @@ async function generarPDF() {
         },
         layout: {
           fillColor: function (rowIndex) {
-            return rowIndex === 0 ? '#ff4081' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+            return rowIndex === 0 ? '#3d5568' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
           }
         }
       },

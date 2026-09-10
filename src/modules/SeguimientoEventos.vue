@@ -1,6 +1,6 @@
 <template>
   <div class="seguimiento-eventos">
-    <h2 class="seguimiento-title">Seguimiento de Eventos</h2>
+    <h2 class="seguimiento-title page-title">Seguimiento de Eventos</h2>
 
     <!-- Filtros -->
     <div class="filters">

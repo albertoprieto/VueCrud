@@ -1,6 +1,6 @@
 <template>
   <div class="tecnicos-container">
-    <h2 class="tecnicos-title">Usuarios</h2>
+    <h2 class="tecnicos-title page-title">Usuarios</h2>
     <div class="tecnicos-actions">
       <Button label="Agregar Usuario" icon="pi pi-plus" @click="abrirModal" />
     </div>

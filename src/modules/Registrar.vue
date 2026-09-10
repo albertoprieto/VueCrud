@@ -1,6 +1,6 @@
 <template>
   <div class="registrar-container">
-    <h2 class="registrar-title">Registrar IMEI</h2>
+    <h2 class="registrar-title page-title">Registrar IMEI</h2>
     <div class="registrar-card">
       <div class="form-group">
         <label for="imei">Número de IMEI:</label>

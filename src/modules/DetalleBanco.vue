@@ -8,7 +8,7 @@
 
     <template v-else>
       <div class="saldo-card">
-        <span class="saldo-banco">{{ nombre }}</span>
+        <span class="saldo-banco page-title">{{ nombre }}</span>
         <span class="saldo-valor" :class="{ negativo: saldo.saldo < 0 }">{{ formatTotal(saldo.saldo) }}</span>
         <div class="saldo-desglose">
           <span class="saldo-desglose-linea">
@@ -47,8 +47,18 @@
         <DataTable
           :value="filasFiltradas" responsiveLayout="scroll" :paginator="filasFiltradas.length > 30" :rows="30" dataKey="key"
           :reorderableRows="!filtrosActivos" @row-reorder="onRowReorder"
+          :rowClass="rowClass"
         >
           <Column rowReorder headerStyle="width:3rem" :reorderableColumn="false" :title="filtrosActivos ? 'Quita los filtros para poder reordenar' : 'Arrastra para reordenar'" />
+          <Column headerStyle="width:2rem" bodyStyle="text-align:center" header="">
+            <template #body="{ data }">
+              <span
+                class="semaforo"
+                :class="'semaforo-' + data.estatusValidacion"
+                v-tooltip.top="textoSemaforo(data.estatusValidacion)"
+              />
+            </template>
+          </Column>
           <Column field="tipo" header="Tipo" style="width:100px">
             <template #body="{ data }"><span :class="'badge badge-' + badgeClaseTipo(data.tipo)">{{ data.tipo }}</span></template>
           </Column>
@@ -325,6 +335,18 @@ function badgeClaseTipo(tipo) {
   if (tipo === 'Nota' || tipo === 'Factura' || tipo === 'Ingreso' || tipo === 'Pago nota') return 'success';
   if (tipo === 'Egreso' || tipo === 'Retiro') return 'danger';
   return 'info';
+}
+// Semáforo por estado de validación: amarillo pendiente · verde validado ·
+// rojo rechazado. La validación es humana; el bot y el sistema solo dejan
+// registros en pendiente.
+function textoSemaforo(estatusValidacion) {
+  if (estatusValidacion === 'aprobado') return 'Validado';
+  if (estatusValidacion === 'rechazado') return 'Rechazado';
+  return 'Pendiente de validar';
+}
+// Tinte de la fila completa según validación (ver CSS .fila-*).
+function rowClass(data) {
+  return 'fila-' + (data.estatusValidacion || 'pendiente');
 }
 function badgeClaseEstatus(estatus) {
   if (estatus === 'aprobado' || estatus === 'asignado') return 'success';
@@ -791,6 +813,48 @@ onMounted(cargar);
   margin: 2rem auto;
   padding: 2rem 1.5rem;
 }
+.semaforo {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.semaforo-pendiente { background: var(--color-warning); box-shadow: 0 0 0 1px rgba(0,0,0,.12), 0 0 6px color-mix(in srgb, var(--color-warning) 45%, transparent); }
+.semaforo-aprobado { background: var(--color-success); box-shadow: 0 0 0 1px rgba(0,0,0,.12), 0 0 6px color-mix(in srgb, var(--color-success) 45%, transparent); }
+.semaforo-rechazado { background: var(--color-error); box-shadow: 0 0 0 1px rgba(0,0,0,.12), 0 0 6px color-mix(in srgb, var(--color-error) 45%, transparent); }
+
+/* Tinte de fila completa por estado de validación — sutil, funciona en tema
+   claro y oscuro (color-mix baja el color contra la superficie de la tabla,
+   la barra lateral marca sin ensuciar el texto). */
+:deep(.p-datatable-tbody > tr.fila-pendiente) {
+  background: color-mix(in srgb, var(--color-warning) 9%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--color-warning);
+}
+:deep(.p-datatable-tbody > tr.fila-aprobado) {
+  background: color-mix(in srgb, var(--color-success) 9%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--color-success);
+}
+:deep(.p-datatable-tbody > tr.fila-rechazado) {
+  background: color-mix(in srgb, var(--color-error) 9%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--color-error);
+}
+:deep(.p-datatable-tbody > tr.fila-pendiente:hover) {
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent) !important;
+}
+:deep(.p-datatable-tbody > tr.fila-aprobado:hover) {
+  background: color-mix(in srgb, var(--color-success) 15%, transparent) !important;
+}
+:deep(.p-datatable-tbody > tr.fila-rechazado:hover) {
+  background: color-mix(in srgb, var(--color-error) 16%, transparent) !important;
+}
+/* la celda debe dejar ver el tinte de la fila */
+:deep(.p-datatable-tbody > tr.fila-pendiente > td),
+:deep(.p-datatable-tbody > tr.fila-aprobado > td),
+:deep(.p-datatable-tbody > tr.fila-rechazado > td) {
+  background: transparent;
+}
 .mb-3 { margin-bottom: 1rem; }
 .saldo-card {
   display: flex;
@@ -811,7 +875,7 @@ onMounted(cargar);
 .saldo-valor {
   font-size: 2.6rem;
   font-weight: 800;
-  color: var(--color-success);
+  color: var(--color-title);
 }
 .saldo-valor.negativo {
   color: var(--color-error);

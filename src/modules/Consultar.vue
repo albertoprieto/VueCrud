@@ -1,6 +1,6 @@
 <template>
   <div class="consultar">
-    <h2>Histórico IMEI</h2>
+    <h2 class="page-title">Histórico IMEI</h2>
     <div class="table-actions">
       <!-- Aquí puedes poner filtros, botones, etc -->
     </div>
@@ -196,7 +196,7 @@ const saveEdit = async () => {
 
 .imei-devuelto {
   background: #ffe082;
-  color: #795548;
+  color: var(--color-text);
   font-weight: bold;
 }
 </style>

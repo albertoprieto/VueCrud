@@ -35,7 +35,7 @@
       <Button label="Crear Factura" icon="pi pi-receipt" class="p-button-info" @click="abrirCrearFactura" />
     </div>
 
-    <h2 class="consultar-reportes-title">Reportes de Servicio</h2>
+    <h2 class="consultar-reportes-title page-title">Reportes de Servicio</h2>
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
       <InputText v-model="filtroClienteInput" placeholder="Filtrar por cliente" class="filtro-input" clearable />
       <InputText v-model="filtroSOInput" placeholder="Filtrar por Orden de servicio" class="filtro-input" clearable />
@@ -113,7 +113,7 @@
             :to="asignacionPagoMap[slotProps.data.id].tipo === 'factura'
               ? { name: 'detalle-factura', params: { id: asignacionPagoMap[slotProps.data.id].id } }
               : { name: 'detalle-pago', params: { tipo: 'nota', id: asignacionPagoMap[slotProps.data.id].id } }"
-            style="font-weight:bold; color:#1976d2; text-decoration:none; cursor:pointer;"
+            style="font-weight:bold; color:var(--color-primary); text-decoration:none; cursor:pointer;"
           >
             {{ asignacionPagoMap[slotProps.data.id].label }}
           </router-link>

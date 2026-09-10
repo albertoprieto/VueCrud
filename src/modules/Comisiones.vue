@@ -1,6 +1,6 @@
 <template>
   <div class="comisiones-container">
-    <h2 class="comisiones-title">Comprobantes — {{ tab === 'tecnico' ? 'Técnicos' : 'Vendedores' }}</h2>
+    <h2 class="comisiones-title page-title">Comprobantes — {{ tab === 'tecnico' ? 'Técnicos' : 'Vendedores' }}</h2>
 
     <div v-if="loading" style="text-align:center;padding:3rem;">
       <i class="pi pi-spin pi-spinner" style="font-size:2rem;"></i>

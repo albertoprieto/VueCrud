@@ -175,22 +175,30 @@ async function cargarCasosAbiertos() {
   }
 }
 
-// Heartbeat de presencia: latido cada 60s mientras la pestaña esté visible.
-// Persistente e independiente de la navegación (no depende de cambios de ruta).
+// Heartbeat de presencia — dato incuestionable de "en línea":
+//  · late cada 45s mientras el intervalo corra, es decir MIENTRAS LA APP
+//    ESTÉ CARGADA en un tab (aunque esté en segundo plano). Solo deja de
+//    latir si el tab se cierra, la máquina se duerme o se pierde la red.
+//  · late de inmediato al volver a la pestaña / recuperar foco, para que
+//    "conectado" refleje la realidad al instante.
+//  · el user_id lo saca el backend del token, no se puede falsear por otro.
 let heartbeat = null;
 function latido() {
-  if (document.visibilityState === 'visible' && user.value?.id) {
-    registrarSesion(user.value.id);
-  }
+  if (user.value?.id) registrarSesion(user.value.id);
+}
+function latidoAlVolver() {
+  if (document.visibilityState === 'visible') latido();
 }
 onMounted(() => {
   latido();
-  heartbeat = setInterval(latido, 60000);
-  document.addEventListener('visibilitychange', latido);
+  heartbeat = setInterval(latido, 45000);
+  document.addEventListener('visibilitychange', latidoAlVolver);
+  window.addEventListener('focus', latido);
 });
 onUnmounted(() => {
   clearInterval(heartbeat);
-  document.removeEventListener('visibilitychange', latido);
+  document.removeEventListener('visibilitychange', latidoAlVolver);
+  window.removeEventListener('focus', latido);
 });
 
 onMounted(() => {
@@ -417,12 +425,12 @@ function showProfileMenu(event) {
   transition: background 0.2s, color 0.2s, box-shadow 0.2s;
 }
 .profile-btn:hover, .profile-btn-onda:hover {
-  background: var(--color-primary, var(--color-title, #1976d2));
+  background: var(--color-primary, var(--color-title, var(--color-primary)));
   color: var(--color-on-primary, var(--color-bg, #fff));
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
 }
 .profile-avatar {
-  background: var(--color-primary, var(--color-title, #1976d2));
+  background: var(--color-primary, var(--color-title, var(--color-primary)));
   color: var(--color-on-primary, var(--color-bg, #fff));
   border-radius: 50%;
   width: 2rem;
@@ -436,7 +444,7 @@ function showProfileMenu(event) {
   transition: background 0.2s, color 0.2s;
 }
 .profile-avatar-lg {
-  background: var(--color-primary, var(--color-title, #1976d2));
+  background: var(--color-primary, var(--color-title, var(--color-primary)));
   color: var(--color-on-primary, var(--color-bg, #fff));
   border-radius: 50%;
   width: 3rem;
@@ -452,7 +460,7 @@ function showProfileMenu(event) {
 .profile-real-username {
   font-size: 1.1rem;
   font-weight: bold;
-  color: var(--color-primary, var(--color-title, #1976d2));
+  color: var(--color-primary, var(--color-title, var(--color-primary)));
 }
 .profile-real-perfil {
   font-size: 0.95rem;

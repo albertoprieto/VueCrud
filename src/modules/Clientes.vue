@@ -2,7 +2,7 @@
   <div class="clientes-page">
     <div class="clientes-header-card">
       <div class="clientes-title-row">
-        <h2 class="clientes-title">
+        <h2 class="clientes-title page-title">
           <i class="pi pi-users icon-accent"></i>
           Clientes
         </h2>

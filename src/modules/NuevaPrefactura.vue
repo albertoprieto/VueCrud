@@ -2,7 +2,7 @@
   <div class="np-page">
     <div class="np-header">
       <Button icon="pi pi-arrow-left" label="Facturación" class="p-button-text" @click="router.push({ name: 'facturacion' })" />
-      <h2 class="np-title"><i class="pi pi-file-plus" /> Nueva prefactura</h2>
+      <h2 class="np-title page-title"><i class="pi pi-file-plus" /> Nueva prefactura</h2>
     </div>
 
     <div class="np-grid">

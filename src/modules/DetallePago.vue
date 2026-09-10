@@ -8,7 +8,7 @@
 
     <div v-else-if="item">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
-        <h2 class="detalle-title" style="margin-bottom:0;">
+        <h2 class="detalle-title page-title" style="margin-bottom:0;">
           Nota #{{ item.id }}
         </h2>
         <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
@@ -83,8 +83,8 @@
         <div v-if="item.comprobantes && item.comprobantes.length" class="comprobantes-lista">
           <div v-for="(comp, idx) in item.comprobantes" :key="idx">
             <div class="comprobante-item">
-              <i class="pi pi-file" style="color:#1976d2;margin-right:0.5rem;"></i>
-              <a :href="urlComprobante(comp)" target="_blank" rel="noopener noreferrer" style="color:#1976d2;font-weight:bold;flex:1;">
+              <i class="pi pi-file" style="color:var(--color-primary);margin-right:0.5rem;"></i>
+              <a :href="urlComprobante(comp)" target="_blank" rel="noopener noreferrer" style="color:var(--color-primary);font-weight:bold;flex:1;">
                 {{ nombreArchivo(comp) }}
               </a>
               <Button
@@ -140,10 +140,10 @@
         <h3>Pagos adicionales a otro banco</h3>
         <div v-if="pagosAdicionales.length" class="comprobantes-lista">
           <div v-for="pago in pagosAdicionales" :key="pago.id" class="comprobante-item">
-            <i class="pi pi-wallet" style="color:#1976d2;margin-right:0.5rem;"></i>
+            <i class="pi pi-wallet" style="color:var(--color-primary);margin-right:0.5rem;"></i>
             <span style="flex:1;">
               <strong>{{ pago.banco }}</strong> — ${{ Number(pago.monto).toFixed(2) }}
-              <a v-if="pago.comprobante_url" :href="pago.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:#1976d2;">ver comprobante</a>
+              <a v-if="pago.comprobante_url" :href="pago.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:var(--color-primary);">ver comprobante</a>
             </span>
             <Button
               icon="pi pi-trash"
@@ -190,11 +190,11 @@
         <div v-if="ingresosLigados.length" class="comprobantes-lista">
           <div v-for="link in ingresosLigados" :key="link.id" class="ingreso-ligado">
             <div class="comprobante-item">
-              <i class="pi pi-wallet" style="color:#1976d2;margin-right:0.5rem;"></i>
+              <i class="pi pi-wallet" style="color:var(--color-primary);margin-right:0.5rem;"></i>
               <span style="flex:1;">
                 <strong>{{ link.banco }}</strong> — ${{ Number(link.monto_aplicado).toFixed(2) }}
                 <span v-if="link.requiere_justificacion" class="pi pi-exclamation-triangle" style="color:#b26a00;margin-left:0.4rem;" />
-                <a v-if="link.comprobante_url" :href="link.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:#1976d2;">ver comprobante</a>
+                <a v-if="link.comprobante_url" :href="link.comprobante_url" target="_blank" rel="noopener noreferrer" style="margin-left:0.5rem;color:var(--color-primary);">ver comprobante</a>
               </span>
               <Button
                 icon="pi pi-times"
@@ -209,7 +209,7 @@
               <div><strong>Monto del ingreso:</strong> {{ link.ingreso_monto != null ? '$' + Number(link.ingreso_monto).toFixed(2) : '-' }} · aplicado a esta nota: ${{ Number(link.monto_aplicado).toFixed(2) }}</div>
               <div v-if="Math.abs(Number(link.diferencia)) > 0.01">
                 <strong>Diferencia:</strong>
-                <span :style="{ color: Number(link.diferencia) > 0 ? '#b26a00' : '#1976d2' }">
+                <span :style="{ color: Number(link.diferencia) > 0 ? '#b26a00' : 'var(--color-primary)' }">
                   {{ Number(link.diferencia) > 0 ? 'sobró ' : 'faltó ' }}${{ Math.abs(Number(link.diferencia)).toFixed(2) }}
                 </span>
               </div>
@@ -483,7 +483,7 @@
             <Button icon="pi pi-times" class="p-button-text p-button-sm" @click="editandoTotalNota = false" />
           </span>
         </p>
-        <p v-if="esUnderpay && !conceptosLlenados" style="font-size:0.8rem;color:#1976d2;">
+        <p v-if="esUnderpay && !conceptosLlenados" style="font-size:0.8rem;color:var(--color-primary);">
           Pago parcial — quedan ${{ Math.abs(diferenciaLigar).toFixed(2) }} pendientes. La nota sigue abierta y se puede completar después con otro pago.
         </p>
         <div v-if="!cubierto" class="form-group">

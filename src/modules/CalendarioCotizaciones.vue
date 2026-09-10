@@ -1,6 +1,6 @@
 <template>
   <div class="calendario-cotizaciones">
-    <h2 class="calendario-title">Calendario de Cotizaciones</h2>
+    <h2 class="calendario-title page-title">Calendario de Cotizaciones</h2>
 
     <div class="calendario-card">
       <FullCalendar :options="calendarOptions" />

@@ -2,7 +2,7 @@
   <div class="ticket-page" v-if="ticket">
     <div class="ticket-card">
       <div class="ticket-header">
-        <div class="ticket-title">
+        <div class="ticket-title page-title">
           Ticket #{{ ticket.id }}
           <span class="muted">· Reporte #{{ ticket.reporteId }}</span>
         </div>

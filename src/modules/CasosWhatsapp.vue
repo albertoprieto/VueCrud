@@ -109,7 +109,7 @@
     <section class="wa-panel" :class="{ 'wa-panel-oculto': isMobile && !casoActivo }">
       <div v-if="!casoActivo" class="wa-panel-empty">
         <i class="pi pi-whatsapp" />
-        <h2>Soporte IA — GPS Ubicación</h2>
+        <h2 class="page-title">Soporte IA — GPS Ubicación</h2>
         <p>Selecciona una conversación de la izquierda para ver el detalle y darle seguimiento.</p>
       </div>
 
@@ -620,8 +620,10 @@ onBeforeUnmount(() => {
   background: var(--wa-bg-panel);
   margin: 1rem;
 }
+/* Solo sigue al sistema si el usuario NO eligió tema claro explícitamente
+   (data-theme lo fija siempre el script de index.html). */
 @media (prefers-color-scheme: dark) {
-  .wa-shell {
+  :root:not([data-theme="light"]) .wa-shell {
     --wa-bg-panel:      #111b21;
     --wa-bg-header:     #202c33;
     --wa-bg-hover:      #202c33;
@@ -634,7 +636,6 @@ onBeforeUnmount(() => {
     --wa-chat-bg:       #0b141a;
   }
 }
-/* Por si más adelante agregan un toggle manual de tema */
 :root[data-theme="dark"] .wa-shell {
   --wa-bg-panel:      #111b21;
   --wa-bg-header:     #202c33;

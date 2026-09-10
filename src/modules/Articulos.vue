@@ -236,7 +236,7 @@ const exportToExcel = () => {
 <template>
   <div class="articulos-page">
     <div class="articulos-header-card">
-      <h2 class="mb-4 articulos-title">
+      <h2 class="mb-4 articulos-title page-title">
         <i class="pi pi-database icon-accent"></i>
         Artículos
       </h2>
@@ -309,7 +309,7 @@ const exportToExcel = () => {
                 <InputText id="unidadSat" v-model="form.codigoUnidadSat" class="w-full" placeholder="Código de unidad del SAT" />
               </div>
               <!-- <div class="field col-12 md:col-6 lg:col-6 xl:col-6">
-                <label for="codigoUnidadSat"><i class="pi pi-hashtag" style="margin-right:0.3em;color:#ff4081"></i>Código Unidad SAT:</label>
+                <label for="codigoUnidadSat"><i class="pi pi-hashtag" style="margin-right:0.3em;color:var(--color-primary)"></i>Código Unidad SAT:</label>
                 <InputText id="codigoUnidadSat" v-model="form.codigoUnidadSat" class="w-full" placeholder="Código Unidad SAT" />
               </div> -->
             </div>

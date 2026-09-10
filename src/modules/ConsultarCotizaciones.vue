@@ -1,6 +1,6 @@
 <template>
   <div class="consultar-cotizaciones">
-    <h2 class="consultar-cotizaciones-title">Consultar Cotizaciones</h2>
+    <h2 class="consultar-cotizaciones-title page-title">Consultar Cotizaciones</h2>
     <div class="consultar-cotizaciones-card">
       <!-- Toolbar de filtros avanzados -->
       <div class="filters-advanced">
@@ -616,7 +616,7 @@ function generatePDF(cotizacion) {
         },
         layout: {
           fillColor: function (rowIndex) {
-            return rowIndex === 0 ? '#ff4081' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+            return rowIndex === 0 ? '#3d5568' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
           }
         }
       },
@@ -881,7 +881,7 @@ label {
 
 .chip-pendiente {
   background: #ffe082;
-  color: #795548;
+  color: var(--color-text);
 }
 
 .chip-agendado {

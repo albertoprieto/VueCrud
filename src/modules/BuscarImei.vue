@@ -1,6 +1,6 @@
 <template>
   <div class="buscar-imei-container">
-    <h2 class="buscar-imei-title">Buscar IMEI</h2>
+    <h2 class="buscar-imei-title page-title">Buscar IMEI</h2>
     <div class="buscar-imei-filtros">
       <InputText
         v-model="filtro"
@@ -388,7 +388,7 @@ const verMotivo = async (imei) => {
 }
 .imei-devuelto {
   background: #ffe082;
-  color: #795548;
+  color: var(--color-text);
   font-weight: bold;
 }
 

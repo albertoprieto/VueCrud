@@ -1,6 +1,6 @@
 <template>
   <div class="fact-container">
-    <h2 class="fact-title"><i class="pi pi-receipt" /> Facturación</h2>
+    <h2 class="fact-title page-title"><i class="pi pi-receipt" /> Facturación</h2>
 
     <div class="fact-nueva-bar">
       <Button label="Sincronizar comprobantes" icon="pi pi-sync" class="p-button-sm p-button-outlined" :loading="sincronizandoTodas" @click="sincronizarTodasComprobantes" />

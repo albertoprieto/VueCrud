@@ -57,7 +57,7 @@ const loadingText = computed(() => props.text.split(''));
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(var(--surface-ground-rgb, 255, 255, 255), 0.92);
+  background: color-mix(in srgb, var(--color-bg, #fff) 86%, transparent);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -89,7 +89,7 @@ const loadingText = computed(() => props.text.split(''));
 .ring-1 {
   width: 100%;
   height: 100%;
-  border-top-color: var(--primary-color, #6366f1);
+  border-top-color: var(--color-primary, #3d5568);
   animation: spin 1.5s linear infinite;
 }
 
@@ -98,8 +98,8 @@ const loadingText = computed(() => props.text.split(''));
   height: 75%;
   top: 12.5%;
   left: 12.5%;
-  border-right-color: var(--primary-color, #6366f1);
-  border-bottom-color: var(--primary-color, #6366f1);
+  border-right-color: var(--color-primary, #3d5568);
+  border-bottom-color: var(--color-primary, #3d5568);
   animation: spin-reverse 1.2s linear infinite;
 }
 
@@ -108,7 +108,7 @@ const loadingText = computed(() => props.text.split(''));
   height: 50%;
   top: 25%;
   left: 25%;
-  border-left-color: var(--primary-color, #6366f1);
+  border-left-color: var(--color-primary, #3d5568);
   animation: spin 0.9s linear infinite;
 }
 
@@ -125,7 +125,7 @@ const loadingText = computed(() => props.text.split(''));
 
 .ring-center i {
   font-size: 1.5rem;
-  color: var(--primary-color, #6366f1);
+  color: var(--color-primary, #3d5568);
   animation: pulse-icon 1s ease-in-out infinite;
 }
 
@@ -149,7 +149,8 @@ const loadingText = computed(() => props.text.split(''));
 .loader-text {
   font-size: 1.1rem;
   font-weight: 600;
-  color: var(--text-color, #374151);
+  color: var(--color-text, #374151);
+  font-family: var(--font-display, sans-serif);
   letter-spacing: 0.5px;
 }
 
@@ -180,7 +181,7 @@ const loadingText = computed(() => props.text.split(''));
 
 .progress-bar-track {
   height: 4px;
-  background: var(--surface-200, #e5e7eb);
+  background: color-mix(in srgb, var(--color-text, #999) 14%, transparent);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -189,9 +190,9 @@ const loadingText = computed(() => props.text.split(''));
   height: 100%;
   width: 40%;
   background: linear-gradient(90deg, 
-    var(--primary-color, #6366f1), 
-    var(--primary-400, #818cf8), 
-    var(--primary-color, #6366f1)
+    var(--color-primary, #3d5568), 
+    var(--color-title, #7aa7e0), 
+    var(--color-primary, #3d5568)
   );
   background-size: 200% 100%;
   border-radius: 4px;
@@ -222,7 +223,7 @@ const loadingText = computed(() => props.text.split(''));
 .dot {
   width: 8px;
   height: 8px;
-  background: var(--primary-color, #6366f1);
+  background: var(--color-primary, #3d5568);
   border-radius: 50%;
   animation: float-dot 1.6s ease-in-out infinite;
 }
@@ -238,14 +239,5 @@ const loadingText = computed(() => props.text.split(''));
   }
 }
 
-/* Tema oscuro */
-:root[data-theme="dark"] .datatable-loader-wrapper,
-.p-dark .datatable-loader-wrapper {
-  background: rgba(30, 30, 30, 0.92);
-}
-
-:root[data-theme="dark"] .progress-bar-track,
-.p-dark .progress-bar-track {
-  background: rgba(255, 255, 255, 0.1);
-}
+/* colores vía color-mix con --color-* → sirven en claro y oscuro sin overrides */
 </style>

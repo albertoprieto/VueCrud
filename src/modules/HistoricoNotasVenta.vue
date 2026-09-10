@@ -1,6 +1,6 @@
 <template>
   <div class="historico-notas-container">
-    <h2 class="historico-title">Consultar Orden de Servicio</h2>
+    <h2 class="historico-title page-title">Consultar Orden de Servicio</h2>
     <!-- Agrega esto antes del DataTable -->
     <div class="filtros" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
       <InputText v-model="filtroFolio" placeholder="Buscar por folio..." class="filtro-input" clearable />
@@ -700,13 +700,13 @@ function getConstanciaUrl(constanciaPath) {
   padding: 0.5em 0.8em;
 }
 .asignar-input:focus {
-  border-color: #ff4081;
+  border-color: var(--color-primary);
   outline: none;
 }
 .plataforma-dropdown .p-dropdown {
   /* background: #222;
   color: #fff; */
-  border: 1.5px solid #ff4081;
+  border: 1.5px solid var(--color-border-hover);
   border-radius: 6px;
   font-size: 1em;
 }
@@ -729,7 +729,7 @@ function getConstanciaUrl(constanciaPath) {
 .plataforma-dropdown .p-dropdown {
   /* background: #181818;
   color: #fff; */
-  border: 1.5px solid #ff4081;
+  border: 1.5px solid var(--color-border-hover);
   border-radius: 6px;
   font-size: 1em;
 }
@@ -783,8 +783,8 @@ function getConstanciaUrl(constanciaPath) {
 }
 .chip-sinasignar {
   background: var(--color-card, #ffe082);
-  color: var(--color-text, #795548);
-  border: 1px solid var(--color-text, #795548);
+  color: var(--color-text, var(--color-text));
+  border: 1px solid var(--color-text, var(--color-text));
 }
 </style>
 <!-- estilos de ubicación removidos -->

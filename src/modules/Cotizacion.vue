@@ -1,6 +1,6 @@
 <template>
   <div class="cotizacion-container">
-    <h2 class="cotizacion-title">Crear Cotización</h2>
+    <h2 class="cotizacion-title page-title">Crear Cotización</h2>
     <div class="cotizacion-card">
       <form @submit.prevent="saveQuotation">
         <div class="form-section">

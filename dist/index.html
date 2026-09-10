@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>App</title>
     <link rel="stylesheet" href="https://unpkg.com/primeflex@latest/primeflex.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400..900&display=swap" rel="stylesheet">
+    <script>
+      // Fija el tema antes de pintar para evitar parpadeo.
+      //  · Sin elección previa  -> sigue al sistema operativo.
+      //  · Elección guardada    -> manda esa (el botón sol/luna la fija).
+      (function () {
+        try {
+          var t = localStorage.getItem('app-theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
     <script type="importmap">
       {
         "imports": {
@@ -15,8 +34,8 @@
         }
       }
     </script>
-    <script type="module" crossorigin src="/VueCrud/assets/index-CD2GMN6k.js"></script>
-    <link rel="stylesheet" crossorigin href="/VueCrud/assets/index-VSf0hleZ.css">
+    <script type="module" crossorigin src="/VueCrud/assets/index-CQR6Wvdp.js"></script>
+    <link rel="stylesheet" crossorigin href="/VueCrud/assets/index-lj-8NWA5.css">
   </head>
   <body>
 

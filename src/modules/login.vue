@@ -2,7 +2,7 @@
   <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh;">
     <Loader v-if="showLoader" />
     <div v-else style="display: flex; flex-direction: column; align-items: center;">
-      <h2 style="text-align: center;">Login</h2>
+      <h2 class="page-title" style="text-align: center;">Login</h2>
       <div style="margin-bottom: 1rem;">
         <InputText v-model="username" placeholder="Usuario" @keydown.enter="handleSubmit"/>
       </div>

@@ -1,6 +1,6 @@
 <template>
   <div class="ticket-page">
-    <h2 class="title">Nuevo Ticket</h2>
+    <h2 class="title page-title">Nuevo Ticket</h2>
     <form @submit.prevent="submit">
       <div class="grid">
         <div class="col">

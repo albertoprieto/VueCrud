@@ -1,7 +1,7 @@
 <template>
   <section class="util-page">
     <header class="util-hero">
-      <h1>SIM ESPAÑOL</h1>
+      <h1 class="page-title">SIM ESPAÑOL</h1>
       <p>Listado de SIMs. Usa los filtros dentro de la tabla para buscar en el histórico.</p>
     </header>
 

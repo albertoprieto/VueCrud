@@ -1,0 +1,43 @@
+/*
+  DataTable "small" global — TODAS las tablas de la app compactas sin poner
+  size="small" una por una. Dos capas:
+   1. Tokens de PrimeVue 4 (forma idiomática, sin !important).
+   2. Override directo con !important por si un componente pisó el padding
+      en su <style scoped>.
+*/
+.p-datatable {
+  --p-datatable-header-cell-padding: 0.4rem 0.55rem;
+  --p-datatable-body-cell-padding: 0.4rem 0.55rem;
+  --p-datatable-footer-cell-padding: 0.4rem 0.55rem;
+  --p-datatable-header-padding: 0.5rem 0.55rem;
+  --p-datatable-footer-padding: 0.5rem 0.55rem;
+  --p-datatable-paginator-bottom-padding: 0.35rem;
+  font-size: 0.85rem;
+}
+
+/* .p-component.p-datatable → sube especificidad para ganarle a los
+   `:deep(.p-datatable-tbody) > tr > td` que definen algunos componentes. */
+.p-component.p-datatable .p-datatable-thead > tr > th,
+.p-component.p-datatable .p-datatable-tbody > tr > td,
+.p-component.p-datatable .p-datatable-tfoot > tr > td {
+  padding: 0.4rem 0.55rem !important;
+  font-size: 0.85rem !important;
+  line-height: 1.35 !important;
+}
+
+.p-datatable .p-datatable-header,
+.p-datatable .p-datatable-footer {
+  padding: 0.5rem 0.55rem !important;
+}
+
+.p-datatable .p-paginator {
+  padding-block: 0.3rem !important;
+}
+.p-datatable .p-paginator .p-paginator-page,
+.p-datatable .p-paginator .p-paginator-first,
+.p-datatable .p-paginator .p-paginator-prev,
+.p-datatable .p-paginator .p-paginator-next,
+.p-datatable .p-paginator .p-paginator-last {
+  min-width: 2rem !important;
+  height: 2rem !important;
+}

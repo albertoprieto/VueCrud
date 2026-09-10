@@ -1,5 +1,6 @@
 // stores/userStore.js
 import { defineStore } from 'pinia';
+import { esVigilado } from '@/config/vigilados';
 
 // Función para restaurar usuario desde localStorage
 const getSavedUser = () => {
@@ -31,11 +32,17 @@ export const useLoginStore = defineStore('user', {
     isAuthenticated() {
       return !!this.currentUser && !!localStorage.getItem('access_token');
     },
-    // Restaurar sesión al iniciar la app
+    // Restaurar sesión al iniciar la app.
+    // Usuarios vigilados: NO se restaura — deben ingresar con contraseña cada
+    // vez (así el registro de "cuándo ingresó" es real, no una sesión vieja).
     restoreSession() {
       const token = localStorage.getItem('access_token');
       const user = getSavedUser();
       if (token && user) {
+        if (esVigilado(user.username)) {
+          this.logout();
+          return false;
+        }
         this.currentUser = user;
         return true;
       }

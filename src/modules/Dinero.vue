@@ -1,6 +1,6 @@
 <template>
   <div class="dinero-container">
-    <h2>Resumen de Dinero</h2>
+    <h2 class="page-title">Resumen de Dinero</h2>
     <div class="dinero-dashboard">
       <div class="dinero-card ingreso">
         <h3>Ingresos</h3>

@@ -6,7 +6,7 @@
 
     <div v-else-if="item">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-        <h2 class="detalle-title" style="margin-bottom:0;">Factura #{{ item.id }}</h2>
+        <h2 class="detalle-title page-title" style="margin-bottom:0;">Factura #{{ item.id }}</h2>
         <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
           <Button
             v-if="item.reporte_ids && item.reporte_ids.length"
@@ -380,7 +380,7 @@
               <div><strong>Monto del ingreso:</strong> {{ link.ingreso_monto != null ? '$' + Number(link.ingreso_monto).toFixed(2) : '-' }} · aplicado a esta factura: ${{ Number(link.monto_aplicado).toFixed(2) }}</div>
               <div v-if="Math.abs(Number(link.diferencia)) > 0.01">
                 <strong>Diferencia:</strong>
-                <span :style="{ color: Number(link.diferencia) > 0 ? '#b26a00' : '#1976d2' }">
+                <span :style="{ color: Number(link.diferencia) > 0 ? '#b26a00' : 'var(--color-primary)' }">
                   {{ Number(link.diferencia) > 0 ? 'sobró ' : 'faltó ' }}${{ Math.abs(Number(link.diferencia)).toFixed(2) }}
                 </span>
               </div>
@@ -423,7 +423,7 @@
             <InputNumber v-model="montoAplicadoForm" mode="currency" currency="MXN" locale="es-MX" class="w-full" :min="0" :max="Number(ingresoSeleccionado.monto_disponible) || 0" />
           </div>
           <p style="font-size:0.8rem;opacity:0.75;">Saldo pendiente de la factura: ${{ saldoPendienteFactura.toFixed(2) }} (total ${{ Number(item.total).toFixed(2) }})</p>
-          <p v-if="esUnderpay && !conceptosLlenados" style="font-size:0.8rem;color:#1976d2;">
+          <p v-if="esUnderpay && !conceptosLlenados" style="font-size:0.8rem;color:var(--color-primary);">
             Pago parcial — quedan ${{ Math.abs(diferenciaLigar).toFixed(2) }} pendientes. La factura sigue abierta.
           </p>
           <div v-if="!cubierto" class="form-group">

@@ -1,6 +1,6 @@
 <template>
   <div class="nuevo-reporte-servicio-container">
-    <h2 class="reporte-title">Nuevo Reporte de Servicio</h2>
+    <h2 class="reporte-title page-title">Nuevo Reporte de Servicio</h2>
     <div class="servicio-card">
       <BuscadorPlataforma @seleccionar="onPlataformaSeleccionar" @busqueda-resultado="onBusquedaResultado" />
       <div class="reporte-fields">

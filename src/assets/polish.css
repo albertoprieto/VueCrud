@@ -1,0 +1,155 @@
+/*
+  Capa de acabado visual global: tipografía, transiciones, sombras de texto,
+  microinteracciones, scrollbars y foco. Se carga después de theme.css para
+  poder usar las variables --color-*.
+*/
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: var(--font-sans);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --text-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --elev-1: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --elev-2: 0 6px 18px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --elev-3: 0 14px 40px rgba(0, 0, 0, 0.16);
+}
+:root[data-theme="dark"] {
+  --text-shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.55);
+  --elev-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --elev-3: 0 16px 44px rgba(0, 0, 0, 0.6);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  letter-spacing: 0.1px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Título de cada pantalla — y SOLO ese — con Cinzel ──
+   La clase .page-title está puesta a mano en el primer encabezado de cada
+   módulo (script). Ningún otro texto de la app lleva esta fuente. */
+.page-title {
+  font-family: 'Cinzel', 'Trajan Pro', 'Times New Roman', serif !important;
+  font-weight: 600 !important;
+  font-size: clamp(1.5rem, 1.4vw + 1rem, 2.25rem) !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  /* sombra que "cae" hacia abajo a la derecha */
+  text-shadow: 2px 2px 3px rgba(0, 0, 0, 0.22) !important;
+}
+:root[data-theme="dark"] .page-title {
+  text-shadow: 2px 3px 7px rgba(0, 0, 0, 0.72) !important;
+}
+/* subtextos dentro del título (ej. "· Reporte #12") vuelven a fuente normal */
+.page-title small,
+.page-title .muted,
+.page-title .sub,
+.page-title .subtitle {
+  font-family: var(--font-sans) !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+}
+
+/* ── Transiciones: solo en lo interactivo y superficies, nunca "all" ── */
+a,
+button,
+.p-button,
+.p-inputtext,
+.p-dropdown,
+.p-multiselect,
+.p-calendar .p-inputtext,
+.p-checkbox-box,
+.p-radiobutton-box,
+.p-togglebutton,
+.p-tabview-nav li .p-tabview-nav-link,
+.p-datatable .p-datatable-tbody > tr,
+.p-card,
+[class*="-card"],
+.badge {
+  transition:
+    background-color 0.18s var(--ease),
+    color 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    box-shadow 0.2s var(--ease),
+    transform 0.12s var(--ease),
+    opacity 0.18s var(--ease);
+}
+
+/* ── Microinteracciones ── */
+.p-button:not(:disabled):not(.p-button-text):not(.p-button-link):hover {
+  transform: translateY(-1px);
+  box-shadow: var(--elev-2);
+}
+.p-button:not(:disabled):active {
+  transform: translateY(0);
+}
+.p-button-text:not(:disabled):hover,
+.p-button-link:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+a { transition: color 0.15s var(--ease); }
+
+.p-inputtext:enabled:focus,
+.p-dropdown.p-focus,
+.p-multiselect.p-focus,
+.p-calendar.p-focus .p-inputtext {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #3d5568) 35%, transparent) !important;
+  border-color: var(--color-primary, #3d5568) !important;
+}
+
+.p-datatable .p-datatable-tbody > tr:not(.p-highlight):hover {
+  background: color-mix(in srgb, var(--color-primary, #3d5568) 8%, transparent);
+}
+
+/* Tarjetas con hover sutil (cualquier clase que termine en -card) */
+[class*="-card"]:hover,
+.p-card:hover {
+  box-shadow: var(--elev-2);
+}
+
+.badge {
+  text-shadow: none;
+}
+
+/* ── Focus visible accesible en todo lo enfocable ── */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary, #3d5568) 70%, transparent);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbars discretas y con tema ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-text, #888) 30%, transparent) transparent;
+}
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text, #888) 26%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text, #888) 45%, transparent);
+  background-clip: padding-box;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-primary, #3d5568) 45%, transparent);
+}
+
+/* ── Respeta a quien pidió menos movimiento ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

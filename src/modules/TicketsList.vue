@@ -1,6 +1,6 @@
 <template>
   <div class="p-3">
-    <h2>Tickets</h2>
+    <h2 class="page-title">Tickets</h2>
     <Loader v-if="store.loading"/>
     <table v-else class="p-datatable">
       <thead>
@@ -151,8 +151,8 @@ function confirmDelete(t) {
 /* Botón para editar estado */
 .estado-edit-btn {
   background: #fff;
-  border: 1px solid #1976d2;
-  color: #1976d2;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
   border-radius: 50%;
   width: 32px;
   height: 32px;
@@ -173,7 +173,7 @@ function confirmDelete(t) {
   z-index: 10;
   min-width: 160px;
   background: #fff;
-  border: 1px solid #1976d2;
+  border: 1px solid var(--color-primary);
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(25,118,210,0.12);
   padding: 0.5rem 1rem 0.8rem 1rem;
@@ -182,7 +182,7 @@ function confirmDelete(t) {
 }
 .estado-dropdown-header {
   font-weight: 600;
-  color: #1976d2;
+  color: var(--color-primary);
   margin-bottom: 0.5rem;
 }
 .estado-dropdown ul {
@@ -196,7 +196,7 @@ function confirmDelete(t) {
 .estado-dropdown button {
   background: none;
   border: none;
-  color: #1976d2;
+  color: var(--color-primary);
   font-weight: 500;
   padding: 4px 0;
   width: 100%;
@@ -211,8 +211,8 @@ function confirmDelete(t) {
 }
 .estado-dropdown .close-btn {
   background: #f7fafd;
-  border: 1px solid #1976d2;
-  color: #1976d2;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
   border-radius: 6px;
   padding: 4px 12px;
   font-size: 0.95rem;

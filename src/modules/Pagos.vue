@@ -1,6 +1,6 @@
 <template>
   <div class="pagos-container">
-    <h2 class="pagos-title">
+    <h2 class="pagos-title page-title">
       <i class="pi pi-file"></i>
       Notas — Histórico
     </h2>

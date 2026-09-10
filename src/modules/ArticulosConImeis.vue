@@ -1,6 +1,6 @@
 <template>
   <div class="movimientos-inventario">
-    <h2>Movimientos de Inventario</h2>
+    <h2 class="page-title">Movimientos de Inventario</h2>
     <div class="table-actions">
       <InputText v-model="filtroUsuario" placeholder="Filtrar por usuario..." class="p-inputtext-sm" style="max-width:180px;" />
       <InputText v-model="filtroImei" placeholder="Filtrar por IMEI..." class="p-inputtext-sm" style="max-width:180px; margin-left:8px;" />
@@ -152,19 +152,6 @@ h2 {
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   margin-bottom: 2rem;
-}
-:root {
-  --color-title: #e91e63;
-  --color-card: #fff;
-  --color-bg: #f7f7fa;
-  --color-text: #222;
-}
-body.dark,
-html.dark {
-  --color-title: #ff80ab;
-  --color-card: #23232b;
-  --color-bg: #181820;
-  --color-text: #eee;
 }
 @media (max-width: 700px) {
   .movimientos-inventario {

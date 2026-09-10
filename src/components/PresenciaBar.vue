@@ -26,6 +26,14 @@
         </span>
       </div>
     </div>
+
+    <button
+      class="tema-btn"
+      :title="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
+      @click="toggleTheme"
+    >
+      <span class="pi" :class="tema === 'dark' ? 'pi-sun' : 'pi-moon'"></span>
+    </button>
   </div>
 </template>
 
@@ -33,10 +41,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { getUsuarios } from '@/services/usuariosService';
 import { useLoginStore } from '@/stores/loginStore';
+import { useTheme } from '@/composables/useTheme';
+import { USUARIOS_VIGILADOS } from '@/config/vigilados';
 
 const loginStore = useLoginStore();
+const { tema, toggleTheme } = useTheme();
 const ONLINE_MS = 3 * 60 * 1000;
-const VISIBLES = ['mariah', 'danieli', 'vianney', 'braulior'];
 const usuarios = ref([]);
 let timer = null;
 
@@ -85,24 +95,22 @@ function rel(fecha) {
 }
 
 function tooltip(u) {
-  const f = ultimoVisto(u);
-  const t = f
+  const fmt = (f) => (f
     ? new Date(f.endsWith('Z') ? f : f + 'Z').toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
-    : '—';
-  return esOnline(u)
-    ? `${u.username} · conectado ahora`
-    : `${u.username} · última actividad ${t}`;
+    : '—');
+  const estado = esOnline(u) ? 'Conectado ahora' : `Última señal: ${fmt(u.ultimo_ping)}`;
+  return `${u.username}\n${estado}\nÚltimo ingreso (contraseña): ${fmt(u.ultima_sesion)}`;
 }
 
 async function cargar() {
   try {
     const todos = await getUsuarios();
-    // Cada cliente filtra su propia respuesta: los 4 usuarios fijos + el
+    // Cada cliente filtra su propia respuesta: los usuarios vigilados + el
     // propio usuario firmado (señal de que el heartbeat funciona). Al resto
-    // el usuario firmado no le aparece si no está en VISIBLES.
+    // el usuario firmado no le aparece si no está en la lista.
     const yo = loginStore.user?.id;
     usuarios.value = todos.filter(
-      (u) => VISIBLES.includes((u.username || '').toLowerCase()) || u.id === yo
+      (u) => USUARIOS_VIGILADOS.includes((u.username || '').toLowerCase()) || u.id === yo
     );
   } catch {
     /* silencioso: la barra no debe romper la pantalla */
@@ -118,9 +126,11 @@ onUnmounted(() => clearInterval(timer));
 
 <style scoped>
 .presencia-bar {
+  position: relative;
   width: 100%;
-  padding: 0.4rem 0.75rem;
+  padding: 0.4rem 2.4rem;
   background: var(--color-card, #f7f7fa);
+  color: var(--color-text, #222);
   border-bottom: 1px solid var(--color-border, #e0e0e0);
   font-size: 0.8rem;
   box-sizing: border-box;
@@ -131,6 +141,25 @@ onUnmounted(() => clearInterval(timer));
   justify-content: center;
   gap: 0.75rem;
   max-width: 100%;
+}
+.tema-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--color-text, #222);
+  opacity: 0.45;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.3rem;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.tema-btn:hover {
+  opacity: 1;
+  transform: translateY(-50%) scale(1.15);
 }
 .presencia-toggle {
   display: flex;
@@ -189,14 +218,14 @@ onUnmounted(() => clearInterval(timer));
   border-radius: 50%;
   flex-shrink: 0;
 }
-.chip-ok { border-color: #16a34a; }
-.dot-ok { background: #16a34a; }
-.chip-medio { border-color: #eab308; opacity: 0.9; }
-.dot-medio { background: #eab308; }
-.chip-alto { border-color: #f97316; opacity: 0.75; }
-.dot-alto { background: #f97316; }
-.chip-critico { border-color: #dc2626; opacity: 0.6; }
-.dot-critico { background: #dc2626; }
+.chip-ok { border-color: var(--color-success); }
+.dot-ok { background: var(--color-success); }
+.chip-medio { border-color: var(--color-warning); opacity: 0.9; }
+.dot-medio { background: var(--color-warning); }
+.chip-alto { border-color: color-mix(in srgb, var(--color-warning) 55%, var(--color-error)); opacity: 0.75; }
+.dot-alto { background: color-mix(in srgb, var(--color-warning) 55%, var(--color-error)); }
+.chip-critico { border-color: var(--color-error); opacity: 0.6; }
+.dot-critico { background: var(--color-error); }
 .nombre {
   max-width: 9rem;
   overflow: hidden;

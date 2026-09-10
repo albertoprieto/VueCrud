@@ -1,6 +1,6 @@
 <template>
   <div class="crear-evento">
-    <h2>Crear Evento</h2>
+    <h2 class="page-title">Crear Evento</h2>
     <div class="form-group">
       <label for="titulo">Título del Evento:</label>
       <InputText v-model="titulo" placeholder="Ingrese el título del evento" />

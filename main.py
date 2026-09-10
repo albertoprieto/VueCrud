@@ -1776,14 +1776,30 @@ class Usuario(BaseModel):
 @app.on_event("startup")
 def migracion_usuarios_ultimo_ping():
     """ultima_sesion = ultimo login real (solo /token). ultimo_ping = latido
-    de app abierta (heartbeat cada 60s desde el dashboard). 'Conectado' =
-    ultimo_ping dentro de los ultimos ~3 min."""
+    de app abierta (heartbeat desde el dashboard). 'Conectado' = ultimo_ping
+    dentro de los ultimos ~3 min.
+
+    usuarios_login_log: bitacora append-only de cada autenticacion con
+    contrasena (una fila por POST /token exitoso, con IP y user-agent). Es el
+    registro incuestionable de 'cuando ingreso realmente' — no depende de una
+    sesion recordada ni de la palabra de nadie."""
     db = get_db_connection()
     cursor = db.cursor()
     try:
         cursor.execute("ALTER TABLE usuarios ADD COLUMN ultimo_ping DATETIME NULL")
     except Exception:
         pass
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios_login_log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            username VARCHAR(150) NULL,
+            ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ip VARCHAR(45) NULL,
+            user_agent VARCHAR(255) NULL,
+            INDEX ix_login_log_user (user_id, ts)
+        )
+    """)
     db.commit()
     cursor.close()
     db.close()
@@ -1829,19 +1845,38 @@ class LoginRequest(BaseModel):
     password: str
 
 @app.post("/usuarios/registrar-sesion")
-def registrar_sesion(data: dict = Body(...)):
-    # Heartbeat: marca al usuario como conectado ahora. NO toca ultima_sesion
-    # (eso es solo el login en /token).
-    user_id = data.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="user_id requerido")
+def registrar_sesion(current=Depends(get_current_user)):
+    # Heartbeat: marca al usuario como conectado ahora. El user_id sale del
+    # token (no del body) — así el "conectado" no se puede falsear a nombre de
+    # otro. NO toca ultima_sesion (eso es solo el login real en /token).
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("UPDATE usuarios SET ultimo_ping = NOW() WHERE id = %s", (user_id,))
+    cursor.execute("UPDATE usuarios SET ultimo_ping = NOW() WHERE id = %s", (current["user_id"],))
     db.commit()
     cursor.close()
     db.close()
     return {"success": True}
+
+
+@app.get("/usuarios/{usuario_id}/logins")
+def get_logins_usuario(usuario_id: int, limit: int = Query(30, ge=1, le=200),
+                       current=Depends(get_current_user)):
+    """Historial de autenticaciones reales (POST /token) del usuario. Fuente
+    de verdad de 'cuándo ingresó', con IP y equipo."""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, ts, ip, user_agent FROM usuarios_login_log "
+        "WHERE user_id=%s ORDER BY ts DESC LIMIT %s",
+        (usuario_id, limit),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    for r in rows:
+        if r.get("ts") and hasattr(r["ts"], "isoformat"):
+            r["ts"] = r["ts"].isoformat()
+    return rows
 
 # MODELO ARTICULO
 class Articulo(BaseModel):
@@ -3768,15 +3803,23 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 @app.post("/token")
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    
-    # Actualizar ultima_sesion
+
+    # ultima_sesion = último login real. Además se deja una fila append-only en
+    # usuarios_login_log (IP + equipo): registro incuestionable de cada ingreso.
+    ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+          or (request.client.host if request.client else None))
+    ua = (request.headers.get("user-agent") or "")[:255]
     db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("UPDATE usuarios SET ultima_sesion = NOW() WHERE id = %s", (user["id"],))
+    cursor.execute(
+        "INSERT INTO usuarios_login_log (user_id, username, ip, user_agent) VALUES (%s, %s, %s, %s)",
+        (user["id"], user["username"], ip, ua),
+    )
     db.commit()
     cursor.close()
     db.close()

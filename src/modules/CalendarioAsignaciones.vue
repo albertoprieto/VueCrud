@@ -1,6 +1,6 @@
 <template>
   <div class="asignaciones-lista">
-    <h2>Asignaciones a Técnicos</h2>
+    <h2 class="page-title">Asignaciones a Técnicos</h2>
     <div style="display:flex; justify-content:flex-end; margin-bottom:1rem; gap:1rem;">
       <Button
         label="Vista Calendario"

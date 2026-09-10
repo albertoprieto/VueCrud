@@ -1,6 +1,6 @@
 <template>
   <div class="consultar-ventas">
-    <h2>Consultar Notas de Venta</h2>
+    <h2 class="page-title">Consultar Notas de Venta</h2>
     <div class="filtros">
       <InputText v-model="filtroNombre" placeholder="Buscar por cliente..." class="mb-2 filtro-input" clearable />
       <Button label="Limpiar" icon="pi pi-times" class="p-button-secondary" @click="limpiarFiltros" />

@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="informacion">
-      <h1 class="panel-title">Panel de Inicio</h1>
+      <h1 class="panel-title page-title">Panel de Inicio</h1>
       <div v-for="(group, idx) in groupedItems" :key="group.title" class="section-group">
         <div class="section-header">
           <span>{{ group.title }}</span>

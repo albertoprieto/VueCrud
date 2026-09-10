@@ -1,6 +1,6 @@
 <template>
   <div class="detalle-asignacion">
-    <h2>Detalle de Asignación</h2>
+    <h2 class="page-title">Detalle de Asignación</h2>
     <div v-if="asignacion.value">
       <div class="asignacion-info">
         <div>

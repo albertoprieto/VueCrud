@@ -7,7 +7,7 @@
     <div v-else-if="!row" class="acc-loading">No se encontró el registro.</div>
 
     <div v-else class="acc-wrap">
-      <h1>Acciones SIMPRO</h1>
+      <h1 class="page-title">Acciones SIMPRO</h1>
 
       <div class="acc-card acc-info">
         <div><strong>Tipo:</strong> {{ row.tipo }}</div>

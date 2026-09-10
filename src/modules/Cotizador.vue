@@ -276,7 +276,7 @@ const guardarCotizacion = async () => {
           },
           layout: {
             fillColor: function (rowIndex) {
-              return rowIndex === 0 ? '#ff4081' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+              return rowIndex === 0 ? '#3d5568' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
             }
           }
         },
@@ -542,7 +542,7 @@ function descargarPDFCotizacion() {
         },
         layout: {
           fillColor: function (rowIndex) {
-            return rowIndex === 0 ? '#ff4081' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+            return rowIndex === 0 ? '#3d5568' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
           }
         }
       },
@@ -601,7 +601,7 @@ function descargarPDFCotizacion() {
 
 <template>
   <div class="cotizador-container">
-    <h2 class="cotizador-title">Cotizador</h2>
+    <h2 class="cotizador-title page-title">Cotizador</h2>
     <div class="cotizador-card">
       <form @submit.prevent="guardarCotizacion">
         <div class="form-row">

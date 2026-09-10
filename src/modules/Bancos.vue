@@ -1,6 +1,6 @@
 <template>
   <div class="bancos-container">
-    <h2 class="bancos-title">Bancos</h2>
+    <h2 class="bancos-title page-title">Bancos</h2>
 
     <div v-if="loading" style="text-align:center;padding:3rem;">
       <i class="pi pi-spin pi-spinner" style="font-size:2rem;"></i>
@@ -303,7 +303,7 @@ async function confirmarIngreso() {
 .banco-card-saldo {
   font-size: 1.9rem;
   font-weight: 800;
-  color: var(--color-success);
+  color: var(--color-title);
 }
 .banco-card-saldo.negativo {
   color: var(--color-error);

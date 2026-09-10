@@ -1,6 +1,6 @@
 <template>
   <div class="ubicaciones">
-    <h2>Ubicaciones (Bodegas)</h2>
+    <h2 class="page-title">Ubicaciones (Bodegas)</h2>
     <Button label="Agregar Ubicación" icon="pi pi-plus" @click="showModal = true" />
     <DataTable :value="ubicaciones" :loading="loading">
       <template #loading>

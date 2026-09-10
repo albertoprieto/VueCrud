@@ -1,6 +1,6 @@
 <template>
   <div class="asignar-imeis-container">
-    <h2>Asignar IMEIs a Artículo</h2>
+    <h2 class="page-title">Asignar IMEIs a Artículo</h2>
     <div class="form-card">
       <div class="form-group">
         <label for="articulo">

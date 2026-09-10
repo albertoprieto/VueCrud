@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h2>IMEIs en la bodega: {{ ubicacion?.nombre }}</h2>
+    <h2 class="page-title">IMEIs en la bodega: {{ ubicacion?.nombre }}</h2>
     <Button label="Volver" icon="pi pi-arrow-left" @click="$router.back()" class="mb-3" />
 
     <div class="mb-2 filtro-chips">
@@ -20,7 +20,7 @@
     <div class="mb-2 filtros-adicionales" style="display: flex; gap: 1rem; align-items: center;">
       <InputText v-model="filtroImei" placeholder="Filtrar por IMEI o últimos 5 dígitos" class="p-inputtext-sm" />
       <Dropdown v-model="filtroSkuDropdown" :options="skuOptions" optionLabel="label" optionValue="value" placeholder="Filtrar por Artículo" class="p-inputtext-sm" showClear />
-      <span v-if="filtroSkuDropdown" style="font-weight:bold; color:#1976d2;">Total: {{ totalSkuFiltrado }}</span>
+      <span v-if="filtroSkuDropdown" style="font-weight:bold; color:var(--color-primary);">Total: {{ totalSkuFiltrado }}</span>
       <Button label="Limpiar" icon="pi pi-times" class="p-button-secondary" @click="limpiarFiltros" />
     </div>
 
@@ -161,10 +161,10 @@ onMounted(cargarDatos);
 }
 .chip-otro {
   background: #ffe082;
-  color: #795548;
+  color: var(--color-text);
 }
 .chip-devuelto {
   background: #ffe082;
-  color: #795548;
+  color: var(--color-text);
 }
 </style>

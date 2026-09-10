@@ -836,7 +836,6 @@ function removerSlotManual(idx) {
 </script>
 
 <style scoped>
-@import '@/assets/main.css';
 .reporte-servicio-container { max-width: 1280px; margin: 2rem auto; padding: 1.75rem; }
 .reporte-title { text-align: center; margin: 0 0 1rem; }
 
