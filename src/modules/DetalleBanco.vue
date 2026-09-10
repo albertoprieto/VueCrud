@@ -54,8 +54,9 @@
           </Column>
           <Column field="fecha" header="Fecha de whatsapp">
             <template #body="{ data }">
-              <Calendar v-if="editando === data.key" v-model="edicion.fecha" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="edit-input" />
-              <span v-else>{{ formatFecha(data.fecha) }}</span>
+              <Calendar v-if="editando === data.key && data.tipo === 'Ingreso banco'" v-model="edicion.fecha_whatsapp" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="edit-input" />
+              <Calendar v-else-if="editando === data.key" v-model="edicion.fecha" dateFormat="dd/mm/yy" showIcon iconDisplay="input" class="edit-input" />
+              <span v-else>{{ formatFecha(data.fecha_whatsapp ?? data.fecha) }}</span>
             </template>
           </Column>
           <Column field="nombre" header="Nombre">
@@ -266,12 +267,15 @@
         <Button label="Cancelar" class="p-button-secondary" @click="saldoInicialDialogVisible = false" />
       </div>
     </Dialog>
+
+    <ConfirmDialog group="reubicar" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useConfirm } from 'primevue/useconfirm';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -444,7 +448,7 @@ async function onRowReorder(event) {
 
 // ── Edición inline (nombre, monto) ──
 const editando = ref(null);
-const edicion = ref({ nombre: '', monto: 0, fecha: null, usuario: '', imeis: '', fecha_real: null });
+const edicion = ref({ nombre: '', monto: 0, fecha: null, fecha_whatsapp: null, usuario: '', imeis: '', fecha_real: null });
 const guardando = ref(false);
 
 function esEditable(fila) {
@@ -459,31 +463,75 @@ function iniciarEdicion(fila) {
     nombre: fila.nombre,
     monto: fila.tipo === 'Retiro' ? -fila.monto : fila.monto,
     fecha: fila.fecha ? fechaLocal(fila.fecha) : new Date(),
+    fecha_whatsapp: fila.fecha_whatsapp ? fechaLocal(fila.fecha_whatsapp) : new Date(),
     usuario: fila.usuario || '',
     imeis: fila.imeis || '',
     fecha_real: fila.fecha_real ? fechaLocal(fila.fecha_real) : null,
   };
 }
 
+const confirm = useConfirm();
+
+// Diálogo "vas a mover el movimiento" — resuelve true si el usuario acepta.
+function confirmarReubicacion() {
+  return new Promise((resolve) => {
+    confirm.require({
+      group: 'reubicar',
+      header: 'Vas a mover este movimiento de lugar',
+      message:
+        'Cambiaste la fecha. Al guardar, el movimiento brinca al mes y a la ' +
+        'posición que le toca según la nueva fecha. Puede que ya no lo veas ' +
+        'aquí: para encontrarlo, elige el mes de la nueva fecha en el filtro ' +
+        'de arriba.',
+      icon: 'pi pi-calendar',
+      acceptLabel: 'Guardar y mover',
+      rejectLabel: 'Cancelar',
+      accept: () => resolve(true),
+      reject: () => resolve(false),
+      onHide: () => resolve(false),
+    });
+  });
+}
+
+// ¿El usuario tocó la fecha que decide en qué mes/posición cae la fila?
+function cambioDeFecha(fila) {
+  const orig = (v) => String(v || '').slice(0, 10);
+  const nuevo = (dt) => (dt ? fechaISO(dt) : '');
+  if (fila.tipo === 'Ingreso banco') {
+    return nuevo(edicion.value.fecha_whatsapp) !== orig(fila.fecha_whatsapp)
+      || nuevo(edicion.value.fecha_real) !== orig(fila.fecha_real);
+  }
+  return nuevo(edicion.value.fecha) !== orig(fila.fecha);
+}
+
 async function guardarEdicion(fila) {
+  const reubica = cambioDeFecha(fila);
+  if (reubica && !(await confirmarReubicacion())) return;
+  // Al cambiar la fecha se limpia el orden manual: la fila vuelve a ordenarse
+  // sola por su fecha, en medio de las que le cuadran.
+  const reordenar = reubica ? { orden_manual: null } : {};
+  // Nota/Factura: solo se toca la fecha si de verdad cambió (evita pisar la
+  // hora guardada en cada edición de monto/cliente).
+  const fechaSiCambio = reubica ? { fecha: fechaISO(edicion.value.fecha) } : {};
   guardando.value = true;
   try {
     const fecha = fechaISO(edicion.value.fecha);
     if (fila.tipo === 'Nota') {
-      await actualizarCamposNota(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto, fecha });
+      await actualizarCamposNota(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto, ...fechaSiCambio, ...reordenar });
     } else if (fila.tipo === 'Factura') {
-      await actualizarCamposFactura(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto, fecha });
+      await actualizarCamposFactura(fila.id, { cliente: edicion.value.nombre, total: edicion.value.monto, ...fechaSiCambio, ...reordenar });
     } else if (fila.tipo === 'Ingreso' || fila.tipo === 'Egreso') {
-      await actualizarMovimientoDinero(fila.id, { banco: nombre.value, concepto: edicion.value.nombre, monto: Number(edicion.value.monto) || 0, usuario: edicion.value.usuario || null, fecha });
+      await actualizarMovimientoDinero(fila.id, { banco: nombre.value, concepto: edicion.value.nombre, monto: Number(edicion.value.monto) || 0, usuario: edicion.value.usuario || null, fecha, ...reordenar });
     } else if (fila.tipo === 'Retiro') {
-      await editarRetiro(fila.id, { monto: Number(edicion.value.monto) || 0, motivo: edicion.value.nombre, usuario: edicion.value.usuario || null, fecha });
+      await editarRetiro(fila.id, { monto: Number(edicion.value.monto) || 0, motivo: edicion.value.nombre, usuario: edicion.value.usuario || null, fecha, ...reordenar });
     } else if (fila.tipo === 'Ingreso banco') {
       await editarIngresoBanco(fila.id, {
         monto: Number(edicion.value.monto) || 0,
         imeis: String(edicion.value.imeis || '').split(',').map(s => s.trim()).filter(Boolean),
         usuario: edicion.value.usuario || null,
-        fecha_transaccion: fecha,
+        fecha_transaccion: fechaISO(edicion.value.fecha_whatsapp),
         fecha_transaccion_real: edicion.value.fecha_real ? fechaISO(edicion.value.fecha_real) : null,
+        ...reordenar,
       });
     }
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Cambios guardados.', life: 2500 });

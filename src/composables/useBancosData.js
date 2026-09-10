@@ -170,7 +170,12 @@ export function buildFilas({ notas, facturas, movimientos, retiros, pagosNota, i
     const notasLigadas = [...new Set((g.links || []).map(l => l.nota_cliente).filter(Boolean))];
     out.push({
       key: `ingreso-${g.id}`, id: g.id, tipo: 'Ingreso banco',
-      fecha: g.fecha_transaccion, fecha_real: g.fecha_transaccion_real || null,
+      // `fecha` es la que manda para mes/saldo/orden: la fecha real de la
+      // transacción si se capturó, si no la de whatsapp. `fecha_whatsapp` y
+      // `fecha_real` quedan aparte para sus columnas.
+      fecha: g.fecha_transaccion_real || g.fecha_transaccion,
+      fecha_whatsapp: g.fecha_transaccion,
+      fecha_real: g.fecha_transaccion_real || null,
       banco: g.banco || null,
       nombre: notasLigadas.length ? `Ligado: ${notasLigadas.join(', ')}` : 'Sin asignar',
       usuario: g.usuario || '',

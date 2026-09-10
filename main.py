@@ -197,10 +197,14 @@ def crear_tabla_retiros_banco():
     """)
     # usuario: persona a la que se le atribuye el retiro (distinto de
     # creado_por, que es quien lo capturó en el sistema).
-    try:
-        cursor.execute("ALTER TABLE retiros_banco ADD COLUMN usuario VARCHAR(150) NULL")
-    except Exception:
-        pass
+    for _ddl in (
+        "ALTER TABLE retiros_banco ADD COLUMN usuario VARCHAR(150) NULL",
+        "ALTER TABLE retiros_banco ADD COLUMN orden_manual INT NULL",
+    ):
+        try:
+            cursor.execute(_ddl)
+        except Exception:
+            pass
     db.commit()
     cursor.close()
     db.close()
@@ -280,10 +284,14 @@ def crear_tabla_ingresos_banco():
     # fecha_transaccion pasó a ser "fecha de whatsapp" (cuándo se avisó el
     # pago); fecha_transaccion_real es la fecha real del movimiento en el
     # banco, opcional.
-    try:
-        cursor.execute("ALTER TABLE ingresos_banco ADD COLUMN fecha_transaccion_real DATE NULL")
-    except Exception:
-        pass
+    for _ddl in (
+        "ALTER TABLE ingresos_banco ADD COLUMN fecha_transaccion_real DATE NULL",
+        "ALTER TABLE ingresos_banco ADD COLUMN orden_manual INT NULL",
+    ):
+        try:
+            cursor.execute(_ddl)
+        except Exception:
+            pass
     db.commit()
     cursor.close()
     db.close()
@@ -1516,7 +1524,7 @@ def eliminar_comprobante_movimiento_dinero(movimiento_id: int):
 def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
     """Edición desde la tabla unificada de Comprobantes — mismos campos editables
     (banco, nombre/concepto, monto) que notas y facturas."""
-    campos_validos = {'fecha', 'tipo', 'concepto', 'monto', 'referencia', 'banco', 'usuario', 'validado'}
+    campos_validos = {'fecha', 'tipo', 'concepto', 'monto', 'referencia', 'banco', 'usuario', 'validado', 'orden_manual'}
     campos = []
     valores = []
     for k, v in data.items():
@@ -1531,6 +1539,7 @@ def editar_movimiento_dinero(movimiento_id: int, data: dict = Body(...)):
         "ALTER TABLE movimientos_dinero ADD COLUMN banco VARCHAR(100) NULL",
         "ALTER TABLE movimientos_dinero ADD COLUMN validado TINYINT(1) NOT NULL DEFAULT 0",
         "ALTER TABLE movimientos_dinero ADD COLUMN usuario VARCHAR(150) NULL",
+        "ALTER TABLE movimientos_dinero ADD COLUMN orden_manual INT NULL",
     ):
         try:
             cursor.execute(_col_sql)
@@ -6014,10 +6023,20 @@ def editar_campos_nota(nota_id: int, data: dict = Body(...)):
     if 'total' in data:
         campos.append("total=%s")
         valores.append(float(data.get('total') or 0))
+    if 'fecha' in data:
+        campos.append("fecha=%s")
+        valores.append(data.get('fecha') or None)
+    if 'orden_manual' in data:
+        campos.append("orden_manual=%s")
+        valores.append(data.get('orden_manual'))
     if not campos:
         raise HTTPException(status_code=400, detail="Nada que actualizar")
     db = get_db_connection()
     cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE notas_pago ADD COLUMN orden_manual INT NULL")
+    except Exception:
+        pass
     cursor.execute("SELECT id FROM notas_pago WHERE id=%s", (nota_id,))
     if not cursor.fetchone():
         cursor.close()
@@ -7627,10 +7646,17 @@ def editar_campos_factura(factura_id: int, data: dict = Body(...)):
     if 'fecha' in data:
         campos.append("fecha=%s")
         valores.append(data.get('fecha') or None)
+    if 'orden_manual' in data:
+        campos.append("orden_manual=%s")
+        valores.append(data.get('orden_manual'))
     if not campos:
         raise HTTPException(status_code=400, detail="Nada que actualizar")
     db = get_db_connection()
     cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE facturas_pago ADD COLUMN orden_manual INT NULL")
+    except Exception:
+        pass
     cursor.execute("SELECT id FROM facturas_pago WHERE id=%s", (factura_id,))
     if not cursor.fetchone():
         cursor.close()
@@ -8604,7 +8630,7 @@ def editar_ingreso_banco(ingreso_id: int, data: dict = Body(...)):
     el front debe desligar primero si necesita corregir el monto."""
     campos_validos = {
         'banco', 'monto', 'imeis', 'fecha_transaccion', 'fecha_transaccion_real', 'usuario',
-        'cuenta_origen', 'referencia_comprobante', 'clave_rastreo', 'validado'
+        'cuenta_origen', 'referencia_comprobante', 'clave_rastreo', 'validado', 'orden_manual'
     }
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
@@ -9057,6 +9083,8 @@ def editar_retiro_banco(retiro_id: int, data: dict = Body(...), current=Depends(
         campos.append("usuario=%s"); valores.append(data["usuario"] or None)
     if "fecha" in data:
         campos.append("creado_fecha=%s"); valores.append(data["fecha"] or None)
+    if "orden_manual" in data:
+        campos.append("orden_manual=%s"); valores.append(data["orden_manual"])
     if not campos:
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="Nada que actualizar")

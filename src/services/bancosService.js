@@ -41,8 +41,8 @@ export async function actualizarValidadoRetiro(id, validado) {
   return res.data;
 }
 
-export async function editarRetiro(id, { monto, motivo, fecha, usuario }) {
-  const res = await axios.put(`${API_URL}/retiros-banco/${id}`, { monto, motivo, fecha, usuario });
+export async function editarRetiro(id, campos) {
+  const res = await axios.put(`${API_URL}/retiros-banco/${id}`, campos);
   return res.data;
 }
 
