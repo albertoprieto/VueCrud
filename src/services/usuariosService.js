@@ -21,3 +21,8 @@ export const deleteUsuario = async (id) => {
   const res = await axios.delete(`${API_URL}/${id}`);
   return res.data;
 };
+
+export const impersonarUsuario = async (id) => {
+  const res = await axios.post(`${API_URL}/${id}/impersonar`);
+  return res.data;
+};

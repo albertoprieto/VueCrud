@@ -15,6 +15,7 @@
         <template #body="slotProps">
           <Button icon="pi pi-pencil" class="p-button-text" @click="editarTecnico(slotProps.data)" />
           <Button icon="pi pi-trash" class="p-button-text p-button-danger" @click="eliminarTecnico(slotProps.data.id)" />
+          <Button v-if="esAdmin" icon="pi pi-eye" class="p-button-text" title="Ver como" @click="verComo(slotProps.data)" />
         </template>
       </Column>
       <Column v-if="esElpepe" field="ultima_sesion" header="Fecha">
@@ -55,12 +56,26 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
 import { useToast } from 'primevue/usetoast';
-import { getUsuarios, addUsuario, updateUsuario, deleteUsuario } from '@/services/usuariosService';
+import { getUsuarios, addUsuario, updateUsuario, deleteUsuario, impersonarUsuario } from '@/services/usuariosService';
 import { useLoginStore } from '@/stores/loginStore';
 
 const toast = useToast();
 const loginStore = useLoginStore();
 const esElpepe = computed(() => loginStore.user?.username === 'elpepe');
+const esAdmin = computed(() => (loginStore.user?.perfil || '').toLowerCase() === 'admin');
+
+async function verComo(usuario) {
+  try {
+    const { access_token, user } = await impersonarUsuario(usuario.id);
+    localStorage.setItem('access_token', access_token);
+    localStorage.setItem('currentUser', JSON.stringify(user));
+    sessionStorage.setItem('impersonando', '1');
+    window.location.hash = '/';
+    window.location.reload();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo simular ese usuario.', life: 4000 });
+  }
+}
 
 const tecnicos = ref([]);
 const loading = ref(true);

@@ -77,7 +77,10 @@ axios.interceptors.response.use(
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('currentUser');
-      router.push('/login');
+      // Recarga dura (no router.push): fuerza a bajar el bundle nuevo del
+      // servidor en vez de seguir corriendo el JS viejo ya cargado en la pestaña.
+      window.location.hash = '/login';
+      window.location.reload();
     }
     return Promise.reject(error);
   }

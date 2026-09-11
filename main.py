@@ -1865,6 +1865,23 @@ class LoginRequest(BaseModel):
 class RegistrarSesionRequest(BaseModel):
     pagina: str | None = None
 
+@app.post("/usuarios/{usuario_id}/impersonar")
+def impersonar_usuario(usuario_id: int, current=Depends(require_admin)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, perfil, session_version FROM usuarios WHERE id=%s", (usuario_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    access_token = create_access_token(data={"sub": user["username"], "user_id": user["id"], "sv": user.get("session_version", 1)})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {"id": user["id"], "username": user["username"], "perfil": user["perfil"]},
+    }
+
 @app.post("/usuarios/{usuario_id}/forzar-logout")
 def forzar_logout(usuario_id: int, current=Depends(require_admin)):
     db = get_db_connection()

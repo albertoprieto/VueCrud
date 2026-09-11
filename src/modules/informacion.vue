@@ -100,12 +100,12 @@ const groupedItems = computed(() => {
         { label: 'Vendedores', route: '/comisiones?tab=vendedor', icon: 'pi pi-fw pi-file-check', desc: 'Qué responsables tienen comprobantes pendientes de subir' }
       ]
     }] : []),
-    {
+    ...((user.value.username || '').toLowerCase() !== 'danieli' ? [{
       title: 'WhatsApp',
       items: [
         { label: 'Soporte IA', route: '/casos-whatsapp', icon: 'pi pi-fw pi-whatsapp', desc: 'Seguimiento de conversaciones del bot' }
       ]
-    },
+    }] : []),
     ...(esAdmin.value ? [{
       title: 'Usuarios',
       items: [

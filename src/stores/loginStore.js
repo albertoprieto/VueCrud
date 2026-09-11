@@ -39,7 +39,9 @@ export const useLoginStore = defineStore('user', {
       const token = localStorage.getItem('access_token');
       const user = getSavedUser();
       if (token && user) {
-        if (esVigilado(user.username)) {
+        const impersonando = sessionStorage.getItem('impersonando') === '1';
+        if (impersonando) sessionStorage.removeItem('impersonando');
+        if (esVigilado(user.username) && !impersonando) {
           this.logout();
           return false;
         }
