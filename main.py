@@ -12189,6 +12189,20 @@ def asignar_caso_whatsapp(caso_id: int, data: dict = Body(...)):
     return {"message": "Caso asignado", "id": caso_id, "atendido_por": atendido_por or None}
 
 
+@app.post("/whatsapp-casos/{caso_id}/ticket")
+def crear_ticket_caso_whatsapp(caso_id: int):
+    """El bot de soporte IA llama esto una sola vez, al escalar el caso.
+    ticket_number es AUTO_INCREMENT de whatsapp_tickets (arranca en 1992)."""
+    db = _get_db()
+    cursor = db.cursor()
+    cursor.execute("INSERT INTO whatsapp_tickets (caso_id) VALUES (%s)", (caso_id,))
+    db.commit()
+    ticket_number = cursor.lastrowid
+    cursor.close()
+    db.close()
+    return {"ticket_number": ticket_number}
+
+
 @app.put("/whatsapp-casos/{caso_id}/nombre-contacto")
 def renombrar_contacto_whatsapp(caso_id: int, data: dict = Body(...)):
     """Le pone/edita el nombre del contacto a mano desde el panel Vue —
