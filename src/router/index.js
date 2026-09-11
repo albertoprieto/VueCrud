@@ -106,4 +106,17 @@ const router = createRouter({
   routes
 });
 
+// Bloqueo puntual: Danieli no debe entrar a Soporte IA, ni por URL directa.
+router.beforeEach((to, from, next) => {
+  if (to.path === '/casos-whatsapp') {
+    try {
+      const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+      if ((user?.username || '').toLowerCase() === 'danieli') {
+        return next('/');
+      }
+    } catch { /* ignore */ }
+  }
+  next();
+});
+
 export default router;

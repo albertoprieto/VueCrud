@@ -99,7 +99,8 @@ function tooltip(u) {
     ? new Date(f.endsWith('Z') ? f : f + 'Z').toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
     : '—');
   const estado = esOnline(u) ? 'Conectado ahora' : `Última señal: ${fmt(u.ultimo_ping)}`;
-  return `${u.username}\n${estado}\nÚltimo ingreso (contraseña): ${fmt(u.ultima_sesion)}`;
+  const pagina = esOnline(u) && u.ultima_pagina ? `\nPágina: ${u.ultima_pagina}` : '';
+  return `${u.username}\n${estado}${pagina}\nÚltimo ingreso (contraseña): ${fmt(u.ultima_sesion)}`;
 }
 
 async function cargar() {

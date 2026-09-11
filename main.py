@@ -92,9 +92,18 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         user_id: int = payload.get("user_id")
+        token_session_version = payload.get("sv")
         if username is None or user_id is None:
             raise credentials_exception
     except JWTError:
+        raise credentials_exception
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("SELECT session_version FROM usuarios WHERE id = %s", (user_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not row or row[0] != token_session_version:
         raise credentials_exception
     return {"username": username, "user_id": user_id}
 
@@ -1789,6 +1798,14 @@ def migracion_usuarios_ultimo_ping():
         cursor.execute("ALTER TABLE usuarios ADD COLUMN ultimo_ping DATETIME NULL")
     except Exception:
         pass
+    try:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN ultima_pagina VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN session_version INT NOT NULL DEFAULT 1")
+    except Exception:
+        pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios_login_log (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1816,7 +1833,8 @@ def get_usuarios():
             username,
             perfil,
             ultima_sesion,
-            ultimo_ping
+            ultimo_ping,
+            ultima_pagina
         FROM usuarios
     """)
     usuarios = cursor.fetchall()
@@ -1844,14 +1862,30 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class RegistrarSesionRequest(BaseModel):
+    pagina: str | None = None
+
+@app.post("/usuarios/{usuario_id}/forzar-logout")
+def forzar_logout(usuario_id: int, current=Depends(require_admin)):
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("UPDATE usuarios SET session_version = session_version + 1 WHERE id = %s", (usuario_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"success": True}
+
 @app.post("/usuarios/registrar-sesion")
-def registrar_sesion(current=Depends(get_current_user)):
+def registrar_sesion(body: RegistrarSesionRequest = RegistrarSesionRequest(), current=Depends(get_current_user)):
     # Heartbeat: marca al usuario como conectado ahora. El user_id sale del
     # token (no del body) — así el "conectado" no se puede falsear a nombre de
     # otro. NO toca ultima_sesion (eso es solo el login real en /token).
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("UPDATE usuarios SET ultimo_ping = NOW() WHERE id = %s", (current["user_id"],))
+    cursor.execute(
+        "UPDATE usuarios SET ultimo_ping = NOW(), ultima_pagina = %s WHERE id = %s",
+        (body.pagina, current["user_id"])
+    )
     db.commit()
     cursor.close()
     db.close()
@@ -3824,7 +3858,7 @@ def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestFor
     cursor.close()
     db.close()
     
-    access_token = create_access_token(data={"sub": user["username"], "user_id": user["id"]})
+    access_token = create_access_token(data={"sub": user["username"], "user_id": user["id"], "sv": user.get("session_version", 1)})
     # Obtener los datos del usuario para devolverlos junto con el token
     user_data = {
         "id": user["id"],

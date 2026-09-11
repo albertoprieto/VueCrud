@@ -184,7 +184,7 @@ async function cargarCasosAbiertos() {
 //  · el user_id lo saca el backend del token, no se puede falsear por otro.
 let heartbeat = null;
 function latido() {
-  if (user.value?.id) registrarSesion(user.value.id);
+  if (user.value?.id) registrarSesion(user.value.id, String(route.name || route.path));
 }
 function latidoAlVolver() {
   if (document.visibilityState === 'visible') latido();
@@ -195,6 +195,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', latidoAlVolver);
   window.addEventListener('focus', latido);
 });
+watch(() => route.fullPath, latido);
 onUnmounted(() => {
   clearInterval(heartbeat);
   document.removeEventListener('visibilitychange', latidoAlVolver);
@@ -309,12 +310,12 @@ const items = computed(() => {
       ]
     }] : []),
 
-    {
+    ...((user.value.username || '').toLowerCase() !== 'danieli' ? [{
       label: 'Soporte IA',
       icon: 'pi pi-fw pi-whatsapp',
       route: '/casos-whatsapp',
       badge: casosWhatsappAbiertos.value || undefined
-    },
+    }] : []),
     ...(esAdmin.value ? [{
       label: 'Usuarios',
       icon: 'pi pi-fw pi-users',
