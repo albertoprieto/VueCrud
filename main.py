@@ -8652,7 +8652,7 @@ def get_ingresos_banco(request: Request = None):
 def crear_ingreso_banco(
     banco: str = Form(...),
     monto: float = Form(...),
-    imeis: str = Form(...),
+    imeis: str = Form(""),
     fecha_transaccion: str = Form(...),
     fecha_transaccion_real: str = Form(""),
     usuario: str = Form(""),
@@ -8669,8 +8669,6 @@ def crear_ingreso_banco(
     if monto <= 0:
         raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
     lista_imeis = [x.strip() for x in imeis.replace(';', ',').split(',') if x.strip()]
-    if not lista_imeis:
-        raise HTTPException(status_code=400, detail="Se requiere al menos un IMEI")
     if not (cuenta_origen.strip() or referencia_comprobante.strip() or clave_rastreo.strip()):
         raise HTTPException(
             status_code=400,
@@ -12189,6 +12187,32 @@ def detalle_caso_whatsapp(caso_id: int):
     cursor.close()
     db.close()
     return caso
+
+
+@app.get("/whatsapp-casos/mensajes-por-conversacion/{conversation_id}")
+def mensajes_por_conversacion(conversation_id: str):
+    """El bot la usa para reconstruir el hilo de soporte IA (lib/aiSupport.js)
+    cuando el proceso se reinicia (deploy) y pierde las sesiones en memoria —
+    sin esto, cada redeploy hacía que volviera a preguntar lo ya respondido."""
+    db = _get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id FROM whatsapp_casos WHERE conversation_id=%s AND estado NOT IN ('cerrado','resuelto') "
+        "ORDER BY id DESC LIMIT 1",
+        (conversation_id,)
+    )
+    caso = cursor.fetchone()
+    if not caso:
+        cursor.close(); db.close()
+        return {"mensajes": []}
+    cursor.execute(
+        "SELECT direccion, texto FROM whatsapp_mensajes WHERE caso_id=%s ORDER BY fecha DESC LIMIT 40",
+        (caso['id'],)
+    )
+    mensajes = list(reversed(cursor.fetchall()))
+    cursor.close()
+    db.close()
+    return {"mensajes": mensajes}
 
 
 @app.put("/whatsapp-casos/{caso_id}/estado")
