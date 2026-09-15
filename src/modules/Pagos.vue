@@ -419,8 +419,8 @@ async function ejecutarEliminar() {
     toast.add({ severity: 'success', summary: 'Eliminada', detail: 'Nota eliminada correctamente.', life: 3000 });
     await cargarNotas();
     showConfirmDelete.value = false;
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar.', life: 4000 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'No se pudo eliminar', detail: e?.response?.data?.detail || 'No se pudo eliminar.', life: 6000 });
   }
   eliminando.value = false;
 }

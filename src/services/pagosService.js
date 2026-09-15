@@ -91,6 +91,16 @@ export async function eliminarPagoNota(id, pagoId) {
   return res.data;
 }
 
+export async function getPagosNotaSueltos() {
+  const res = await axios.get(`${API_URL}/pagos-nota/sueltos`);
+  return res.data;
+}
+
+export async function vincularPagoNota(id, pagoId) {
+  const res = await axios.put(`${API_URL}/notas-pago/${id}/pagos/${pagoId}/vincular`);
+  return res.data;
+}
+
 export async function actualizarValidadoPagoNota(id, pagoId, estado) {
   const res = await axios.put(`${API_URL}/notas-pago/${id}/pagos/${pagoId}/validado`, { estado });
   return res.data;

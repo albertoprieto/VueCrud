@@ -279,6 +279,7 @@
     </Dialog>
 
     <ConfirmDialog group="reubicar" />
+    <ConfirmDialog group="eliminar-ingreso" />
   </div>
 </template>
 
@@ -714,19 +715,32 @@ async function eliminarIngresoFila(fila) {
     await cargar(false);
   } catch (e) {
     const detail = e?.response?.data?.detail || '';
-    if (detail.includes('Ligado a nota')) {
-      if (confirm(`${detail}\n\n¿Eliminar de todas formas? Esto desliga el ingreso de esa(s) nota(s).`)) {
-        try {
-          await eliminarIngresoBanco(fila.id, true);
-          toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Ingreso eliminado y desligado.', life: 2500 });
-          await cargar(false);
-        } catch (e2) {
-          toast.add({ severity: 'error', summary: 'Error', detail: e2?.response?.data?.detail || 'No se pudo eliminar el ingreso.', life: 4000 });
-        }
-      }
+    if (detail.includes('Ligado a')) {
+      confirm.require({
+        group: 'eliminar-ingreso',
+        header: 'Este ingreso ya está ligado',
+        message: `${detail}\n\n¿Eliminar de todas formas? Esto desliga el ingreso de esa nota/factura antes de borrarlo — no se puede deshacer.`,
+        icon: 'pi pi-exclamation-triangle',
+        acceptLabel: 'Sí, eliminar y desligar',
+        acceptClass: 'p-button-danger',
+        rejectLabel: 'Cancelar',
+        accept: () => forzarEliminarIngreso(fila),
+      });
     } else {
       toast.add({ severity: 'error', summary: 'Error', detail: detail || 'No se pudo eliminar el ingreso.', life: 4000 });
     }
+  }
+  eliminandoIngresoId.value = null;
+}
+
+async function forzarEliminarIngreso(fila) {
+  eliminandoIngresoId.value = fila.id;
+  try {
+    await eliminarIngresoBanco(fila.id, true);
+    toast.add({ severity: 'success', summary: 'Eliminado', detail: 'Ingreso eliminado y desligado.', life: 2500 });
+    await cargar(false);
+  } catch (e2) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e2?.response?.data?.detail || 'No se pudo eliminar el ingreso.', life: 4000 });
   }
   eliminandoIngresoId.value = null;
 }

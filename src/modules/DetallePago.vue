@@ -511,6 +511,8 @@
         </div>
       </div>
     </Dialog>
+
+    <ConfirmDialog group="desligar-ingreso" />
   </div>
 </template>
 
@@ -547,10 +549,12 @@ import {
 } from '@/services/pagosService';
 import { generarPagoPDF } from '@/services/PagoPdfService.js';
 import { getIngresosBanco, getIngresosLigadosANota, asignarIngresoANota, desligarIngresoNota } from '@/services/ingresosBancoService';
+import { useConfirm } from 'primevue/useconfirm';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const confirm = useConfirm();
 
 const id = computed(() => route.params.id);
 
@@ -1048,7 +1052,22 @@ async function confirmarLigarIngreso() {
   ligando.value = false;
 }
 
-async function desligarIngreso(link) {
+function desligarIngreso(link) {
+  confirm.require({
+    group: 'desligar-ingreso',
+    header: 'Vas a desligar este ingreso de la nota',
+    message:
+      `Se quitará la liga de $${Number(link.monto_aplicado).toFixed(2)} (${link.banco || 'sin banco'}). ` +
+      'El saldo pendiente de la nota vuelve a subir por ese monto. ' +
+      'El comprobante y el ingreso NO se borran: quedan libres y puedes volver a ligarlos a esta u otra nota cuando quieras.',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Sí, desligar',
+    rejectLabel: 'Cancelar',
+    accept: () => ejecutarDesligarIngreso(link),
+  });
+}
+
+async function ejecutarDesligarIngreso(link) {
   desligandoIngresoId.value = link.id;
   try {
     await desligarIngresoNota(link.id);

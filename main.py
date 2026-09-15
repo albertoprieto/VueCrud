@@ -257,6 +257,19 @@ def crear_tabla_pagos_nota():
             creado_fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Desvincular ya no borra el pago: lo deja "suelto" (nota_id=NULL) para
+    # poder revincularlo después a la nota correcta, en vez de perderlo.
+    for _ddl in (
+        "ALTER TABLE pagos_nota MODIFY COLUMN nota_id INT NULL",
+        "ALTER TABLE pagos_nota ADD COLUMN nota_id_original INT NULL",
+        "ALTER TABLE pagos_nota ADD COLUMN desvinculado_por VARCHAR(100) NULL",
+        "ALTER TABLE pagos_nota ADD COLUMN desvinculado_fecha DATETIME NULL",
+        "ALTER TABLE pagos_nota ADD INDEX idx_pagos_nota_nota (nota_id)",
+    ):
+        try:
+            cursor.execute(_ddl)
+        except Exception:
+            pass
     db.commit()
     cursor.close()
     db.close()
@@ -6207,6 +6220,21 @@ def actualizar_datos_pago_nota(nota_id: int, data: dict = Body(...)):
 def eliminar_nota_pago(nota_id: int):
     db = get_db_connection()
     cursor = db.cursor()
+    cursor.execute("SELECT COUNT(*) FROM pagos_nota WHERE nota_id=%s", (nota_id,))
+    n_pagos = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM ingreso_banco_notas WHERE nota_id=%s", (nota_id,))
+    n_ingresos = cursor.fetchone()[0]
+    if n_pagos or n_ingresos:
+        cursor.close(); db.close()
+        partes = []
+        if n_pagos:
+            partes.append(f"{n_pagos} pago(s) directo(s)")
+        if n_ingresos:
+            partes.append(f"{n_ingresos} ingreso(s) bancario(s) ligado(s)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Esta nota tiene {' y '.join(partes)}. Desvincúlalos antes de eliminar la nota."
+        )
     cursor.execute("DELETE FROM notas_pago WHERE id=%s", (nota_id,))
     db.commit()
     affected = cursor.rowcount
@@ -7855,6 +7883,14 @@ def eliminar_factura_pago(factura_id: int):
     if factura.get('status') == 'Timbrado':
         cursor.close(); db.close()
         raise HTTPException(status_code=400, detail="No se puede eliminar una factura ya timbrada — usa /cancelar en su lugar")
+    cursor.execute("SELECT COUNT(*) AS n FROM ingreso_banco_notas WHERE factura_id=%s", (factura_id,))
+    n_ingresos = cursor.fetchone()['n']
+    if n_ingresos:
+        cursor.close(); db.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Esta factura tiene {n_ingresos} ingreso(s) bancario(s) ligado(s). Desvincúlalos antes de eliminar la factura."
+        )
     cursor2 = db.cursor()
     cursor2.execute("DELETE FROM facturas_pago WHERE id=%s", (factura_id,))
     db.commit()
@@ -8470,17 +8506,67 @@ def validar_pago_nota(nota_id: int, pago_id: int, data: dict = Body(...)):
     return {"message": "Validado actualizado", "id": pago_id, "validado": bool(validado)}
 
 @app.delete("/notas-pago/{nota_id}/pagos/{pago_id}")
-def eliminar_pago_nota(nota_id: int, pago_id: int):
+def eliminar_pago_nota(nota_id: int, pago_id: int, current=Depends(get_current_user)):
+    """Desvincula el pago de la nota (no lo borra): queda 'suelto'
+    (nota_id=NULL) para poder revincularlo después a la nota correcta. El
+    saldo de la nota se recalcula solo porque _saldo_pendiente_nota suma
+    pagos_nota por nota_id."""
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("DELETE FROM pagos_nota WHERE id=%s AND nota_id=%s", (pago_id, nota_id))
+    cursor.execute(
+        """UPDATE pagos_nota
+           SET nota_id_original=nota_id, nota_id=NULL,
+               desvinculado_por=%s, desvinculado_fecha=NOW()
+           WHERE id=%s AND nota_id=%s""",
+        (current.get("username"), pago_id, nota_id)
+    )
     db.commit()
     affected = cursor.rowcount
     cursor.close()
     db.close()
     if affected == 0:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
-    return {"message": "Pago eliminado"}
+    return {"message": "Pago desvinculado de la nota"}
+
+
+@app.get("/pagos-nota/sueltos")
+def listar_pagos_nota_sueltos():
+    """Pagos desvinculados de su nota (nota_id=NULL), pendientes de
+    revincular a la nota correcta."""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM pagos_nota WHERE nota_id IS NULL ORDER BY desvinculado_fecha DESC"
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return rows
+
+
+@app.put("/notas-pago/{nota_id}/pagos/{pago_id}/vincular")
+def vincular_pago_nota(nota_id: int, pago_id: int, current=Depends(get_current_user)):
+    """Revincula un pago suelto (desvinculado antes) a esta nota."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM notas_pago WHERE id=%s", (nota_id,))
+    if not cursor.fetchone():
+        cursor.close(); db.close()
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    cursor.execute(
+        """UPDATE pagos_nota
+           SET nota_id=%s, nota_id_original=NULL,
+               desvinculado_por=NULL, desvinculado_fecha=NULL
+           WHERE id=%s AND nota_id IS NULL""",
+        (nota_id, pago_id)
+    )
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Pago no encontrado o ya está vinculado a otra nota")
+    return {"message": "Pago vinculado a la nota", "id": pago_id, "nota_id": nota_id}
 
 
 # ── Ingresos bancarios (comprobante primero) ──────────────────────────────
