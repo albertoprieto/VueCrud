@@ -108,8 +108,9 @@
       <Column field="tipo_servicio" header="Tipo" />
       <Column header="Nota / Factura">
         <template #body="slotProps">
+          <span v-if="slotProps.data.cierre_garantia_fecha" style="font-weight:bold; color:var(--color-success, #28a745);">Es garantía</span>
           <router-link
-            v-if="asignacionPagoMap[slotProps.data.id]"
+            v-else-if="asignacionPagoMap[slotProps.data.id]"
             :to="asignacionPagoMap[slotProps.data.id].tipo === 'factura'
               ? { name: 'detalle-factura', params: { id: asignacionPagoMap[slotProps.data.id].id } }
               : { name: 'detalle-pago', params: { tipo: 'nota', id: asignacionPagoMap[slotProps.data.id].id } }"
