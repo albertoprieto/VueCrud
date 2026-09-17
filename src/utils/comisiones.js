@@ -105,7 +105,7 @@ export function indexarNotasFacturas(notas, facturas) {
   const indice = new Map();
 
   for (const nota of notas || []) {
-    const comprobantes = parseComprobantes(nota.comprobantes);
+    const comprobantes = [...parseComprobantes(nota.comprobantes), ...(nota.comprobantes_extra || [])];
     const estado = nota.status === 'cancelado'
       ? ESTADOS.CANCELADO
       : (comprobantes.length ? ESTADOS.CON_COMPROBANTE : ESTADOS.SIN_COMPROBANTE);
@@ -115,7 +115,7 @@ export function indexarNotasFacturas(notas, facturas) {
   }
 
   for (const factura of facturas || []) {
-    const comprobantes = parseComprobantes(factura.comprobantes);
+    const comprobantes = [...parseComprobantes(factura.comprobantes), ...(factura.comprobantes_extra || [])];
     const estado = factura.status === 'Cancelado'
       ? ESTADOS.CANCELADO
       : (comprobantes.length ? ESTADOS.CON_COMPROBANTE : ESTADOS.SIN_COMPROBANTE);
