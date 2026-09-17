@@ -14,7 +14,44 @@
         <Button label="Agregar ingreso" icon="pi pi-file-import" class="p-button-sm p-button-success" style="margin-top:0.75rem;" @click="abrirNuevoIngreso" />
       </div>
 
-      <div class="bancos-grid">
+      <div class="buscador-global">
+        <i class="pi pi-search" />
+        <InputText v-model="busquedaGlobal" placeholder="Buscar por IMEI o usuario en todos los bancos..." class="buscador-global-input" />
+      </div>
+
+      <div v-if="busquedaActiva" class="busqueda-banner">
+        <span><i class="pi pi-filter" /> Resultados para "{{ busquedaGlobal.trim() }}" — {{ resultadosBusqueda.length }} encontrado{{ resultadosBusqueda.length === 1 ? '' : 's' }}</span>
+        <Button label="Quitar búsqueda" icon="pi pi-times" class="p-button-sm p-button-outlined" @click="busquedaGlobal = ''" />
+      </div>
+
+      <div v-if="busquedaActiva" class="resultados-card">
+        <DataTable :value="resultadosBusqueda" responsiveLayout="scroll" :paginator="resultadosBusqueda.length > 30" :rows="30" dataKey="key">
+          <template #empty>Sin resultados para esta búsqueda.</template>
+          <Column field="banco" header="Banco" />
+          <Column field="tipo" header="Tipo" />
+          <Column header="Fecha"><template #body="{ data }">{{ formatFecha(data.fecha) }}</template></Column>
+          <Column field="nombre" header="Nombre" />
+          <Column field="usuario" header="Usuario" />
+          <Column field="imeis" header="IMEIs" />
+          <Column header="Monto">
+            <template #body="{ data }">
+              <span :class="data.monto < 0 ? 'monto-negativo' : 'monto-positivo'">{{ data.monto >= 0 ? '+' : '' }}{{ formatTotal(data.monto) }}</span>
+            </template>
+          </Column>
+          <Column header="Estatus">
+            <template #body="{ data }">{{ data.estatus || data.estatusValidacion }}</template>
+          </Column>
+          <Column header="" style="width:60px">
+            <template #body="{ data }">
+              <router-link :to="{ name: 'detalle-banco', params: { nombre: data.banco } }" class="p-button p-button-sm p-button-text" title="Ver en su banco">
+                <i class="pi pi-arrow-right" />
+              </router-link>
+            </template>
+          </Column>
+        </DataTable>
+      </div>
+
+      <div v-if="!busquedaActiva" class="bancos-grid">
         <router-link
           v-for="banco in tarjetas"
           :key="banco.nombre"
@@ -108,6 +145,8 @@ import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Calendar from 'primevue/calendar';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
 import { LUGARES_VALIDOS, fetchBancosRaw, buildFilas, calcularSaldoBanco, mesKey } from '@/composables/useBancosData';
 import { crearIngresoBanco } from '@/services/ingresosBancoService';
 
@@ -153,6 +192,16 @@ const tarjetas = computed(() => {
 });
 
 const saldoGlobal = computed(() => tarjetas.value.reduce((acc, b) => acc + b.saldo, 0));
+
+const busquedaGlobal = ref('');
+const busquedaActiva = computed(() => !!busquedaGlobal.value.trim());
+const resultadosBusqueda = computed(() => {
+  const q = busquedaGlobal.value.trim().toLowerCase();
+  if (!q) return [];
+  return filas.value.filter(f =>
+    (f.imeis || '').toLowerCase().includes(q) || (f.usuario || '').toLowerCase().includes(q) || (f.nombre || '').toLowerCase().includes(q)
+  );
+});
 
 async function cargar() {
   loading.value = true;
@@ -265,6 +314,48 @@ async function confirmarIngreso() {
   font-weight: 800;
   color: var(--color-title);
 }
+
+.buscador-global {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 480px;
+  margin: 0 auto 1rem;
+}
+.buscador-global .pi-search {
+  position: absolute;
+  left: 0.9rem;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.buscador-global-input {
+  width: 100%;
+  padding-left: 2.4rem;
+  border-radius: 10px;
+}
+.busqueda-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.1rem;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.resultados-card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-1, 0 1px 4px rgba(0, 0, 0, 0.05));
+}
+.monto-negativo { color: var(--color-error); font-weight: 700; }
+.monto-positivo { color: var(--color-success); font-weight: 700; }
 
 .bancos-grid {
   display: grid;
