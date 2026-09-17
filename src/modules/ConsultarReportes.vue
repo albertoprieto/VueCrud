@@ -583,8 +583,10 @@ const asignacionPagoMap = computed(() => {
   return map;
 });
 
-// Verde: con nota/factura y pagado (o con comprobante de pago cargado) — Rojo: con nota/factura y sin pagar — Amarillo: sin nota/factura
+// Verde: con nota/factura y pagado (o con comprobante de pago cargado), o
+// cerrado por garantía — Rojo: con nota/factura y sin pagar — Amarillo: sin nota/factura
 function filaClasePago(data) {
+  if (data.cierre_garantia_fecha) return 'fila-pago-verde';
   if (data.comprobante_path) return 'fila-pago-verde';
   const asignacion = asignacionPagoMap.value[data.id];
   if (!asignacion) return 'fila-pago-amarillo';

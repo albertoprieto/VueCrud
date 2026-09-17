@@ -4450,11 +4450,16 @@ def marcar_garantia_reporte(reporte_id: int, current=Depends(get_current_user)):
         except Exception:
             pass
 
-    cursor.execute("SELECT id FROM reportes_servicio WHERE id=%s", (reporte_id,))
-    if not cursor.fetchone():
+    cursor.execute("SELECT id, total FROM reportes_servicio WHERE id=%s", (reporte_id,))
+    rep = cursor.fetchone()
+    if not rep:
         cursor.close()
         db.close()
         raise HTTPException(status_code=404, detail="Reporte no encontrado")
+    if float(rep.get("total") or 0) != 0:
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=400, detail="Solo se puede marcar como garantía un reporte con total en $0")
 
     cursor2 = db.cursor()
     try:

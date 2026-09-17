@@ -139,7 +139,7 @@
               @click="abrirMarcarPermiso(data)"
             />
             <Button
-              v-if="data.estado === 'sin_comprobante' || data.estado === 'sin_nota'"
+              v-if="(data.estado === 'sin_comprobante' || data.estado === 'sin_nota') && Number(data.total) === 0"
               icon="pi pi-shield" label="Garantía" class="p-button-sm p-button-text btn-garantia"
               v-tooltip.top="'Este servicio no se cobró — cerrarlo como garantía'"
               @click="abrirMarcarGarantia(data)"
