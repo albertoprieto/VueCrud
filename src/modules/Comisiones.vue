@@ -70,8 +70,12 @@
             <i class="pi pi-exclamation-triangle" />
             {{ p.reportesSinNota }} sin nota{{ p.reportesSinNota === 1 ? '' : 's' }}
           </span>
+          <span v-else-if="p.reportesSinComprobante > 0" class="pendiente-tag">
+            <i class="pi pi-exclamation-triangle" />
+            {{ p.reportesSinComprobante }} sin comprobante
+          </span>
           <span v-else class="al-dia-tag">
-            <i class="pi pi-check-circle" /> Todo con nota/factura
+            <i class="pi pi-check-circle" /> Todo con comprobante
           </span>
           <span v-if="p.reportesConPermiso > 0" class="permiso-tag">
             <i class="pi pi-clock" />
