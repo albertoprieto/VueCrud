@@ -43,6 +43,10 @@
             <span class="resumen-label">Con permiso (excusado)</span>
             <span class="resumen-valor con">{{ totales.reportesPermisoPendiente }}</span>
           </div>
+          <div class="resumen-item">
+            <span class="resumen-label">Cerrados por garantía</span>
+            <span class="resumen-valor con">{{ totales.reportesGarantia }}</span>
+          </div>
         </div>
       </div>
 
@@ -60,6 +64,7 @@
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'sin_comprobante' }" @click="filtroEstado = 'sin_comprobante'">Con nota, sin comprobante ({{ totales.reportesSinComprobante }})</button>
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'sin_nota' }" @click="filtroEstado = 'sin_nota'">Sin nota/factura ({{ totales.reportesSinNota }})</button>
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'permiso_pendiente' }" @click="filtroEstado = 'permiso_pendiente'">Con permiso ({{ totales.reportesPermisoPendiente }})</button>
+        <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'garantia' }" @click="filtroEstado = 'garantia'">Garantía ({{ totales.reportesGarantia }})</button>
       </div>
 
       <div v-if="filasSeleccionadas.length" class="seleccion-bulk-bar">
@@ -110,7 +115,12 @@
         <Column header="Permiso" style="width:150px">
           <template #body="{ data }">
             <span
-              v-if="data.estado === 'permiso_pendiente'"
+              v-if="data.estado === 'garantia'"
+              class="badge badge-garantia"
+              v-tooltip.top="`Cerrado como garantía por ${data.cierre_garantia_por || '—'} el ${formatFechaCorta(data.cierre_garantia_fecha)} — no tuvo cobro, no necesita nota ni comprobante.`"
+            >Garantía</span>
+            <span
+              v-else-if="data.estado === 'permiso_pendiente'"
               class="badge badge-permiso-vigente"
               v-tooltip.top="`Hasta ${formatFechaCorta(data.permiso_pendiente_fecha)} — marcado por ${data.permiso_pendiente_por || '—'}. Clic para quitar.`"
               style="cursor:pointer;"
@@ -125,6 +135,12 @@
               v-if="data.estado === 'sin_comprobante' || data.estado === 'sin_nota'"
               icon="pi pi-clock" label="Marcar" class="p-button-sm p-button-text btn-permiso"
               @click="abrirMarcarPermiso(data)"
+            />
+            <Button
+              v-if="data.estado === 'sin_comprobante' || data.estado === 'sin_nota'"
+              icon="pi pi-shield" label="Garantía" class="p-button-sm p-button-text btn-garantia"
+              v-tooltip.top="'Este servicio no se cobró — cerrarlo como garantía'"
+              @click="abrirMarcarGarantia(data)"
             />
           </template>
         </Column>
@@ -297,6 +313,39 @@
       </div>
     </Dialog>
 
+    <!-- Dialog: marcar reporte como garantía (sin cobro) -->
+    <Dialog
+      v-model:visible="garantiaDialogVisible"
+      header="Cerrar reporte como garantía"
+      :modal="true"
+      :style="{ width: '460px', maxWidth: '95vw' }"
+      :draggable="false"
+    >
+      <div v-if="reporteParaGarantia" class="permiso-dialog">
+        <p class="permiso-reporte-info">
+          {{ reporteParaGarantia.folio || `Reporte #${reporteParaGarantia.id}` }} — {{ reporteParaGarantia.nombre_cliente || '-' }}
+        </p>
+        <div class="garantia-explicacion">
+          <p>Este servicio se hizo <strong>sin costo, por garantía</strong>. Nunca hubo un pago, así que nunca va a tener una nota o factura que subirle un comprobante.</p>
+          <p>Al confirmar:</p>
+          <ul>
+            <li>El reporte queda marcado como <strong>Garantía</strong>.</li>
+            <li>Deja de aparecer como pendiente en Comprobantes.</li>
+            <li><strong>No</strong> se crea ninguna nota ni factura, ni se registra ningún cobro.</li>
+          </ul>
+          <p class="garantia-aviso">Úsalo solo cuando el servicio de verdad fue en $0 por garantía. No es para "ocultar" un pendiente que sí se cobró.</p>
+        </div>
+        <div class="modal-actions">
+          <Button
+            label="Sí, cerrar como garantía" icon="pi pi-shield"
+            :loading="marcandoGarantia"
+            @click="confirmarMarcarGarantia"
+          />
+          <Button label="Cancelar" class="p-button-secondary" @click="garantiaDialogVisible = false" type="button" />
+        </div>
+      </div>
+    </Dialog>
+
     <!-- Dialog: transferir reporte a otro vendedor -->
     <Dialog
       v-model:visible="transferDialogVisible"
@@ -345,7 +394,7 @@ import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
-import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente, transferirVendedor } from '@/services/reportesService';
+import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente, transferirVendedor, marcarGarantia } from '@/services/reportesService';
 import { getNotas, getFacturas } from '@/services/pagosService';
 import {
   indexarNotasFacturas, reportesDePersona, agruparPorPersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS,
@@ -423,7 +472,7 @@ const totales = computed(() => {
     totalVendido: 0, totalConComprobante: 0, totalSinComprobante: 0, totalSinNota: 0,
     reportesConComprobante: 0, reportesSinComprobante: 0, reportesSinNota: 0,
     montoTecnicoConComprobante: 0, montoTecnicoSinComprobante: 0,
-    reportesPermisoPendiente: 0,
+    reportesPermisoPendiente: 0, reportesGarantia: 0,
   };
   for (const r of reportesPersona.value) {
     const total = Number(r.total) || 0;
@@ -443,6 +492,8 @@ const totales = computed(() => {
       t.montoTecnicoSinComprobante += montoTecnico;
     } else if (r.estado === ESTADOS.PERMISO_PENDIENTE) {
       t.reportesPermisoPendiente += 1;
+    } else if (r.estado === ESTADOS.GARANTIA) {
+      t.reportesGarantia += 1;
     }
   }
   return t;
@@ -658,6 +709,32 @@ function abrirTransferir(reporte) {
   reporteParaTransferir.value = reporte;
   nuevoVendedor.value = '';
   transferDialogVisible.value = true;
+}
+
+// ── Marcar como garantía — el servicio se hizo sin costo (reparación en
+// garantía), nunca va a tener nota ni comprobante. Deja de contar como
+// pendiente sin inventar un pago que no existió. ──
+const garantiaDialogVisible = ref(false);
+const reporteParaGarantia = ref(null);
+const marcandoGarantia = ref(false);
+
+function abrirMarcarGarantia(reporte) {
+  reporteParaGarantia.value = reporte;
+  garantiaDialogVisible.value = true;
+}
+
+async function confirmarMarcarGarantia() {
+  if (!reporteParaGarantia.value) return;
+  marcandoGarantia.value = true;
+  try {
+    await marcarGarantia(reporteParaGarantia.value.id);
+    toast.add({ severity: 'success', summary: 'Cerrado como garantía', detail: 'El reporte ya no aparece como pendiente.', life: 3500 });
+    garantiaDialogVisible.value = false;
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo cerrar el reporte como garantía.', life: 4500 });
+  }
+  marcandoGarantia.value = false;
 }
 
 async function confirmarTransferir() {
@@ -930,7 +1007,24 @@ async function confirmarTransferir() {
 
 .badge-permiso-vigente { background: color-mix(in srgb, var(--color-primary) 18%, transparent); color: var(--color-primary); }
 .badge-permiso-vencido { background: color-mix(in srgb, var(--color-warning) 20%, transparent); color: var(--color-warning); }
-.btn-permiso :deep(.p-button-label) { font-size: 0.8rem; }
+.badge-garantia { background: color-mix(in srgb, #6c757d 20%, transparent); color: #6c757d; }
+.btn-permiso :deep(.p-button-label), .btn-garantia :deep(.p-button-label) { font-size: 0.8rem; }
+
+.garantia-explicacion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+  color: var(--color-text);
+}
+.garantia-explicacion ul { margin: 0; padding-left: 1.2rem; }
+.garantia-explicacion .garantia-aviso {
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+  font-size: 0.82rem;
+}
 
 .permiso-dialog {
   display: flex;

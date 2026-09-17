@@ -16,6 +16,7 @@ export const ESTADOS = {
   CON_COMPROBANTE: 'con_comprobante',
   CANCELADO: 'cancelado',
   PERMISO_PENDIENTE: 'permiso_pendiente',
+  GARANTIA: 'garantia',
 };
 
 const LABELS_ESTADO = {
@@ -24,6 +25,7 @@ const LABELS_ESTADO = {
   [ESTADOS.CON_COMPROBANTE]: 'Con comprobante',
   [ESTADOS.CANCELADO]: 'Cancelado',
   [ESTADOS.PERMISO_PENDIENTE]: 'Permiso (pendiente excusado)',
+  [ESTADOS.GARANTIA]: 'Garantía (cerrado sin cobro)',
 };
 
 // ── Permiso de pendiente: excusa temporal (Técnico/Cliente) para que un
@@ -130,6 +132,12 @@ export function indexarNotasFacturas(notas, facturas) {
 }
 
 export function estadoDeReporte(reporte, indice) {
+  // Cerrado como garantía (botón "Marcar como garantía"): nunca hubo cobro,
+  // así que nunca va a existir nota/comprobante que subir. Se da por
+  // resuelto igual que un cancelado, sin pedir permiso ni excusa.
+  if (reporte?.cierre_garantia_fecha) {
+    return { estado: ESTADOS.GARANTIA, referencia: null };
+  }
   const match = indice.get(reporte.id);
   const base = !match
     ? { estado: ESTADOS.SIN_NOTA, referencia: null }

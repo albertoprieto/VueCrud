@@ -427,8 +427,18 @@
             Sugerido: el IMEI del ingreso coincide con la nota.
           </small>
         </div>
+        <div v-if="crearPagoTipo === 'nota' && Number(crearPagoTotal) === 0" class="garantia-aviso-nota">
+          <i class="pi pi-info-circle" />
+          El total es $0 — esto normalmente es un servicio hecho por <strong>garantía</strong>, no un cobro real. Si es así, no crees la nota: usa "Marcar como garantía" — el reporte queda cerrado sin necesidad de nota ni comprobante.
+        </div>
       </div>
       <div class="modal-actions">
+        <Button
+          v-if="crearPagoTipo === 'nota' && Number(crearPagoTotal) === 0"
+          label="Marcar como garantía" icon="pi pi-shield" class="p-button-secondary"
+          :loading="marcandoGarantiaDesdeNota"
+          @click="confirmarMarcarGarantiaDesdeNota"
+        />
         <Button :label="crearPagoTipo === 'nota' ? 'Crear Nota' : 'Crear Factura'" icon="pi pi-check" @click="confirmarCrearPago" :loading="creandoPago" />
         <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" @click="showCrearPagoDialog = false" />
       </div>
@@ -475,6 +485,7 @@ import { useLoginStore } from '@/stores/loginStore';
 import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/services/dineroService.js';
 import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
+import { marcarGarantia } from '@/services/reportesService';
 import { crearNota, crearFactura, getPagosAsignaciones, actualizarCamposNota } from '@/services/pagosService';
 import { generarNotaServicioPDF } from '@/services/NotaServicioPdfService.js';
 import { getIngresosBanco, asignarIngresoANota, asignarIngresoAFactura } from '@/services/ingresosBancoService';
@@ -635,6 +646,40 @@ async function cargarIngresosParaLigar() {
   } catch {
     ingresosParaLigar.value = [];
   }
+}
+
+// ── Marcar como garantía desde "Crear Nota" — cuando el total es $0 porque
+// el servicio se hizo por garantía (Dani lo genera así), no hay pago que
+// ligar a una nota. Cierra los reportes seleccionados directo, sin crear
+// nota ni factura. ──
+const marcandoGarantiaDesdeNota = ref(false);
+
+async function confirmarMarcarGarantiaDesdeNota() {
+  marcandoGarantiaDesdeNota.value = true;
+  let exitosos = 0;
+  let fallidos = 0;
+  for (const r of seleccionados.value) {
+    try {
+      await marcarGarantia(r.id);
+      exitosos += 1;
+    } catch {
+      fallidos += 1;
+    }
+  }
+  if (exitosos) {
+    toast.add({
+      severity: fallidos ? 'warn' : 'success',
+      summary: 'Marcado como garantía',
+      detail: fallidos ? `${exitosos} cerrados, ${fallidos} fallaron.` : 'El reporte ya no aparece como pendiente.',
+      life: 4000,
+    });
+  } else {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo marcar como garantía.', life: 4500 });
+  }
+  showCrearPagoDialog.value = false;
+  seleccionados.value = [];
+  marcandoGarantiaDesdeNota.value = false;
+  await cargarReportes();
 }
 
 async function abrirCrearNota() {
@@ -1698,6 +1743,18 @@ function irReporteRenovacionGlobal() {
   justify-content: flex-end;
   gap: 1rem;
   margin-top: 1.5rem;
+}
+
+.garantia-aviso-nota {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem;
+  margin-top: 1rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warning, #f0ad4e) 12%, transparent);
+  color: var(--color-warning, #f0ad4e);
+  font-size: 0.85rem;
 }
 
 .seleccion-bar {

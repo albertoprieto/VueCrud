@@ -41,6 +41,13 @@ export const quitarPermisoPendiente = async (reporteId) => {
   return response.data;
 };
 
+// Cierra un reporte como "garantía" (servicio en $0, sin cobro real) — deja
+// de contar como pendiente de nota/comprobante, sin crear nota ni factura.
+export const marcarGarantia = async (reporteId) => {
+  const response = await axios.put(`https://api.gpsubicacionapi.com/reportes-servicio/${reporteId}/marcar-garantia`);
+  return response.data;
+};
+
 // Reasignar el vendedor/responsable de un reporte (ej. transferir un
 // pendiente de comprobante a otro vendedor) — no deja rastro del vendedor
 // original, el reporte pasa completo al nuevo.
