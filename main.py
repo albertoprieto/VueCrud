@@ -4470,6 +4470,38 @@ def marcar_garantia_reporte(reporte_id: int, current=Depends(get_current_user)):
     return {"message": "Reporte cerrado como garantía", "cierre_garantia_por": user.get("username")}
 
 
+@app.delete("/reportes-servicio/{reporte_id}/marcar-garantia")
+def quitar_garantia_reporte(reporte_id: int, current=Depends(get_current_user)):
+    """Deshace el cierre por garantía — el reporte vuelve a contar como pendiente."""
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    user = cursor.fetchone()
+    if not user or user.get("perfil") != "Admin":
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    cursor.execute("SELECT id FROM reportes_servicio WHERE id=%s", (reporte_id,))
+    if not cursor.fetchone():
+        cursor.close()
+        db.close()
+        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+
+    cursor2 = db.cursor()
+    try:
+        cursor2.execute(
+            "UPDATE reportes_servicio SET cierre_garantia_por=NULL, cierre_garantia_fecha=NULL WHERE id=%s",
+            (reporte_id,)
+        )
+        db.commit()
+    finally:
+        cursor2.close()
+        cursor.close()
+        db.close()
+    return {"message": "Garantía quitada, el reporte vuelve a contar como pendiente"}
+
+
 @app.put("/reportes-servicio/{reporte_id}/rechazar-comprobante")
 def rechazar_comprobante_reporte(reporte_id: int, current=Depends(get_current_user)):
     """Rechaza el comprobante de un reporte. Requiere rol Admin."""

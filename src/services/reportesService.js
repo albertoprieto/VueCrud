@@ -48,6 +48,11 @@ export const marcarGarantia = async (reporteId) => {
   return response.data;
 };
 
+export const quitarGarantia = async (reporteId) => {
+  const response = await axios.delete(`https://api.gpsubicacionapi.com/reportes-servicio/${reporteId}/marcar-garantia`);
+  return response.data;
+};
+
 // Reasignar el vendedor/responsable de un reporte (ej. transferir un
 // pendiente de comprobante a otro vendedor) — no deja rastro del vendedor
 // original, el reporte pasa completo al nuevo.

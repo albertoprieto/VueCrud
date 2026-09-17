@@ -117,8 +117,10 @@
             <span
               v-if="data.estado === 'garantia'"
               class="badge badge-garantia"
-              v-tooltip.top="`Cerrado como garantía por ${data.cierre_garantia_por || '—'} el ${formatFechaCorta(data.cierre_garantia_fecha)} — no tuvo cobro, no necesita nota ni comprobante.`"
-            >Garantía</span>
+              v-tooltip.top="`Cerrado como garantía por ${data.cierre_garantia_por || '—'} el ${formatFechaCorta(data.cierre_garantia_fecha)} — no tuvo cobro, no necesita nota ni comprobante. Clic para quitar.`"
+              style="cursor:pointer;"
+              @click="quitarGarantiaReporte(data)"
+            >Garantía <i class="pi pi-times" style="font-size:0.65rem;" /></span>
             <span
               v-else-if="data.estado === 'permiso_pendiente'"
               class="badge badge-permiso-vigente"
@@ -394,7 +396,7 @@ import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
-import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente, transferirVendedor, marcarGarantia } from '@/services/reportesService';
+import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente, transferirVendedor, marcarGarantia, quitarGarantia } from '@/services/reportesService';
 import { getNotas, getFacturas } from '@/services/pagosService';
 import {
   indexarNotasFacturas, reportesDePersona, agruparPorPersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS,
@@ -735,6 +737,16 @@ async function confirmarMarcarGarantia() {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo cerrar el reporte como garantía.', life: 4500 });
   }
   marcandoGarantia.value = false;
+}
+
+async function quitarGarantiaReporte(reporte) {
+  try {
+    await quitarGarantia(reporte.id);
+    toast.add({ severity: 'success', summary: 'Garantía quitada', detail: 'El reporte vuelve a contar como pendiente.', life: 3500 });
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo quitar la garantía.', life: 4500 });
+  }
 }
 
 async function confirmarTransferir() {
