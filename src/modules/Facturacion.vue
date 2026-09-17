@@ -95,6 +95,9 @@
         size="small"
       >
         <template #loading><DataTableLoader text="Cargando facturas..." /></template>
+        <Column header="No. Factura" style="min-width:130px;white-space:nowrap;text-align:center;">
+          <template #body="{ data }">{{ folioFactura(data.id) }}</template>
+        </Column>
         <Column header="Fecha">
           <template #body="{ data }">{{ formatFecha(data.fecha) }}</template>
         </Column>
@@ -361,6 +364,7 @@ const facturasFiltradas = computed(() => {
 
 const formatoMoneda = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function formatTotal(v) { return v != null ? formatoMoneda.format(Number(v)) : '-'; }
+function folioFactura(id) { return id; }
 function formatFecha(f) {
   if (!f) return '';
   const d = new Date(f);
