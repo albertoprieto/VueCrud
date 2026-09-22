@@ -554,7 +554,7 @@ function ingresoCoincideImei(g) {
 }
 const opcionesIngresoLigar = computed(() =>
   [...ingresosParaLigar.value]
-    .filter(g => g.estado_asignacion !== 'asignado' && Number(g.monto_disponible) > 0)
+    .filter(g => g.estado_asignacion !== 'asignado' && Number(g.monto_disponible) > 0 && Number(g.validado) !== 2)
     .sort((a, b) => (ingresoCoincideImei(b) ? 1 : 0) - (ingresoCoincideImei(a) ? 1 : 0))
     .map(g => ({
       value: g.id,
