@@ -41,6 +41,11 @@
           <span class="resumen-valor sin">{{ totalGeneral.reportesPendientes }}</span>
           <span v-if="tab === 'vendedor'" class="resumen-subvalor">{{ formatTotal(totalGeneral.vendidoSinNota) }} vendido</span>
         </div>
+        <div class="resumen-item" v-if="totalGeneral.reportesGarantia">
+          <span class="resumen-label">Cerrados por garantía</span>
+          <span class="resumen-valor garantia">{{ totalGeneral.reportesGarantia }}</span>
+          <span class="resumen-subvalor">sin cobro, no requieren comprobante</span>
+        </div>
         <div class="resumen-item" v-if="totalGeneral.reportesConPermiso">
           <span class="resumen-label">Con permiso</span>
           <span class="resumen-valor permiso">{{ totalGeneral.reportesConPermiso }}</span>
@@ -75,7 +80,12 @@
             {{ p.reportesSinComprobante }} sin comprobante
           </span>
           <span v-else class="al-dia-tag">
-            <i class="pi pi-check-circle" /> Todo con comprobante
+            <i class="pi pi-check-circle" />
+            {{ p.reportesGarantia > 0 ? `Completo: ${p.reportesConComprobante} con comprobante + ${p.reportesGarantia} en garantía` : 'Todo con comprobante' }}
+          </span>
+          <span v-if="p.reportesGarantia > 0 && (p.reportesSinNota > 0 || p.reportesSinComprobante > 0)" class="garantia-tag">
+            <i class="pi pi-shield" />
+            {{ p.reportesGarantia }} cerrado{{ p.reportesGarantia === 1 ? '' : 's' }} por garantía (sin cobro)
           </span>
           <span v-if="p.reportesConPermiso > 0" class="permiso-tag">
             <i class="pi pi-clock" />
@@ -179,10 +189,11 @@ const totalGeneral = computed(() => {
     acc.reportesConComprobante += p.reportesConComprobante;
     acc.reportesPendientes += p.reportesSinNota;
     acc.reportesConPermiso += p.reportesConPermiso;
+    acc.reportesGarantia += p.reportesGarantia;
     if (tienePendientes(p)) acc.personasConPendientes += 1;
     if (p.reportesConPermiso > 0) acc.personasConPermiso += 1;
     return acc;
-  }, { totalReportes: 0, vendido: 0, vendidoConComprobante: 0, vendidoSinNota: 0, vendidoConPermiso: 0, reportesConComprobante: 0, reportesPendientes: 0, reportesConPermiso: 0, personasConPendientes: 0, personasConPermiso: 0 });
+  }, { totalReportes: 0, vendido: 0, vendidoConComprobante: 0, vendidoSinNota: 0, vendidoConPermiso: 0, reportesConComprobante: 0, reportesPendientes: 0, reportesConPermiso: 0, reportesGarantia: 0, personasConPendientes: 0, personasConPermiso: 0 });
 });
 
 function verDetalle(nombre) {
@@ -305,6 +316,7 @@ onMounted(async () => {
 .resumen-valor.con { color: var(--color-success); }
 .resumen-valor.sin { color: var(--color-warning); }
 .resumen-valor.permiso { color: var(--color-warning); }
+.resumen-valor.garantia { color: #6c757d; }
 .resumen-subvalor {
   font-size: 0.78rem;
   color: var(--color-text);
@@ -413,6 +425,17 @@ onMounted(async () => {
   font-weight: 700;
   background: color-mix(in srgb, var(--color-warning) 20%, transparent);
   color: var(--color-warning);
+}
+.garantia-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: color-mix(in srgb, #6c757d 20%, transparent);
+  color: #6c757d;
 }
 .cero-section {
   margin-top: 2rem;

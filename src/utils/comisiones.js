@@ -224,6 +224,7 @@ export function agruparPorPersona(reportes, indice, campo) {
         reportesSinNota: 0,
         reportesConPermiso: 0,
         totalConPermiso: 0,
+        reportesGarantia: 0,
         comisionConComprobante: 0,
         comisionSinComprobante: 0,
       });
@@ -252,6 +253,8 @@ export function agruparPorPersona(reportes, indice, campo) {
     } else if (estado === ESTADOS.PERMISO_PENDIENTE) {
       g.totalConPermiso += total;
       g.reportesConPermiso += 1;
+    } else if (estado === ESTADOS.GARANTIA) {
+      g.reportesGarantia += 1;
     }
     // CANCELADO no suma a ningún total — no es venta viva.
   }

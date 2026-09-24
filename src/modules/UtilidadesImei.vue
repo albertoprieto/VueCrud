@@ -45,6 +45,7 @@
                 <InputText v-model="filters.deaccount" placeholder="Usuario" @keyup.enter="aplicarFiltros" />
                 <InputText v-model="filters.plataforma" placeholder="Plataforma" @keyup.enter="aplicarFiltros" />
                 <InputText v-model="filters.imei" placeholder="IMEI" @keyup.enter="aplicarFiltros" />
+                <InputText v-model="filters.iccid" placeholder="ICCID" @keyup.enter="aplicarFiltros" />
                 <Calendar
                   v-model="filters.fecha_desde"
                   dateFormat="yy-mm-dd"
@@ -322,6 +323,7 @@ const filters = ref({
   deaccount: '',
   plataforma: '',
   imei: '',
+  iccid: '',
   vigencia_sim: '',
   fecha_desde: null,
   fecha_hasta: null,
@@ -518,6 +520,7 @@ async function limpiarFiltros() {
     deaccount: '',
     plataforma: '',
     imei: '',
+    iccid: '',
     vigencia_sim: '',
     fecha_desde: null,
     fecha_hasta: null,
