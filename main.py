@@ -5542,6 +5542,41 @@ def verificar_reportes_renovaciones():
         "conteos": conteos
     }
 
+@app.put("/renovaciones-recientes/por-dispositivo/status")
+def update_renovacion_status_por_dispositivo(data: dict = Body(...)):
+    db = get_db_connection()
+    cursor = db.cursor()
+    
+    cuenta = data.get('cuenta', '').strip()
+    numero_dispositivo = data.get('numero_dispositivo', '').strip()
+    status = data.get('status')
+    
+    if not numero_dispositivo:
+        raise HTTPException(status_code=400, detail="Número de dispositivo requerido")
+    
+    if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere', 'desconocido', 'no_encontrado']:
+        raise HTTPException(status_code=400, detail="Status inválido")
+    
+    if cuenta:
+        cursor.execute("""
+            UPDATE renovaciones_recientes 
+            SET status = %s
+            WHERE cuenta = %s AND numero_dispositivo = %s
+        """, (status, cuenta, numero_dispositivo))
+    else:
+        cursor.execute("""
+            UPDATE renovaciones_recientes 
+            SET status = %s
+            WHERE numero_dispositivo = %s
+        """, (status, numero_dispositivo))
+    
+    db.commit()
+    affected = cursor.rowcount
+    cursor.close()
+    db.close()
+    
+    return {"message": "Status actualizado", "actualizados": affected}
+
 @app.put("/renovaciones-recientes/{renovacion_id}/status")
 def update_renovacion_status(renovacion_id: int, data: dict = Body(...)):
     db = get_db_connection()
@@ -5592,41 +5627,6 @@ def marcar_renovacion_sin_reporte_por_imei(data: dict = Body(...)):
     db.close()
     
     return {"message": "Renovación marcada como sin reporte", "imei": imei, "actualizados": affected}
-
-@app.put("/renovaciones-recientes/por-dispositivo/status")
-def update_renovacion_status_por_dispositivo(data: dict = Body(...)):
-    db = get_db_connection()
-    cursor = db.cursor()
-    
-    cuenta = data.get('cuenta', '').strip()
-    numero_dispositivo = data.get('numero_dispositivo', '').strip()
-    status = data.get('status')
-    
-    if not numero_dispositivo:
-        raise HTTPException(status_code=400, detail="Número de dispositivo requerido")
-    
-    if status not in ['pendiente', 'con_reporte', 'sin_reporte', 'es_envio', 'no_requiere', 'desconocido', 'no_encontrado']:
-        raise HTTPException(status_code=400, detail="Status inválido")
-    
-    if cuenta:
-        cursor.execute("""
-            UPDATE renovaciones_recientes 
-            SET status = %s
-            WHERE cuenta = %s AND numero_dispositivo = %s
-        """, (status, cuenta, numero_dispositivo))
-    else:
-        cursor.execute("""
-            UPDATE renovaciones_recientes 
-            SET status = %s
-            WHERE numero_dispositivo = %s
-        """, (status, numero_dispositivo))
-    
-    db.commit()
-    affected = cursor.rowcount
-    cursor.close()
-    db.close()
-    
-    return {"message": "Status actualizado", "actualizados": affected}
 
 @app.delete("/renovaciones-recientes")
 def delete_renovaciones_antiguas(dias_antiguedad: int = Query(90, description="Eliminar registros más antiguos que X días")):

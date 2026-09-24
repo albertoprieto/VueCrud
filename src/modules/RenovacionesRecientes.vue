@@ -107,7 +107,7 @@
       
       <!-- Cards con porcentajes -->
       <div class="resultado-info">
-        <div class="info-card-mini success">
+        <div class="info-card-mini success" :class="{ 'filtro-activo': filtroCard === 'conReporte' }" @click="toggleFiltroCard('conReporte')">
           <div class="card-icon">
             <span class="pi pi-check-circle"></span>
           </div>
@@ -122,7 +122,7 @@
             </div>
           </div>
         </div>
-        <div class="info-card-mini warning">
+        <div class="info-card-mini warning" :class="{ 'filtro-activo': filtroCard === 'sinReporte' }" @click="toggleFiltroCard('sinReporte')">
           <div class="card-icon">
             <span class="pi pi-exclamation-triangle"></span>
           </div>
@@ -137,7 +137,7 @@
             </div>
           </div>
         </div>
-        <div class="info-card-mini envio">
+        <div class="info-card-mini envio" :class="{ 'filtro-activo': filtroCard === 'esEnvio' }" @click="toggleFiltroCard('esEnvio')">
           <div class="card-icon">
             <span class="pi pi-truck"></span>
           </div>
@@ -152,7 +152,7 @@
             </div>
           </div>
         </div>
-        <div class="info-card-mini no-requiere">
+        <div class="info-card-mini no-requiere" :class="{ 'filtro-activo': filtroCard === 'noRequiere' }" @click="toggleFiltroCard('noRequiere')">
           <div class="card-icon">
             <span class="pi pi-minus-circle"></span>
           </div>
@@ -167,7 +167,7 @@
             </div>
           </div>
         </div>
-        <div class="info-card-mini desconocido">
+        <div class="info-card-mini desconocido" :class="{ 'filtro-activo': filtroCard === 'desconocido' }" @click="toggleFiltroCard('desconocido')">
           <div class="card-icon">
             <span class="pi pi-question-circle"></span>
           </div>
@@ -182,7 +182,7 @@
             </div>
           </div>
         </div>
-        <div class="info-card-mini no-encontrado">
+        <div class="info-card-mini no-encontrado" :class="{ 'filtro-activo': filtroCard === 'noEncontrado' }" @click="toggleFiltroCard('noEncontrado')">
           <div class="card-icon">
             <span class="pi pi-search"></span>
           </div>
@@ -232,12 +232,11 @@
     <!-- Tabla de datos con paginación -->
     <DataTable
       v-if="dataEnriquecida.length"
-      :value="dataEnriquecida"
-      :paginator="true"
-      :rows="50"
-      :rowsPerPageOptions="[25, 50, 100, 200]"
-      paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
-      currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords}"
+      :value="dataVisible"
+      lazy
+      :sortField="sortField"
+      :sortOrder="sortOrder"
+      @sort="onSort"
       responsiveLayout="scroll"
       class="recientes-table"
       :loading="processing"
@@ -473,7 +472,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, reactive } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
@@ -1271,6 +1270,48 @@ const parseTracksolidDate = (value) => {
   return isNaN(parsed.getTime()) ? null : parsed;
 };
 
+// Click en una tarjeta de totales = filtro de la tabla (mismo criterio que actualizarTotales).
+const filtroCard = ref(null);
+const FILTROS_CARD = {
+  conReporte: d => d._tieneReporte,
+  sinReporte: d => !d._tieneReporte && !['es_envio', 'no_requiere', 'desconocido', 'no_encontrado'].includes(d._status),
+  esEnvio: d => d._status === 'es_envio',
+  noRequiere: d => d._status === 'no_requiere',
+  desconocido: d => d._status === 'desconocido',
+  noEncontrado: d => d._status === 'no_encontrado',
+};
+const toggleFiltroCard = (key) => { filtroCard.value = filtroCard.value === key ? null : key; };
+const dataTabla = computed(() => filtroCard.value ? dataEnriquecida.value.filter(FILTROS_CARD[filtroCard.value]) : dataEnriquecida.value);
+
+// Scroll infinito: se ordena el dataset completo y se van mostrando bloques
+// de 50 al acercarse al final de la página (la tabla es lazy para que el
+// orden aplique a todo, no solo a lo visible).
+const PASO_SCROLL = 50;
+const visibles = ref(PASO_SCROLL);
+const sortField = ref(null);
+const sortOrder = ref(null);
+const onSort = (e) => { sortField.value = e.sortField; sortOrder.value = e.sortOrder; };
+const dataOrdenada = computed(() => {
+  if (!sortField.value || !sortOrder.value) return dataTabla.value;
+  const campo = sortField.value;
+  return [...dataTabla.value].sort((a, b) => {
+    const va = a[campo], vb = b[campo];
+    if (va == null || va === '') return 1;
+    if (vb == null || vb === '') return -1;
+    return String(va).localeCompare(String(vb), undefined, { numeric: true }) * sortOrder.value;
+  });
+});
+const dataVisible = computed(() => dataOrdenada.value.slice(0, visibles.value));
+watch([dataTabla, sortField, sortOrder], () => { visibles.value = PASO_SCROLL; });
+const onWindowScroll = () => {
+  if (visibles.value >= dataOrdenada.value.length) return;
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300) {
+    visibles.value += PASO_SCROLL;
+  }
+};
+onMounted(() => window.addEventListener('scroll', onWindowScroll, { passive: true }));
+onUnmounted(() => window.removeEventListener('scroll', onWindowScroll));
+
 // Actualizar totales
 const actualizarTotales = () => {
   const conReporte = dataEnriquecida.value.filter(d => d._tieneReporte).length;
@@ -1523,7 +1564,6 @@ const ejecutarVincular = async () => {
   }
 };
 
-// Los datos provienen de activaciones_recientes, así que usamos ese servicio
 const marcarStatus = async (rowData, nuevoStatus) => {
   try {
     const numeroDispositivo = rowData['Número de dispositivo'];
@@ -1539,11 +1579,8 @@ const marcarStatus = async (rowData, nuevoStatus) => {
       return;
     }
     
-    // Importar servicio
-    const { actualizarStatusPorDispositivo } = await import('@/services/activacionesService');
-    
     // Siempre actualizar por IMEI (más confiable que usar el ID)
-    await actualizarStatusPorDispositivo(cuenta, numeroDispositivo, nuevoStatus);
+    await actualizarStatusRenovacionPorDispositivo(cuenta, numeroDispositivo, nuevoStatus);
     
     // Actualizar localmente
     rowData._status = nuevoStatus;
@@ -1980,6 +2017,8 @@ const exportarSinReporte = () => {
   flex: 1;
 }
 
+.info-card-mini { cursor: pointer; }
+.info-card-mini.filtro-activo { box-shadow: 0 0 0 2px var(--color-primary); }
 .info-card-mini {
   background: var(--color-card);
   border-radius: 10px;
