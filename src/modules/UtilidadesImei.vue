@@ -166,6 +166,7 @@
               <div class="row-actions">
                 <Button icon="pi pi-pencil" text rounded severity="info" @click="openEdit(data)" v-tooltip.top="'Editar'" />
                 <Button icon="pi pi-server" text rounded severity="secondary" @click="abrirAccionesSimpro(data)" v-tooltip.top="'Acciones SIMPRO'" />
+                <Button icon="pi pi-trash" text rounded severity="danger" @click="eliminarRegistro(data)" v-tooltip.top="'Eliminar'" />
               </div>
             </template>
           </Column>
@@ -248,6 +249,7 @@ import {
   getConsultasSim,
   saveConsultaSim,
   updateConsultaSim,
+  deleteConsultaSim,
   refrescarSimproSims
 } from '@/services/utilidadesImeiService';
 
@@ -592,6 +594,21 @@ async function saveEdit() {
     await cargarDesdeDB();
   } catch (error) {
     message.value = error?.response?.data?.detail || error?.message || 'No se pudo actualizar.';
+    messageError.value = true;
+  }
+}
+
+async function eliminarRegistro(row) {
+  if (!confirm(`¿Eliminar el registro ${row.iccid || row.imei || row.id}? Esta acción no se puede deshacer.`)) return;
+  try {
+    await deleteConsultaSim(row.id);
+    rows.value = rows.value.filter(r => r.id !== row.id);
+    totalRecords.value = Math.max(0, totalRecords.value - 1);
+    filteredRecords.value = Math.max(0, filteredRecords.value - 1);
+    message.value = 'Registro eliminado.';
+    messageError.value = false;
+  } catch (error) {
+    message.value = error?.response?.data?.detail || error?.message || 'No se pudo eliminar.';
     messageError.value = true;
   }
 }
