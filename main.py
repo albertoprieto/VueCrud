@@ -1419,7 +1419,7 @@ def add_imei(item: IMEI):
     return {"message": "IMEI registrado exitosamente"}
 
 @app.put("/imeis/{imei_value}")
-def update_imei(imei_value: str, imei: dict):
+def update_imei(imei_value: str, imei: dict, current=Depends(require_admin)):
     db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
@@ -2830,7 +2830,7 @@ def get_imeis_por_ubicacion(ubicacion_id: int):
     return imeis
 
 @app.post("/ubicaciones/{ubicacion_id}/asignar-imeis")
-def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest):
+def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest, current=Depends(require_admin)):
     db = get_db_connection()
     cursor = db.cursor()
     for imei in data.imeis:
@@ -2841,7 +2841,7 @@ def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequ
     return {"message": "IMEIs asignados a la ubicación"}
 
 @app.post("/ubicaciones/{ubicacion_id}/remover-imeis")
-def remover_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest):
+def remover_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest, current=Depends(require_admin)):
     db = get_db_connection()
     cursor = db.cursor()
     for imei in data.imeis:
@@ -2856,7 +2856,7 @@ class TransferirIMEIsRequest(BaseModel):
     destino_id: int
 
 @app.post("/ubicaciones/transferir-imeis")
-def transferir_imeis(request: TransferirIMEIsRequest, current=Depends(get_current_user)):
+def transferir_imeis(request: TransferirIMEIsRequest, current=Depends(require_admin)):
     db = get_db_connection()
     cursor = db.cursor()
     if request.imeis:
@@ -2913,7 +2913,7 @@ def buscar_imeis_bulk(data: BuscarImeisBulkRequest):
     return resultados
 
 @app.post("/imeis/{imei}/devolver")
-def devolver_imei(imei: str, data: dict = Body(...)):
+def devolver_imei(imei: str, data: dict = Body(...), current=Depends(require_admin)):
     motivo = data.get("motivo")
     usuario = data.get("usuario", "sistema")
     db = get_db_connection()
