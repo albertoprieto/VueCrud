@@ -293,8 +293,7 @@ const lugaresPago = [
   'BBVA PAU',
   'Mercadopago Victor',
   'Mercadopago Eliseo',
-  'Efectivo oficina',
-  'Efectivo tecnico'
+  'Efectivo oficina'
 ];
 
 const opcionesEstado = [

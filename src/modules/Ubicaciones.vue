@@ -2,7 +2,8 @@
   <div class="ubicaciones">
     <h2 class="page-title">Ubicaciones (Bodegas)</h2>
     <Button label="Agregar Ubicación" icon="pi pi-plus" @click="showModal = true" />
-    <DataTable :value="ubicaciones" :loading="loading">
+    <InputText v-model="busqueda" placeholder="Buscar por técnico o ubicación" class="buscador" />
+    <DataTable :value="ubicacionesFiltradas" :loading="loading">
       <template #loading>
         <DataTableLoader text="Cargando ubicaciones..." />
       </template>
@@ -101,7 +102,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { getUbicaciones, addUbicacion, updateUbicacion, deleteUbicacion } from '@/services/ubicacionesService';
 import { getIMEIs } from '@/services/imeiService';
@@ -116,6 +117,14 @@ import Dropdown from 'primevue/dropdown';
 
 const router = useRouter();
 const ubicaciones = ref([]);
+const busqueda = ref('');
+// Sin mayúsculas ni acentos: "avila" encuentra "Ávila".
+const normalizar = (texto) => String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const ubicacionesFiltradas = computed(() => {
+  const q = normalizar(busqueda.value).trim();
+  if (!q) return ubicaciones.value;
+  return ubicaciones.value.filter(u => normalizar(`${u.nombre} ${u.encargado}`).includes(q));
+});
 const loading = ref(true);
 const showModal = ref(false);
 const showConfirmDelete = ref(false);
@@ -263,6 +272,11 @@ h2 {
   font-size: 1.2rem;
   font-weight: bold;
   padding: 1rem 1.5rem;
+}
+.buscador {
+  display: block;
+  width: 100%;
+  margin: 1rem 0;
 }
 .mb-2 {
   margin-bottom: 1rem;

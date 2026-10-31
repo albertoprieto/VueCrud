@@ -119,10 +119,6 @@
         <h4 class="section-title">Datos del cobro</h4>
         <div class="cobro-grid two-cols">
           <div class="form-group">
-            <label class="required-label">Subtotal (orden de servicio)</label>
-            <InputText v-model="form.subtotal" placeholder="Subtotal" class="w-full" :disabled="true" :class="{'p-invalid': isCampoInvalido('subtotal')}" />
-          </div>
-          <div class="form-group">
             <label class="required-label">Total pagado por el cliente</label>
             <InputNumber v-model="form.total" placeholder="Total a cobrar" class="w-full" :class="{'p-invalid': isCampoInvalido('total')}" />
             <small>El instalador puede modificar este valor si hay algún ajuste.</small>
@@ -262,7 +258,6 @@ const form = ref({
   observaciones: '',
   plataforma: '',
   usuario: '',
-  subtotal: '',
   forma_pago: '',
   pagado: false,
   nombre_cliente: '',
@@ -509,7 +504,6 @@ async function cargarDatosCliente() {
       const ventas = await getVentas();
       const venta = ventas.find(v => v.id == asignacion.value.venta_id);
       if (venta) {
-        form.value.subtotal = venta.total || '';
         form.value.total = venta.total || '';
         form.value.forma_pago = venta.terminos_pago || '';
         try {
@@ -703,7 +697,7 @@ async function guardar() {
       observaciones: form.value.observaciones || '',
       plataforma: form.value.plataforma || '',
       usuario: form.value.usuario || '',
-      subtotal: String(form.value.subtotal ?? ''),
+      subtotal: String(form.value.total ?? '0'),
       forma_pago: form.value.forma_pago || '',
       pagado: !!form.value.pagado,
       nombre_cliente: form.value.nombre_cliente || '',
@@ -779,7 +773,7 @@ function formatoMoneda(valor) {
   return valor.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 });
 }
 
-const baseObligatorios = ['subtotal','total','imei','imeis_articulos'];
+const baseObligatorios = ['total','imei','imeis_articulos'];
 function isCampoObligatorio(c){
   return baseObligatorios.includes(c);
 }

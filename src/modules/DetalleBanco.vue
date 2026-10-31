@@ -308,7 +308,7 @@ import {
 } from '@/services/bancosService';
 import { registrarAbonoDinero, actualizarMovimientoDinero, eliminarComprobanteMovimientoDinero, eliminarMovimientoDinero } from '@/services/dineroService';
 import { editarIngresoBanco, eliminarIngresoBanco } from '@/services/ingresosBancoService';
-import { fetchBancosRaw, buildFilas, calcularSaldoBanco, mesKey } from '@/composables/useBancosData';
+import { fetchBancosRaw, buildFilas, calcularSaldoBanco, mesKey, diaKey } from '@/composables/useBancosData';
 
 const props = defineProps({ nombre: { type: String, required: true } });
 const route = useRoute();
@@ -405,12 +405,13 @@ const opcionesFiltroMes = computed(() => {
   return [{ label: 'Todos los meses', value: 'todos' }, ...keys.map(k => ({ label: labelMes(k), value: k }))];
 });
 
-// Orden manual (flechas subir/bajar), igual que la tabla combinada de antes:
-// orden_manual null (fila nunca reordenada, incluye las recién llegadas) va
-// antes que las ya ordenadas, así lo nuevo aparece arriba sin enterrarse.
+// Orden: día desc; dentro del mismo día, orden_manual (arrastre). orden_manual
+// null (nunca reordenada) va antes que las ya ordenadas dentro de su día.
 const filasOrdenadas = computed(() => {
   const arr = [...filasBanco.value];
   arr.sort((a, b) => {
+    const da = diaKey(a.fecha), db = diaKey(b.fecha);
+    if (da !== db) return da < db ? 1 : -1;
     const oa = a.orden_manual, ob = b.orden_manual;
     if (oa != null && ob != null) return oa - ob;
     if (oa != null) return 1;
@@ -458,8 +459,19 @@ const porValidarResumen = computed(() => {
 // subir/bajar, permite mover una fila varios lugares de un solo jalón.
 // Deshabilitado con filtros activos (event.value vendría de la lista filtrada,
 // no de filasOrdenadas completa, y desalinearía los índices).
+// Solo reordena dentro del día de la fila movida; el día completo siempre está
+// visible con filtro de mes, así que los índices no chocan con otros días.
 async function onRowReorder(event) {
-  const orden = event.value.map((f, i) => ({ key: f.key, orden: i }));
+  const movida = filasFiltradas.value[event.dragIndex];
+  const dia = diaKey(movida?.fecha);
+  const pos = event.value.indexOf(movida);
+  const mismoDia = (f) => f && diaKey(f.fecha) === dia;
+  if (!mismoDia(event.value[pos - 1]) && !mismoDia(event.value[pos + 1])) {
+    toast.add({ severity: 'warn', summary: 'Fuera de su día', detail: 'Solo se puede reordenar dentro del mismo día. Cambia la fecha para moverla de día.', life: 3500 });
+    await cargar(false);
+    return;
+  }
+  const orden = event.value.filter(mismoDia).map((f, i) => ({ key: f.key, orden: i }));
   try {
     await reordenarBancos(orden);
     toast.add({ severity: 'success', summary: 'Orden actualizado', detail: 'Fila movida.', life: 2000 });

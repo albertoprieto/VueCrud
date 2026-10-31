@@ -17,6 +17,7 @@ export const ESTADOS = {
   CANCELADO: 'cancelado',
   PERMISO_PENDIENTE: 'permiso_pendiente',
   GARANTIA: 'garantia',
+  PAGADO_PASADO: 'pagado_pasado',
 };
 
 const LABELS_ESTADO = {
@@ -26,6 +27,7 @@ const LABELS_ESTADO = {
   [ESTADOS.CANCELADO]: 'Cancelado',
   [ESTADOS.PERMISO_PENDIENTE]: 'Permiso (pendiente excusado)',
   [ESTADOS.GARANTIA]: 'Garantía (cerrado sin cobro)',
+  [ESTADOS.PAGADO_PASADO]: 'Pagado en el pasado',
 };
 
 // ── Permiso de pendiente: excusa temporal (Técnico/Cliente) para que un
@@ -144,7 +146,13 @@ export function estadoDeReporte(reporte, indice) {
     : { estado: match.estado, referencia: match };
   // Un reporte con comprobante o cancelado no necesita excusa — el permiso
   // solo aplica a lo que de otro modo contaría como pendiente real.
-  if (base.estado !== ESTADOS.CON_COMPROBANTE && base.estado !== ESTADOS.CANCELADO && permisoVigente(reporte)) {
+  const pendienteReal = base.estado === ESTADOS.SIN_NOTA || base.estado === ESTADOS.SIN_COMPROBANTE;
+  // "Pagado en el pasado": el cliente ya lo pagó antes del reporte, no va a
+  // haber nota ni comprobante. Ver PUT /reportes-servicio/{id}/pagado-pasado.
+  if (pendienteReal && reporte?.pagado_pasado_fecha) {
+    return { ...base, estado: ESTADOS.PAGADO_PASADO };
+  }
+  if (pendienteReal && permisoVigente(reporte)) {
     return { ...base, estado: ESTADOS.PERMISO_PENDIENTE };
   }
   return base;
@@ -256,7 +264,7 @@ export function agruparPorPersona(reportes, indice, campo) {
     } else if (estado === ESTADOS.GARANTIA) {
       g.reportesGarantia += 1;
     }
-    // CANCELADO no suma a ningún total — no es venta viva.
+    // CANCELADO y PAGADO_PASADO no suman a ningún total: no son pendiente.
   }
 
   return [...grupos.values()];
@@ -268,7 +276,10 @@ export function reportesDePersona(reportes, indice, campo, nombre) {
     .filter(r => !esRenovacion(r) && resolverNombre(campo, r[campo]).toLowerCase() === norm)
     .map(r => {
       const { estado, referencia } = estadoDeReporte(r, indice);
-      return { ...r, estado, referencia, permisoVencido: permisoVencido(r) };
+      // La bandera solo aplica mientras siga pendiente: si ya se le asignó
+      // pago (comprobante) o se cerró por otra vía, deja de estar vencido.
+      const sigue = estado === ESTADOS.SIN_NOTA || estado === ESTADOS.SIN_COMPROBANTE;
+      return { ...r, estado, referencia, permisoVencido: sigue && permisoVencido(r) };
     })
     .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 }

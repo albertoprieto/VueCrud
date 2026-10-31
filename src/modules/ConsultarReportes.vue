@@ -109,6 +109,7 @@
       <Column header="Nota / Factura">
         <template #body="slotProps">
           <span v-if="slotProps.data.cierre_garantia_fecha" style="font-weight:bold; color:var(--color-success, #28a745);">Es garantía</span>
+          <span v-else-if="slotProps.data.pagado_pasado_fecha" style="font-weight:bold; color:var(--color-success, #28a745);">Pagado en el pasado</span>
           <router-link
             v-else-if="asignacionPagoMap[slotProps.data.id]"
             :to="asignacionPagoMap[slotProps.data.id].tipo === 'factura'
@@ -261,76 +262,12 @@
       <Button label="Cerrar" icon="pi pi-times" @click="showDialog = false" class="mt-3" />
     </Dialog>
 
-    <!-- Dialogo Editar Reporte -->
-    <Dialog v-model:visible="showEditDialog" header="Editar Reporte de Servicio" :modal="true">
-      <form @submit.prevent="guardarEdicion">
-        <div v-if="reporteEditando">
-          <div class="form-group">
-            <label>Tipo de Servicio</label>
-            <InputText v-model="reporteEditando.tipo_servicio" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Fecha</label>
-            <input type="date" v-model="fechaEditandoStr" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Vendedor</label>
-            <InputText v-model="reporteEditando.vendedor" class="w-full" />
-          </div>
-          <div class="form-group">
-            <label>Lugar / Centro de instalación</label>
-            <InputText v-model="reporteEditando.lugar_instalacion" class="w-full" />
-          </div>
-          <h4 class="section-title">Datos del vehículo</h4>
-          <div class="form-group">
-            <InputText v-model="reporteEditando.marca" placeholder="Marca" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.submarca" placeholder="Submarca" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.modelo" placeholder="Modelo" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.placas" placeholder="Placa" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.color" placeholder="Color" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.numero_economico" placeholder="Número económico" class="w-full mb-2" />
-          </div>
-          <h4 class="section-title">Datos del dispositivo</h4>
-          <div class="form-group">
-            <InputText v-model="reporteEditando.modelo_gps" placeholder="Modelo GPS" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.imei" placeholder="IMEI" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.sim_serie" placeholder="SIM" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.accesorios" placeholder="Accesorios adicionales" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.ubicacion_gps" placeholder="Ubicación del GPS" class="w-full mb-2" />
-            <InputText v-model="reporteEditando.ubicacion_bloqueo" placeholder="Ubicación del Bloqueo" class="w-full mb-2" />
-          </div>
-          <div class="form-group">
-            <label>Observaciones</label>
-            <InputText v-model="reporteEditando.observaciones" class="w-full" />
-          </div>
-          <h4 class="section-title">Datos del cobro</h4>
-          <div class="form-group">
-            <label>Subtotal (orden de servicio)</label>
-            <InputText v-model="reporteEditando.subtotal" class="w-full mb-2" />
-          </div>
-          <div class="form-group">
-            <label>Total a cobrar</label>
-            <InputText v-model="reporteEditando.total" class="w-full mb-2" />
-          </div>
-          <div class="form-group">
-            <label>Método de pago</label>
-            <InputText v-model="reporteEditando.forma_pago" class="w-full mb-2" disabled />
-          </div>
-          <div class="form-group">
-            <label>Monto cobrado por el técnico</label>
-            <InputText v-model="reporteEditando.monto_tecnico" type="number" class="w-full mb-2" />
-          </div>
-          <div class="form-group">
-            <label>Viáticos</label>
-            <InputText v-model="reporteEditando.viaticos" type="number" class="w-full mb-2" />
-          </div>
-        </div>
-        <div class="modal-actions">
-          <Button label="Guardar" icon="pi pi-save" type="submit" :loading="guardandoEdicion" :disabled="guardandoEdicion" />
-          <Button label="Cancelar" icon="pi pi-times" class="p-button-secondary ml-2" @click="showEditDialog = false" type="button" :disabled="guardandoEdicion" />
-        </div>
-      </form>
-    </Dialog>
+    <EditarReporteDialog
+      :reporte="reporteEditando"
+      :nota-id="notaDeReporteEditando"
+      @cerrar="reporteEditando = null"
+      @guardado="alGuardarReporte"
+    />
 
     <!-- Dialogo Confirmar Eliminación -->
     <Dialog v-model:visible="showConfirmDeleteDialog" header="Confirmar Eliminación" :modal="true" :closable="false">
@@ -467,6 +404,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import DataTable from 'primevue/datatable';
 import DataTableLoader from '@/components/DataTableLoader.vue';
+import EditarReporteDialog from '@/components/EditarReporteDialog.vue';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
@@ -487,7 +425,7 @@ import { registrarAbonoDinero, getMovimientosDineroPorReferencia } from '@/servi
 import { useRouter } from 'vue-router';
 import { verificarReportesActivaciones, marcarSinReportePorImei } from '@/services/activacionesService';
 import { marcarGarantia } from '@/services/reportesService';
-import { crearNota, crearFactura, getPagosAsignaciones, actualizarCamposNota } from '@/services/pagosService';
+import { crearNota, crearFactura, getPagosAsignaciones } from '@/services/pagosService';
 import { generarNotaServicioPDF } from '@/services/NotaServicioPdfService.js';
 import { getIngresosBanco, asignarIngresoANota, asignarIngresoAFactura } from '@/services/ingresosBancoService';
 import * as XLSX from 'xlsx';
@@ -516,9 +454,7 @@ const loading = ref(false);
 const exportandoSinNota = ref(false);
 
 const showDialog = ref(false);
-const showEditDialog = ref(false);
 const reporteEditando = ref(null);
-const guardandoEdicion = ref(false);
 
 const showConfirmDeleteDialog = ref(false);
 const reporteSeleccionado = ref(null);
@@ -587,7 +523,7 @@ const asignacionPagoMap = computed(() => {
 // Verde: con nota/factura y pagado (o con comprobante de pago cargado), o
 // cerrado por garantía — Rojo: con nota/factura y sin pagar — Amarillo: sin nota/factura
 function filaClasePago(data) {
-  if (data.cierre_garantia_fecha) return 'fila-pago-verde';
+  if (data.cierre_garantia_fecha || data.pagado_pasado_fecha) return 'fila-pago-verde';
   if (data.comprobante_path) return 'fila-pago-verde';
   const asignacion = asignacionPagoMap.value[data.id];
   if (!asignacion) return 'fila-pago-amarillo';
@@ -624,12 +560,7 @@ const opcionesStatusFactura = [
 ];
 
 function obtenerMontoParaPago(reporte) {
-  const tieneSubtotal =
-    reporte?.subtotal !== null &&
-    reporte?.subtotal !== undefined &&
-    String(reporte.subtotal).trim() !== '';
-
-  const valorBase = tieneSubtotal ? reporte.subtotal : reporte?.total;
+  const valorBase = reporte?.total;
   if (typeof valorBase === 'number') {
     return Number.isFinite(valorBase) ? valorBase : 0;
   }
@@ -821,7 +752,6 @@ const camposReporte = {
   observaciones: { label: 'Observaciones', type: 'textarea' },
   plataforma: { label: 'Plataforma' },
   usuario: { label: 'Usuario' },
-  subtotal: { label: 'Subtotal' },
   total: { label: 'Total' },
   forma_pago: { label: 'Forma de pago' },
   pagado: { label: '¿Pagado?', type: 'select' },
@@ -1125,7 +1055,7 @@ async function exportarSinNota() {
     for (const nota of notas) {
       for (const id of (nota.reporte_ids || [])) reportesConNota.add(id);
     }
-    const sinNota = reportes.value.filter(r => !reportesConNota.has(r.id));
+    const sinNota = reportes.value.filter(r => !reportesConNota.has(r.id) && !r.pagado_pasado_fecha);
     if (!sinNota.length) {
       toast.add({ severity: 'info', summary: 'Sin pendientes', detail: 'Todos los reportes ya tienen nota.', life: 3500 });
       return;
@@ -1189,49 +1119,22 @@ async function mostrarNota(reporte) {
 
 // Editar
 function abrirEditar(reporte) {
-  reporteEditando.value = { ...reporte };
-  showEditDialog.value = true;
+  reporteEditando.value = reporte;
 }
 
-const fechaEditandoStr = computed({
-  get: () => reporteEditando.value?.fecha ? String(reporteEditando.value.fecha).slice(0, 10) : '',
-  set: (val) => { if (reporteEditando.value) reporteEditando.value.fecha = val; },
+const notaDeReporteEditando = computed(() => {
+  const asignacion = asignacionPagoMap.value[reporteEditando.value?.id];
+  return asignacion?.tipo === 'nota' ? asignacion.id : null;
 });
 
-async function guardarEdicion() {
-  if (!reporteEditando.value) return;
-  guardandoEdicion.value = true;
-  try {
-    const idxOriginal = reportes.value.findIndex(r => r.id === reporteEditando.value.id);
-    const totalOriginal = idxOriginal !== -1 ? reportes.value[idxOriginal].total : null;
-    await axios.put(`${API_URL}/${reporteEditando.value.id}`, reporteEditando.value);
-
-    // Si el reporte tiene una nota asociada y cambió el total, refleja el
-    // mismo total en la nota — la factura no se toca (ese reporte ni
-    // siquiera llega aquí, el ícono de editar está oculto para ese caso).
-    const asignacion = asignacionPagoMap.value[reporteEditando.value.id];
-    if (asignacion?.tipo === 'nota' && Number(reporteEditando.value.total) !== Number(totalOriginal)) {
-      try {
-        await actualizarCamposNota(asignacion.id, { total: reporteEditando.value.total });
-      } catch (e) {
-        toast.add({ severity: 'warn', summary: 'Aviso', detail: 'El reporte se guardó, pero no se pudo actualizar el total de la nota asociada.', life: 4500 });
-      }
-    }
-
-    // Actualiza la fila en memoria en vez de recargar TODOS los reportes del
-    // servidor (cargarReportes() vuelve a pegarle a /reportes-servicio-todos
-    // y remapea todo, lo que se siente como que la pantalla "parpadea" para
-    // un cambio de un solo campo) — mucho más ágil y el cambio se ve al toque.
-    const idx = reportes.value.findIndex(r => r.id === reporteEditando.value.id);
-    if (idx !== -1) {
-      reportes.value[idx] = { ...reportes.value[idx], ...reporteEditando.value };
-    }
-    showEditDialog.value = false;
-    toast.add({ severity: 'success', summary: 'Actualizado', detail: 'Reporte actualizado correctamente.', life: 3000 });
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar los cambios.', life: 4000 });
-  }
-  guardandoEdicion.value = false;
+// Actualiza la fila en memoria en vez de recargar TODOS los reportes del
+// servidor (cargarReportes() vuelve a pegarle a /reportes-servicio-todos
+// y remapea todo, lo que se siente como que la pantalla "parpadea" para
+// un cambio de un solo campo) — mucho más ágil y el cambio se ve al toque.
+function alGuardarReporte(editado) {
+  const idx = reportes.value.findIndex(r => r.id === editado.id);
+  if (idx !== -1) reportes.value[idx] = { ...reportes.value[idx], ...editado };
+  reporteEditando.value = null;
 }
 
 function confirmarEliminarReporte(reporte) {

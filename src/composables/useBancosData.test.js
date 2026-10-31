@@ -1,4 +1,4 @@
-import { calcularSaldoBanco, mesKey, cobraComisionBanco } from './useBancosData.js';
+import { calcularSaldoBanco, mesKey, diaKey, cobraComisionBanco } from './useBancosData.js';
 
 // Helpers para armar filas con el shape que produce buildFilas().
 const entrada = (banco, monto, estatusValidacion = 'aprobado', extra = {}) => ({
@@ -99,6 +99,12 @@ describe('calcularSaldoBanco', () => {
   it('mesKey no corre la fecha por timezone', () => {
     expect(mesKey('2026-09-01')).toBe('2026-09');
     expect(mesKey('2026-09-01T05:00:00Z')).toBe('2026-09');
+  });
+
+  it('diaKey no corre la fecha por timezone', () => {
+    expect(diaKey('2026-09-01')).toBe('2026-09-01');
+    expect(diaKey('2026-09-01T23:30:00Z')).toBe('2026-09-01');
+    expect(diaKey(null)).toBe('');
   });
 
   it('vista mensual: el saldo final de un mes es el inicial del siguiente', () => {

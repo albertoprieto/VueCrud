@@ -5,7 +5,7 @@ import { getIngresosBanco } from '@/services/ingresosBancoService';
 
 export const LUGARES_VALIDOS = [
   'ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU',
-  'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico',
+  'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina',
 ];
 
 // El 1% de comisión por recibir dinero solo lo cobran los bancos ASP
@@ -203,6 +203,16 @@ export function mesKey(fecha) {
   const d = new Date(fecha);
   if (isNaN(d)) return null;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// 'YYYY-MM-DD' sin correr por timezone (mismo criterio que mesKey).
+export function diaKey(fecha) {
+  if (!fecha) return '';
+  const m = String(fecha).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(fecha);
+  if (isNaN(d)) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // Saldo de un banco. Sin `mes` → acumulado de toda la historia. Con `mes`

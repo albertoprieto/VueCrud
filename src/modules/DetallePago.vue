@@ -35,14 +35,16 @@
         <div class="detalle-row"><strong>Cliente:</strong> {{ item.cliente || '-' }}</div>
         <div class="detalle-row"><strong>Total:</strong> {{ item.total != null ? '$' + Number(item.total).toFixed(2) : '-' }}</div>
         <div class="detalle-row"><strong>Fecha:</strong> {{ formatFecha(item.fecha) }}</div>
+        <!-- Oculto: estatus y lugar de pago ya vienen en "Ingresos bancarios ligados".
         <div class="detalle-row"><strong>Lugar de pago:</strong> {{ item.lugar_pago || '-' }}</div>
         <div class="detalle-row">
           <strong>Estatus actual:</strong>
           <span :class="'badge badge-' + badgeClass(item.status)" style="margin-left:0.5rem;">{{ item.status }}</span>
         </div>
+        -->
       </div>
 
-      <!-- Cambiar estatus y lugar de pago -->
+      <!-- Oculto: estatus y lugar de pago ya vienen en "Ingresos bancarios ligados".
       <div class="cambiar-status">
         <h3>Cambiar estatus y lugar de pago</h3>
         <div class="status-options">
@@ -75,6 +77,37 @@
             style="align-self: flex-end;"
           />
         </div>
+      </div>
+      -->
+
+      <!-- Detalle de órdenes incluidas -->
+      <div v-if="item.detalle_ordenes && item.detalle_ordenes.length" class="ordenes-detalle">
+        <h3>Órdenes incluidas</h3>
+        <DataTable :value="detalleOrdenesEnriquecido" responsiveLayout="scroll">
+          <Column field="folio" header="Orden" />
+          <Column field="tipo_servicio" header="Tipo" />
+          <Column field="nombre_cliente" header="Cliente" />
+          <Column header="IMEI(s)">
+            <template #body="{ data }">
+              {{ formatearImeisOrden(data) }}
+            </template>
+          </Column>
+          <Column field="total" header="Total">
+            <template #body="{ data }">
+              {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
+            </template>
+          </Column>
+          <Column header="Editar" style="width:60px">
+            <template #body="{ data }">
+              <Button
+                v-if="!data.pagado"
+                icon="pi pi-pencil"
+                class="p-button-sm p-button-info"
+                @click="ordenEditando = data"
+              />
+            </template>
+          </Column>
+        </DataTable>
       </div>
 
       <!-- Comprobantes de pago -->
@@ -306,25 +339,6 @@
         />
       </div>
 
-      <!-- Detalle de órdenes incluidas -->
-      <div v-if="item.detalle_ordenes && item.detalle_ordenes.length" class="ordenes-detalle">
-        <h3>Órdenes incluidas</h3>
-        <DataTable :value="detalleOrdenesEnriquecido" responsiveLayout="scroll">
-          <Column field="folio" header="Orden" />
-          <Column field="tipo_servicio" header="Tipo" />
-          <Column field="nombre_cliente" header="Cliente" />
-          <Column header="IMEI(s)">
-            <template #body="{ data }">
-              {{ formatearImeisOrden(data) }}
-            </template>
-          </Column>
-          <Column field="total" header="Total">
-            <template #body="{ data }">
-              {{ data.total != null ? '$' + Number(data.total).toFixed(2) : '-' }}
-            </template>
-          </Column>
-        </DataTable>
-      </div>
     </div>
 
     <div v-else style="text-align:center;padding:3rem;">
@@ -512,6 +526,13 @@
       </div>
     </Dialog>
 
+    <EditarReporteDialog
+      :reporte="ordenEditando"
+      :nota-id="item?.id"
+      @cerrar="ordenEditando = null"
+      @guardado="alGuardarOrden"
+    />
+
     <ConfirmDialog group="desligar-ingreso" />
   </div>
 </template>
@@ -550,6 +571,7 @@ import {
 import { generarPagoPDF } from '@/services/PagoPdfService.js';
 import { getIngresosBanco, getIngresosLigadosANota, asignarIngresoANota, desligarIngresoNota } from '@/services/ingresosBancoService';
 import { useConfirm } from 'primevue/useconfirm';
+import EditarReporteDialog from '@/components/EditarReporteDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -735,6 +757,7 @@ const pdfUrl = ref('');
 const pdfTitle = ref('');
 const loadingPdf = ref(false);
 const quitando = ref(null);  // ID del reporte que se está quitando
+const ordenEditando = ref(null);
 
 const lugaresDisponibles = [
   'ASP Vianey',
@@ -743,8 +766,7 @@ const lugaresDisponibles = [
   'BBVA PAU',
   'Mercadopago Victor',
   'Mercadopago Eliseo',
-  'Efectivo oficina',
-  'Efectivo tecnico'
+  'Efectivo oficina'
 ];
 
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -1121,6 +1143,11 @@ function cerrarPdfDialog() {
   }
 }
 
+async function alGuardarOrden() {
+  ordenEditando.value = null;
+  await cargarDetalle();
+}
+
 async function quitarReporte(reporte) {
   quitando.value = reporte.id;
   try {
@@ -1225,6 +1252,9 @@ async function confirmarAgregar() {
 .status-options .w-full {
   flex: 1;
   min-width: 200px;
+}
+.ordenes-detalle {
+  margin-bottom: 2rem;
 }
 .ordenes-detalle h3 {
   margin-bottom: 0.75rem;

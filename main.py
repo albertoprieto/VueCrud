@@ -149,6 +149,22 @@ def require_admin(current=Depends(get_current_user)):
     return current
 
 
+# Usuarios no-Admin autorizados a mover inventario (transferir/asignar/devolver IMEIs).
+USUARIOS_INVENTARIO = {"danieli"}
+
+def require_inventario(current=Depends(get_current_user)):
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT username, perfil FROM usuarios WHERE id=%s", (current["user_id"],))
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if not row or ((row["perfil"] or "").lower() != "admin"
+                   and (row["username"] or "").lower() not in USUARIOS_INVENTARIO):
+        raise HTTPException(status_code=403, detail="Sin permiso de inventario")
+    return current
+
+
 # Helper para construir URL pública consistente
 def build_public_url(rel_path: str, request: Request | None = None) -> str:
     import os as _os
@@ -1419,7 +1435,7 @@ def add_imei(item: IMEI):
     return {"message": "IMEI registrado exitosamente"}
 
 @app.put("/imeis/{imei_value}")
-def update_imei(imei_value: str, imei: dict, current=Depends(require_admin)):
+def update_imei(imei_value: str, imei: dict, current=Depends(require_inventario)):
     db = get_db_connection()
     cursor = db.cursor()
     cursor.execute(
@@ -2830,7 +2846,7 @@ def get_imeis_por_ubicacion(ubicacion_id: int):
     return imeis
 
 @app.post("/ubicaciones/{ubicacion_id}/asignar-imeis")
-def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest, current=Depends(require_admin)):
+def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest, current=Depends(require_inventario)):
     db = get_db_connection()
     cursor = db.cursor()
     for imei in data.imeis:
@@ -2841,7 +2857,7 @@ def asignar_imeis_a_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequ
     return {"message": "IMEIs asignados a la ubicación"}
 
 @app.post("/ubicaciones/{ubicacion_id}/remover-imeis")
-def remover_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest, current=Depends(require_admin)):
+def remover_ubicacion(ubicacion_id: int, data: AsignarIMEIsUbicacionRequest, current=Depends(require_inventario)):
     db = get_db_connection()
     cursor = db.cursor()
     for imei in data.imeis:
@@ -2856,7 +2872,7 @@ class TransferirIMEIsRequest(BaseModel):
     destino_id: int
 
 @app.post("/ubicaciones/transferir-imeis")
-def transferir_imeis(request: TransferirIMEIsRequest, current=Depends(require_admin)):
+def transferir_imeis(request: TransferirIMEIsRequest, current=Depends(require_inventario)):
     db = get_db_connection()
     cursor = db.cursor()
     if request.imeis:
@@ -2913,7 +2929,7 @@ def buscar_imeis_bulk(data: BuscarImeisBulkRequest):
     return resultados
 
 @app.post("/imeis/{imei}/devolver")
-def devolver_imei(imei: str, data: dict = Body(...), current=Depends(require_admin)):
+def devolver_imei(imei: str, data: dict = Body(...), current=Depends(require_inventario)):
     motivo = data.get("motivo")
     usuario = data.get("usuario", "sistema")
     db = get_db_connection()
@@ -4505,6 +4521,52 @@ def quitar_garantia_reporte(reporte_id: int, current=Depends(get_current_user)):
         cursor.close()
         db.close()
     return {"message": "Garantía quitada, el reporte vuelve a contar como pendiente"}
+
+
+@app.put("/reportes-servicio/{reporte_id}/pagado-pasado")
+def marcar_pagado_pasado(reporte_id: int, current=Depends(require_admin)):
+    """Marca un reporte como ya pagado en el pasado: no pide nota ni
+    comprobante y deja de figurar como pendiente en Comisiones."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    for _col_sql in (
+        "ALTER TABLE reportes_servicio ADD COLUMN pagado_pasado_por VARCHAR(100) NULL",
+        "ALTER TABLE reportes_servicio ADD COLUMN pagado_pasado_fecha DATETIME NULL",
+    ):
+        try:
+            cursor.execute(_col_sql)
+        except Exception:
+            pass
+    try:
+        cursor.execute("SELECT id FROM reportes_servicio WHERE id=%s", (reporte_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+        cursor.execute(
+            "UPDATE reportes_servicio SET pagado_pasado_por=%s, pagado_pasado_fecha=NOW() WHERE id=%s",
+            (current["username"], reporte_id)
+        )
+        db.commit()
+    finally:
+        cursor.close()
+        db.close()
+    return {"message": "Reporte marcado como pagado en el pasado"}
+
+
+@app.delete("/reportes-servicio/{reporte_id}/pagado-pasado")
+def quitar_pagado_pasado(reporte_id: int, current=Depends(require_admin)):
+    """Deshace la marca — el reporte vuelve a contar como pendiente."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        cursor.execute(
+            "UPDATE reportes_servicio SET pagado_pasado_por=NULL, pagado_pasado_fecha=NULL WHERE id=%s",
+            (reporte_id,)
+        )
+        db.commit()
+    finally:
+        cursor.close()
+        db.close()
+    return {"message": "Marca quitada, el reporte vuelve a contar como pendiente"}
 
 
 @app.put("/reportes-servicio/{reporte_id}/rechazar-comprobante")
@@ -6183,7 +6245,7 @@ def actualizar_status_nota(nota_id: int, data: dict = Body(...)):
 @app.put("/notas-pago/{nota_id}/lugar-pago")
 def actualizar_lugar_pago_nota(nota_id: int, data: dict = Body(...)):
     lugar_pago = data.get('lugar_pago', '').strip()
-    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico']
+    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina']
     if lugar_pago and lugar_pago not in lugares_validos:
         raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
     db = get_db_connection()
@@ -7820,7 +7882,7 @@ def actualizar_status_factura_pago(factura_id: int, data: dict = Body(...)):
 @app.put("/facturas-pago/{factura_id}/lugar-pago")
 def actualizar_lugar_pago_factura(factura_id: int, data: dict = Body(...)):
     lugar_pago = data.get('lugar_pago', '').strip()
-    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina', 'Efectivo tecnico']
+    lugares_validos = ['ASP Vianey', 'ASP Renovaciones', 'Comercializadora', 'BBVA PAU', 'Mercadopago Victor', 'Mercadopago Eliseo', 'Efectivo oficina']
     if lugar_pago and lugar_pago not in lugares_validos:
         raise HTTPException(status_code=400, detail=f"Lugar de pago inválido. Valores: {', '.join(lugares_validos)}")
     db = get_db_connection()

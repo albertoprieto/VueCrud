@@ -2,9 +2,12 @@
   <div class="tecnicos-container">
     <h2 class="tecnicos-title page-title">Usuarios</h2>
     <div class="tecnicos-actions">
-      <Button label="Agregar Usuario" icon="pi pi-plus" @click="abrirModal" />
+      <InputText v-model="filtroUsuario" placeholder="Buscar usuario" />
+      <Dropdown v-model="filtroPerfil" :options="perfiles" placeholder="Perfil" showClear />
+      <Button label="Solo admins" icon="pi pi-shield" :class="{ 'p-button-outlined': filtroPerfil !== 'Admin' }" @click="filtroPerfil = filtroPerfil === 'Admin' ? null : 'Admin'" />
+      <Button label="Agregar Usuario" icon="pi pi-plus" class="ml-auto" @click="abrirModal" />
     </div>
-    <DataTable :value="tecnicos" class="tecnicos-table" :loading="loading">
+    <DataTable :value="usuariosFiltrados" class="tecnicos-table" :loading="loading">
       <template #loading>
         <DataTableLoader text="Cargando usuarios..." />
       </template>
@@ -36,7 +39,7 @@
       </div>
       <div class="form-group">
         <label>Perfil</label>
-        <Dropdown v-model="form.perfil" :options="['User', 'Admin', 'Tecnico', 'Vendedor', 'Cliente']" placeholder="Selecciona perfil" class="w-full" />
+        <Dropdown v-model="form.perfil" :options="perfiles" placeholder="Selecciona perfil" class="w-full" />
       </div>
       <div class="modal-actions">
         <Button label="Guardar" icon="pi pi-save" @click="guardarTecnico" />
@@ -82,6 +85,18 @@ const loading = ref(true);
 const showModal = ref(false);
 const editando = ref(false);
 const form = ref({ id: null, username: '', password: '', perfil: '' });
+
+const perfiles = ['User', 'Admin', 'Tecnico', 'Vendedor', 'Cliente'];
+const filtroUsuario = ref('');
+const filtroPerfil = ref(null);
+const usuariosFiltrados = computed(() => {
+  const texto = filtroUsuario.value.trim().toLowerCase();
+  const perfil = (filtroPerfil.value || '').toLowerCase();
+  return tecnicos.value.filter(u =>
+    (!texto || (u.username || '').toLowerCase().includes(texto)) &&
+    (!perfil || (u.perfil || '').toLowerCase() === perfil)
+  );
+});
 
 const formatearFecha = (fecha) => {
   if (!fecha) return '-';
@@ -167,7 +182,12 @@ async function eliminarTecnico(id) {
 .tecnicos-actions {
   margin-bottom: 1rem;
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.ml-auto {
+  margin-left: auto;
 }
 .tecnicos-table {
   margin-bottom: 2rem;

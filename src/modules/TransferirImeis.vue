@@ -10,6 +10,10 @@
           :options="ubicaciones"
           optionLabel="nombre"
           placeholder="Selecciona ubicación origen"
+          filter
+          autoFilterFocus
+          filterPlaceholder="Escribe para buscar"
+          emptyFilterMessage="Sin resultados"
           class="w-full"
         />
       </div>
@@ -21,6 +25,10 @@
           :options="ubicacionesDestino"
           optionLabel="nombre"
           placeholder="Selecciona ubicación destino"
+          filter
+          autoFilterFocus
+          filterPlaceholder="Escribe para buscar"
+          emptyFilterMessage="Sin resultados"
           class="w-full"
         />
       </div>

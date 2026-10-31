@@ -47,6 +47,10 @@
             <span class="resumen-label">Cerrados por garantía</span>
             <span class="resumen-valor con">{{ totales.reportesGarantia }}</span>
           </div>
+          <div class="resumen-item">
+            <span class="resumen-label">Pagado en el pasado</span>
+            <span class="resumen-valor con">{{ totales.reportesPagadoPasado }}</span>
+          </div>
         </div>
       </div>
 
@@ -65,6 +69,12 @@
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'sin_nota' }" @click="filtroEstado = 'sin_nota'">Sin nota/factura ({{ totales.reportesSinNota }})</button>
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'permiso_pendiente' }" @click="filtroEstado = 'permiso_pendiente'">Con permiso ({{ totales.reportesPermisoPendiente }})</button>
         <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'garantia' }" @click="filtroEstado = 'garantia'">Garantía ({{ totales.reportesGarantia }})</button>
+        <button type="button" class="filtro-btn" :class="{ activo: filtroEstado === 'pagado_pasado' }" @click="filtroEstado = 'pagado_pasado'">Pagado en el pasado ({{ totales.reportesPagadoPasado }})</button>
+        <Button
+          icon="pi pi-download" label="Descargar reporte" class="p-button-sm btn-descargar"
+          :disabled="!reportesFiltrados.length"
+          @click="descargarReporte"
+        />
       </div>
 
       <div v-if="filasSeleccionadas.length" class="seleccion-bulk-bar">
@@ -97,6 +107,16 @@
           <template #body="{ data }">{{ data.vendedor || 'NA' }}</template>
         </Column>
         <Column field="tipo_servicio" header="Servicio" />
+        <Column header="IMEI">
+          <template #body="{ data }">
+            <div v-for="im in imeisDe(data)" :key="im" class="id-linea">{{ im }}</div>
+          </template>
+        </Column>
+        <Column header="SIM">
+          <template #body="{ data }">
+            <div v-for="s in simsDe(data)" :key="s" class="id-linea">{{ s }}</div>
+          </template>
+        </Column>
         <Column v-if="tipo !== 'tecnico'" header="Total" style="width:100px">
           <template #body="{ data }">{{ formatTotal(data.total) }}</template>
         </Column>
@@ -105,7 +125,14 @@
         </Column>
         <Column header="Banco" style="width:130px">
           <template #body="{ data }">
-            <span v-if="data.referencia?.lugarPago">{{ data.referencia.lugarPago }}</span>
+            <span
+              v-if="data.estado === 'pagado_pasado'"
+              class="badge badge-garantia"
+              v-tooltip.top="`Marcado por ${data.pagado_pasado_por || '—'} el ${formatFechaCorta(data.pagado_pasado_fecha)}${esAdmin ? '. Clic para quitar.' : ''}`"
+              :style="{ cursor: esAdmin ? 'pointer' : 'default' }"
+              @click="quitarPagadoPasadoReporte(data)"
+            >Pagado en el pasado <i v-if="esAdmin" class="pi pi-times" style="font-size:0.65rem;" /></span>
+            <span v-else-if="data.referencia?.lugarPago">{{ data.referencia.lugarPago }}</span>
             <span v-else style="color:var(--color-border);">—</span>
           </template>
         </Column>
@@ -143,6 +170,12 @@
               icon="pi pi-shield" label="Garantía" class="p-button-sm p-button-text btn-garantia"
               v-tooltip.top="'Este servicio no se cobró — cerrarlo como garantía'"
               @click="abrirMarcarGarantia(data)"
+            />
+            <Button
+              v-if="esAdmin && tipo === 'vendedor' && (data.estado === 'sin_comprobante' || data.estado === 'sin_nota')"
+              icon="pi pi-history" label="Pagado en el pasado" class="p-button-sm p-button-text btn-garantia"
+              :loading="marcandoPagadoPasado === data.id"
+              @click="marcarPagadoPasadoReporte(data)"
             />
           </template>
         </Column>
@@ -388,6 +421,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -396,7 +430,7 @@ import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
 import { useToast } from 'primevue/usetoast';
 import { useLoginStore } from '@/stores/loginStore';
-import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente, transferirVendedor, marcarGarantia, quitarGarantia } from '@/services/reportesService';
+import { getReportesServicioTodos, marcarPermisoPendiente, quitarPermisoPendiente, transferirVendedor, marcarGarantia, quitarGarantia, marcarPagadoPasado, quitarPagadoPasado } from '@/services/reportesService';
 import { getNotas, getFacturas } from '@/services/pagosService';
 import {
   indexarNotasFacturas, reportesDePersona, agruparPorPersona, mesesDisponibles, filtrarPorMes, mesActual, ESTADOS,
@@ -419,6 +453,7 @@ const nombre = computed(() => props.nombre || route.params.nombre);
 
 // Un Técnico no puede ver la comisión de alguien más cambiando la URL a mano.
 const esTecnicoRestringido = computed(() => (user.value.perfil || '') === 'Tecnico');
+const esAdmin = computed(() => (user.value.perfil || '') === 'Admin');
 
 const loading = ref(true);
 const reportes = ref([]);
@@ -454,6 +489,26 @@ function esImagen(path) {
   return /\.(png|jpe?g|webp|gif)$/i.test(path || '');
 }
 
+// IMEIs/SIMs del reporte: campo suelto primero, luego lo agrupado en
+// imeis_articulos / sim_series, sin duplicados (mismo criterio que
+// _identificadores_reporte en main.py).
+function unicos(valores) {
+  return [...new Set(valores.map(v => String(v || '').trim()).filter(Boolean))];
+}
+function gruposDe(r) {
+  return Array.isArray(r.imeis_articulos) ? r.imeis_articulos : [];
+}
+function imeisDe(r) {
+  return unicos([r.imei, ...gruposDe(r).flatMap(g => g?.imeis || [])]);
+}
+function simsDe(r) {
+  return unicos([
+    r.sim_serie,
+    ...gruposDe(r).flatMap(g => g?.sims || []),
+    ...(Array.isArray(r.sim_series) ? r.sim_series : []),
+  ]);
+}
+
 const indice = computed(() => indexarNotasFacturas(notas.value, facturas.value));
 const campo = computed(() => (tipo.value === 'tecnico' ? 'nombre_instalador' : 'vendedor'));
 
@@ -474,7 +529,7 @@ const totales = computed(() => {
     totalVendido: 0, totalConComprobante: 0, totalSinComprobante: 0, totalSinNota: 0,
     reportesConComprobante: 0, reportesSinComprobante: 0, reportesSinNota: 0,
     montoTecnicoConComprobante: 0, montoTecnicoSinComprobante: 0,
-    reportesPermisoPendiente: 0, reportesGarantia: 0,
+    reportesPermisoPendiente: 0, reportesGarantia: 0, reportesPagadoPasado: 0,
   };
   for (const r of reportesPersona.value) {
     const total = Number(r.total) || 0;
@@ -496,10 +551,31 @@ const totales = computed(() => {
       t.reportesPermisoPendiente += 1;
     } else if (r.estado === ESTADOS.GARANTIA) {
       t.reportesGarantia += 1;
+    } else if (r.estado === ESTADOS.PAGADO_PASADO) {
+      t.reportesPagadoPasado += 1;
     }
   }
   return t;
 });
+
+// Excel con lo que se ve en la tabla (respeta filtro de mes y de estado).
+function descargarReporte() {
+  const esTecnico = tipo.value === 'tecnico';
+  const filas = reportesFiltrados.value.map(r => ({
+    Cliente: r.nombre_cliente || '',
+    Servicio: r.tipo_servicio || '',
+    IMEI: imeisDe(r).join('\n'),
+    SIM: simsDe(r).join('\n'),
+    [esTecnico ? 'Monto Técnico' : 'Total']: Number(esTecnico ? r.monto_tecnico : r.total) || 0,
+    Fecha: formatFechaCorta(r.fecha),
+  }));
+  const ws = XLSX.utils.json_to_sheet(filas);
+  ws['!cols'] = [{ wch: 32 }, { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Reportes');
+  const sufijo = [filtroEstado.value, filtroMes.value].filter(v => v !== 'todos').join('_');
+  XLSX.writeFile(wb, `Reportes_${nombre.value}${sufijo ? `_${sufijo}` : ''}.xlsx`);
+}
 
 async function cargar() {
   loading.value = true;
@@ -749,6 +825,32 @@ async function quitarGarantiaReporte(reporte) {
   }
 }
 
+// ── Pagado en el pasado — sin nota ni comprobante, directo con un clic. ──
+const marcandoPagadoPasado = ref(null);
+
+async function marcarPagadoPasadoReporte(reporte) {
+  marcandoPagadoPasado.value = reporte.id;
+  try {
+    await marcarPagadoPasado(reporte.id);
+    toast.add({ severity: 'success', summary: 'Marcado', detail: 'Reporte marcado como pagado en el pasado.', life: 3000 });
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo marcar el reporte.', life: 4500 });
+  }
+  marcandoPagadoPasado.value = null;
+}
+
+async function quitarPagadoPasadoReporte(reporte) {
+  if (!esAdmin.value) return;
+  try {
+    await quitarPagadoPasado(reporte.id);
+    toast.add({ severity: 'success', summary: 'Marca quitada', detail: 'El reporte vuelve a contar como pendiente.', life: 3500 });
+    await cargar();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo quitar la marca.', life: 4500 });
+  }
+}
+
 async function confirmarTransferir() {
   const destino = (nuevoVendedor.value || '').trim();
   if (!reporteParaTransferir.value || !destino) return;
@@ -907,6 +1009,13 @@ async function confirmarTransferir() {
   font-size: 0.78rem;
   font-weight: bold;
   border: none;
+}
+.btn-descargar {
+  margin-left: auto;
+}
+.id-linea {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .btn-icon-only :deep(.p-button-label) {
   display: none;
