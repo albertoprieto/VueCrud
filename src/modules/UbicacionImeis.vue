@@ -24,10 +24,17 @@
       <Button label="Limpiar" icon="pi pi-times" class="p-button-secondary" @click="limpiarFiltros" />
     </div>
 
-    <DataTable :value="imeisFiltrados" :loading="loading">
+    <div v-if="seleccionados.length" class="mb-2 barra-transferir">
+      <span>{{ seleccionados.length }} seleccionado{{ seleccionados.length === 1 ? '' : 's' }}</span>
+      <Button label="Transferir" icon="pi pi-share-alt" @click="abrirTransferir" />
+      <Button label="Quitar selección" class="p-button-text" @click="seleccionados = []" />
+    </div>
+
+    <DataTable v-model:selection="seleccionados" :value="imeisFiltrados" :loading="loading" dataKey="imei">
       <template #loading>
         <DataTableLoader text="Cargando IMEIs..." />
       </template>
+      <Column selectionMode="multiple" style="width:3rem" />
       <Column field="imei" header="IMEI" />
       <!-- <Column field="articulo_nombre" header="Artículo" /> -->
       <Column field="sku" header="SKU" />
@@ -45,13 +52,32 @@
       <Column field="date" header="Fecha registro" />
       <!-- <Column field="registeredBy" header="Registró" /> -->
     </DataTable>
+
+    <Dialog v-model:visible="showTransferir" header="Transferir IMEIs" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }" :draggable="false">
+      <p style="margin-top:0;">{{ seleccionados.length }} IMEI{{ seleccionados.length === 1 ? '' : 's' }} de {{ ubicacion?.nombre }}</p>
+      <Dropdown
+        v-model="destino"
+        :options="ubicacionesDestino"
+        optionLabel="nombre"
+        placeholder="Selecciona ubicación destino"
+        filter
+        autoFilterFocus
+        filterPlaceholder="Escribe para buscar"
+        emptyFilterMessage="Sin resultados"
+        style="width:100%;"
+      />
+      <template #footer>
+        <Button label="Cancelar" class="p-button-secondary" @click="showTransferir = false" />
+        <Button label="Transferir" icon="pi pi-share-alt" :disabled="!destino" :loading="transfiriendo" @click="confirmarTransferir" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { getUbicaciones, getImeisPorUbicacion } from '@/services/ubicacionesService';
+import { getUbicaciones, getImeisPorUbicacion, transferirImeis } from '@/services/ubicacionesService';
 import { devolverIMEI } from '@/services/imeiService';
 import DataTable from 'primevue/datatable';
 import DataTableLoader from '@/components/DataTableLoader.vue';
@@ -60,8 +86,12 @@ import Button from 'primevue/button';
 import Chip from 'primevue/chip';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
+import Dialog from 'primevue/dialog';
+import { useToast } from 'primevue/usetoast';
 
 const route = useRoute();
+const toast = useToast();
+const ubicaciones = ref([]);
 const ubicacion = ref(null);
 const imeis = ref([]);
 const loading = ref(true);
@@ -86,10 +116,36 @@ const skuOptions = computed(() => {
 
 const cargarDatos = async () => {
   loading.value = true;
-  const ubicaciones = await getUbicaciones();
-  ubicacion.value = ubicaciones.find(u => u.id == route.params.id);
+  ubicaciones.value = await getUbicaciones();
+  ubicacion.value = ubicaciones.value.find(u => u.id == route.params.id);
   imeis.value = await getImeisPorUbicacion(route.params.id);
   loading.value = false;
+};
+
+const seleccionados = ref([]);
+const showTransferir = ref(false);
+const destino = ref(null);
+const transfiriendo = ref(false);
+const ubicacionesDestino = computed(() => ubicaciones.value.filter(u => u.id != route.params.id));
+
+const abrirTransferir = () => {
+  destino.value = null;
+  showTransferir.value = true;
+};
+
+const confirmarTransferir = async () => {
+  transfiriendo.value = true;
+  try {
+    const total = seleccionados.value.length;
+    await transferirImeis(seleccionados.value.map(i => i.imei), destino.value.id);
+    toast.add({ severity: 'success', summary: 'Transferidos', detail: `${total} IMEI(s) transferidos a "${destino.value.nombre}".`, life: 4000 });
+    seleccionados.value = [];
+    showTransferir.value = false;
+    await cargarDatos();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudieron transferir los IMEIs.', life: 4500 });
+  }
+  transfiriendo.value = false;
 };
 
 const limpiarFiltros = () => {
@@ -130,6 +186,11 @@ onMounted(cargarDatos);
 </script>
 
 <style scoped>
+.barra-transferir {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
 .filtro-chips {
   display: flex;
   gap: 0.5rem;

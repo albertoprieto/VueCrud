@@ -17,6 +17,11 @@ export const asignarImeisUbicacion = async (ubicacionId, imeis) => {
   return res.data;
 };
 
+export const transferirImeis = async (imeis, destinoId) => {
+  const res = await axios.post(`${API_URL}/transferir-imeis`, { imeis, destino_id: destinoId });
+  return res.data;
+};
+
 export async function addUbicacion(data) {
   return axios.post(API_URL, data);
 }
