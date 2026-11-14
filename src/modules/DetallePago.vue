@@ -42,6 +42,22 @@
           <span :class="'badge badge-' + badgeClass(item.status)" style="margin-left:0.5rem;">{{ item.status }}</span>
         </div>
         -->
+        <div class="detalle-row" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+          <strong>Estatus:</strong>
+          <span :class="'badge badge-' + badgeClass(item.status)">{{ item.status }}</span>
+          <template v-if="statusSugerido">
+            <span style="color:#856404;">
+              {{ statusSugerido === 'pagado' ? 'El pago ya cubre la nota.' : `Sin pago suficiente, faltan $${saldoSinCubrir.toFixed(2)}.` }}
+            </span>
+            <Button
+              :label="statusSugerido === 'pagado' ? 'Marcar pagada' : 'Marcar pendiente de pago'"
+              :icon="statusSugerido === 'pagado' ? 'pi pi-check' : 'pi pi-undo'"
+              :class="['p-button-sm', statusSugerido === 'pagado' ? 'p-button-success' : 'p-button-warning']"
+              :loading="saving"
+              @click="aplicarStatusSugerido"
+            />
+          </template>
+        </div>
       </div>
 
       <!-- Oculto: estatus y lugar de pago ya vienen en "Ingresos bancarios ligados".
@@ -664,6 +680,33 @@ const saldoPendienteNota = computed(() => {
   const cubiertoIngresos = ingresosLigados.value.reduce((s, l) => s + (Number(l.monto_aplicado) || 0), 0);
   return total - cubiertoPagos - cubiertoIngresos;
 });
+// Un ingreso que cerró la nota con faltante justificado por conceptos
+// (descuento) cuenta como cubierto — mismo criterio que asignar-nota.
+const saldoSinCubrir = computed(() => saldoPendienteNota.value - ingresosLigados.value
+  .filter(l => (l.conceptos || []).length && Number(l.diferencia) < 0)
+  .reduce((s, l) => s - Number(l.diferencia), 0));
+// Estatus que corresponde según los pagos, solo si no coincide con el actual.
+const statusSugerido = computed(() => {
+  const st = item.value?.status;
+  if (!st || st === 'cancelado') return null;
+  const cubierta = saldoSinCubrir.value <= 1;
+  if (cubierta && st !== 'pagado') return 'pagado';
+  if (!cubierta && st === 'pagado') return 'pendiente de pago';
+  return null;
+});
+async function aplicarStatusSugerido() {
+  const nuevo = statusSugerido.value;
+  if (!nuevo) return;
+  saving.value = true;
+  try {
+    await actualizarStatusNota(id.value, nuevo);
+    item.value.status = nuevo;
+    toast.add({ severity: 'success', summary: 'Estatus actualizado', detail: `Nota marcada como ${nuevo}.`, life: 3000 });
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el estatus.', life: 4000 });
+  }
+  saving.value = false;
+}
 // diferencia = lo que se va a aplicar menos lo que la nota realmente debe.
 // El status "pagada" se decide solo (sin checkbox), igual que el backend:
 // cuadra exacto -> pagada sin conceptos. Sobra (overpay) -> conceptos

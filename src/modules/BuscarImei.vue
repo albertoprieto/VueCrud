@@ -97,6 +97,10 @@
           :options="ubicaciones"
           optionLabel="nombre"
           placeholder="Selecciona ubicación"
+          filter
+          autoFilterFocus
+          filterPlaceholder="Escribe para buscar"
+          emptyFilterMessage="Sin resultados"
           class="w-full mt-3"
         />
       </div>

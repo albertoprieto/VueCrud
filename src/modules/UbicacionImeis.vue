@@ -26,7 +26,7 @@
 
     <div v-if="seleccionados.length" class="mb-2 barra-transferir">
       <span>{{ seleccionados.length }} seleccionado{{ seleccionados.length === 1 ? '' : 's' }}</span>
-      <Button label="Transferir" icon="pi pi-share-alt" @click="abrirTransferir" />
+      <Button label="Transferir" icon="pi pi-share-alt" :disabled="!esAdmin" @click="abrirTransferir(seleccionados)" />
       <Button label="Quitar selección" class="p-button-text" @click="seleccionados = []" />
     </div>
 
@@ -50,11 +50,17 @@
         </template>
       </Column>
       <Column field="date" header="Fecha registro" />
+      <Column header="Acciones">
+        <template #body="slotProps">
+          <Button label="Cambiar estado" icon="pi pi-refresh" class="p-button-text p-button-help" :disabled="!esAdmin" @click="abrirDialogoEstado(slotProps.data)" />
+          <Button label="Transferir" icon="pi pi-share-alt" class="p-button-text p-button-info" :disabled="!esAdmin" @click="abrirTransferir([slotProps.data])" />
+        </template>
+      </Column>
       <!-- <Column field="registeredBy" header="Registró" /> -->
     </DataTable>
 
     <Dialog v-model:visible="showTransferir" header="Transferir IMEIs" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }" :draggable="false">
-      <p style="margin-top:0;">{{ seleccionados.length }} IMEI{{ seleccionados.length === 1 ? '' : 's' }} de {{ ubicacion?.nombre }}</p>
+      <p style="margin-top:0;">{{ aTransferir.length }} IMEI{{ aTransferir.length === 1 ? '' : 's' }} de {{ ubicacion?.nombre }}</p>
       <Dropdown
         v-model="destino"
         :options="ubicacionesDestino"
@@ -71,6 +77,15 @@
         <Button label="Transferir" icon="pi pi-share-alt" :disabled="!destino" :loading="transfiriendo" @click="confirmarTransferir" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="showEstado" header="Cambiar estado" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }" :draggable="false">
+      <p style="margin-top:0;">IMEI <b>{{ imeiEstado?.imei }}</b></p>
+      <Dropdown v-model="nuevoEstado" :options="estadosDisponibles" placeholder="Selecciona estado" style="width:100%;" />
+      <template #footer>
+        <Button label="Cancelar" class="p-button-secondary" @click="showEstado = false" />
+        <Button label="Actualizar" icon="pi pi-refresh" :disabled="!nuevoEstado || nuevoEstado === imeiEstado?.status" :loading="guardandoEstado" @click="cambiarEstado" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -78,7 +93,8 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { getUbicaciones, getImeisPorUbicacion, transferirImeis } from '@/services/ubicacionesService';
-import { devolverIMEI } from '@/services/imeiService';
+import { devolverIMEI, updateIMEI } from '@/services/imeiService';
+import { useLoginStore } from '@/stores/loginStore';
 import DataTable from 'primevue/datatable';
 import DataTableLoader from '@/components/DataTableLoader.vue';
 import Column from 'primevue/column';
@@ -91,6 +107,8 @@ import { useToast } from 'primevue/usetoast';
 
 const route = useRoute();
 const toast = useToast();
+const loginStore = useLoginStore();
+const esAdmin = computed(() => loginStore.user?.perfil === 'Admin');
 const ubicaciones = ref([]);
 const ubicacion = ref(null);
 const imeis = ref([]);
@@ -126,9 +144,11 @@ const seleccionados = ref([]);
 const showTransferir = ref(false);
 const destino = ref(null);
 const transfiriendo = ref(false);
+const aTransferir = ref([]);
 const ubicacionesDestino = computed(() => ubicaciones.value.filter(u => u.id != route.params.id));
 
-const abrirTransferir = () => {
+const abrirTransferir = (lista) => {
+  aTransferir.value = [...lista];
   destino.value = null;
   showTransferir.value = true;
 };
@@ -136,8 +156,8 @@ const abrirTransferir = () => {
 const confirmarTransferir = async () => {
   transfiriendo.value = true;
   try {
-    const total = seleccionados.value.length;
-    await transferirImeis(seleccionados.value.map(i => i.imei), destino.value.id);
+    const total = aTransferir.value.length;
+    await transferirImeis(aTransferir.value.map(i => i.imei), destino.value.id);
     toast.add({ severity: 'success', summary: 'Transferidos', detail: `${total} IMEI(s) transferidos a "${destino.value.nombre}".`, life: 4000 });
     seleccionados.value = [];
     showTransferir.value = false;
@@ -146,6 +166,31 @@ const confirmarTransferir = async () => {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudieron transferir los IMEIs.', life: 4500 });
   }
   transfiriendo.value = false;
+};
+
+const estadosDisponibles = ['Disponible', 'Vendido', 'Devuelto'];
+const showEstado = ref(false);
+const imeiEstado = ref(null);
+const nuevoEstado = ref(null);
+const guardandoEstado = ref(false);
+
+const abrirDialogoEstado = (row) => {
+  imeiEstado.value = row;
+  nuevoEstado.value = row.status;
+  showEstado.value = true;
+};
+
+const cambiarEstado = async () => {
+  guardandoEstado.value = true;
+  try {
+    await updateIMEI(imeiEstado.value.imei, { status: nuevoEstado.value });
+    toast.add({ severity: 'success', summary: 'Estado actualizado', detail: `${imeiEstado.value.imei} → ${nuevoEstado.value}`, life: 3000 });
+    showEstado.value = false;
+    await cargarDatos();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.detail || 'No se pudo actualizar el estado.', life: 4500 });
+  }
+  guardandoEstado.value = false;
 };
 
 const limpiarFiltros = () => {

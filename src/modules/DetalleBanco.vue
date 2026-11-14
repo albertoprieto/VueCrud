@@ -132,6 +132,17 @@
               </div>
             </template>
           </Column>
+          <Column header="Observaciones" style="min-width:200px">
+            <template #body="{ data }">
+              <InputText
+                :modelValue="observaciones[data.key] || ''"
+                placeholder="Agregar observación..."
+                class="edit-input"
+                @change="e => guardarObservacion(data, e.target.value)"
+                @keydown.enter="e => e.target.blur()"
+              />
+            </template>
+          </Column>
           <Column header="Validado" style="width:150px">
             <template #body="{ data }">
               <Dropdown
@@ -304,7 +315,7 @@ import {
 } from '@/services/pagosService';
 import {
   crearRetiro, aprobarRetiro, rechazarRetiro, marcarPendienteRetiro, reordenarBancos,
-  editarRetiro, eliminarRetiro, setSaldoInicial,
+  editarRetiro, eliminarRetiro, setSaldoInicial, getObservacionesBancos, setObservacionBanco,
 } from '@/services/bancosService';
 import { registrarAbonoDinero, actualizarMovimientoDinero, eliminarComprobanteMovimientoDinero, eliminarMovimientoDinero } from '@/services/dineroService';
 import { editarIngresoBanco, eliminarIngresoBanco } from '@/services/ingresosBancoService';
@@ -795,11 +806,26 @@ async function confirmarRetiro() {
   guardandoRetiro.value = false;
 }
 
+// Observaciones por fila, guardadas por key (ver /bancos/observaciones).
+// Se guarda al salir del campo (change) o con Enter.
+const observaciones = ref({});
+async function guardarObservacion(fila, texto) {
+  const valor = texto.trim();
+  try {
+    await setObservacionBanco(fila.key, valor);
+    observaciones.value = { ...observaciones.value, [fila.key]: valor };
+    toast.add({ severity: 'success', summary: 'Observación guardada', life: 1500 });
+  } catch {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar la observación.', life: 3500 });
+  }
+}
+
 async function cargar(resetLoading = true) {
   if (resetLoading) loading.value = true;
   try {
-    const raw = await fetchBancosRaw();
+    const [raw, obs] = await Promise.all([fetchBancosRaw(), getObservacionesBancos().catch(() => ({}))]);
     filasRaw.value = buildFilas(raw);
+    observaciones.value = obs;
     saldosIncialesPorBanco.value = raw.saldosIncialesPorBanco;
   } catch {
     filasRaw.value = [];

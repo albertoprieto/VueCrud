@@ -56,6 +56,16 @@ export async function setSaldoInicial(banco, saldo_inicial) {
   return res.data;
 }
 
+export async function getObservacionesBancos() {
+  const res = await axios.get(`${API_URL}/bancos/observaciones`);
+  return res.data;
+}
+
+export async function setObservacionBanco(clave, observaciones) {
+  const res = await axios.put(`${API_URL}/bancos/observaciones`, { clave, observaciones });
+  return res.data;
+}
+
 export async function reordenarBancos(orden) {
   const res = await axios.put(`${API_URL}/bancos/reordenar`, { orden });
   return res.data;

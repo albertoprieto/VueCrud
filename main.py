@@ -253,6 +253,27 @@ def crear_tabla_bancos_saldo_inicial():
     cursor.close()
     db.close()
 
+
+@app.on_event("startup")
+def crear_tabla_bancos_observaciones():
+    """Observaciones libres por fila del estado de cuenta de un banco. Las
+    filas vienen de varias tablas (notas, facturas, pagos_nota, ingresos,
+    movimientos, retiros), así que se guardan por `clave` = key de la fila
+    en el front (p.ej. 'nota-12', 'ingreso-5'), igual que /bancos/reordenar."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bancos_observaciones (
+            clave VARCHAR(50) NOT NULL PRIMARY KEY,
+            observaciones TEXT NOT NULL,
+            actualizado_por VARCHAR(100) NULL,
+            actualizado_fecha DATETIME NULL
+        )
+    """)
+    db.commit()
+    cursor.close()
+    db.close()
+
 @app.on_event("startup")
 def crear_tabla_pagos_nota():
     """Pagos adicionales de una nota a un banco distinto del lugar_pago
@@ -9155,17 +9176,52 @@ def asignar_ingreso_a_factura(ingreso_id: int, data: dict = Body(...), current=D
 @app.delete("/ingreso-banco-notas/{link_id}")
 def desligar_ingreso_nota(link_id: int):
     """Quita la liga — libera el monto de vuelta al ingreso y reabre el
-    saldo pendiente de la nota. No borra el ingreso ni su comprobante."""
+    saldo pendiente de la nota. No borra el ingreso ni su comprobante.
+    Si con eso la nota/factura vuelve a tener saldo, se regresa a no pagada."""
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("DELETE FROM ingreso_banco_notas_conceptos WHERE link_id=%s", (link_id,))
-    cursor.execute("DELETE FROM ingreso_banco_notas WHERE id=%s", (link_id,))
-    db.commit()
-    affected = cursor.rowcount
-    cursor.close()
-    db.close()
-    if affected == 0:
-        raise HTTPException(status_code=404, detail="Liga no encontrada")
+    try:
+        cursor.execute(
+            """SELECT ibn.nota_id, ibn.factura_id, ib.banco
+               FROM ingreso_banco_notas ibn JOIN ingresos_banco ib ON ib.id = ibn.ingreso_id
+               WHERE ibn.id=%s""",
+            (link_id,)
+        )
+        link = cursor.fetchone()
+        if not link:
+            raise HTTPException(status_code=404, detail="Liga no encontrada")
+        nota_id, factura_id, banco = link
+        cursor.execute("DELETE FROM ingreso_banco_notas_conceptos WHERE link_id=%s", (link_id,))
+        cursor.execute("DELETE FROM ingreso_banco_notas WHERE id=%s", (link_id,))
+        if nota_id:
+            if _saldo_pendiente_nota(cursor, nota_id) > TOLERANCIA_CONCILIACION_PAGOS:
+                cursor.execute(
+                    "UPDATE notas_pago SET status='pendiente de pago' WHERE id=%s AND status='pagado'",
+                    (nota_id,)
+                )
+            # lugar_pago lo puso asignar-nota desde el banco del ingreso; si ya
+            # no queda ningún ingreso de ese banco ligado, se limpia.
+            cursor.execute(
+                """UPDATE notas_pago SET lugar_pago=NULL
+                   WHERE id=%s AND lugar_pago=%s AND NOT EXISTS (
+                     SELECT 1 FROM ingreso_banco_notas ibn JOIN ingresos_banco ib ON ib.id = ibn.ingreso_id
+                     WHERE ibn.nota_id=%s AND ib.banco=%s)""",
+                (nota_id, banco, nota_id, banco)
+            )
+        if factura_id:
+            if _saldo_pendiente_factura(cursor, factura_id) > TOLERANCIA_CONCILIACION_PAGOS:
+                cursor.execute("UPDATE facturas_pago SET pagado=0 WHERE id=%s", (factura_id,))
+            cursor.execute(
+                """UPDATE facturas_pago SET lugar_pago=NULL
+                   WHERE id=%s AND lugar_pago=%s AND NOT EXISTS (
+                     SELECT 1 FROM ingreso_banco_notas ibn JOIN ingresos_banco ib ON ib.id = ibn.ingreso_id
+                     WHERE ibn.factura_id=%s AND ib.banco=%s)""",
+                (factura_id, banco, factura_id, banco)
+            )
+        db.commit()
+    finally:
+        cursor.close()
+        db.close()
     return {"message": "Ingreso desligado de la nota"}
 
 
@@ -9469,6 +9525,40 @@ def set_saldo_inicial(banco: str, data: dict = Body(...), current=Depends(requir
     cursor.close()
     db.close()
     return {"message": "Saldo inicial actualizado", "banco": banco, "saldo_inicial": saldo_inicial}
+
+
+@app.get("/bancos/observaciones")
+def get_bancos_observaciones():
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("SELECT clave, observaciones FROM bancos_observaciones")
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return {clave: obs for clave, obs in rows}
+
+@app.put("/bancos/observaciones")
+def set_bancos_observaciones(data: dict = Body(...), current=Depends(get_current_user)):
+    """Vacío borra la observación."""
+    clave = (data.get("clave") or "").strip()
+    observaciones = (data.get("observaciones") or "").strip()
+    if not clave:
+        raise HTTPException(status_code=400, detail="Se requiere 'clave'")
+    db = get_db_connection()
+    cursor = db.cursor()
+    if observaciones:
+        cursor.execute(
+            """INSERT INTO bancos_observaciones (clave, observaciones, actualizado_por, actualizado_fecha)
+               VALUES (%s, %s, %s, NOW())
+               ON DUPLICATE KEY UPDATE observaciones=VALUES(observaciones), actualizado_por=VALUES(actualizado_por), actualizado_fecha=NOW()""",
+            (clave, observaciones, current.get("username"))
+        )
+    else:
+        cursor.execute("DELETE FROM bancos_observaciones WHERE clave=%s", (clave,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return {"clave": clave, "observaciones": observaciones}
 
 
 # ═══════════════════════════════════════════════════════════════════════
